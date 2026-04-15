@@ -103,7 +103,7 @@ small { color: #888; display: block; margin-top: 8px; }
 <div class="wrapper">
   <h2>frpc 配置编辑器</h2>
   <div class="desc">编辑并保存 <code>/var/packages/frpc/var/frpc.toml</code>。保存后会尝试重启 frpc。</div>
-  <div class="msg">$SAVED_MSG</div>
+  <div class="msg" id="statusMsg">$SAVED_MSG</div>
   <form method="post" action="index.cgi?$QUERY">
     <textarea name="textcontent">$CFG_CONTENT</textarea>
     <div class="actions">
@@ -162,6 +162,13 @@ function toggleAutoRefresh() {
 window.addEventListener('beforeunload', function(){
   if (autoTimer) clearInterval(autoTimer);
 });
+
+(function autoClearStatusMsg(){
+  var msg = document.getElementById('statusMsg');
+  if (!msg) return;
+  if ((msg.textContent || '').trim().length === 0) return;
+  setTimeout(function(){ msg.textContent = ''; }, 3500);
+})();
 </script>
 </body>
 </html>
