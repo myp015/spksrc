@@ -1,7 +1,18 @@
 #!/bin/sh
 
-CFG_FILE="/var/packages/frpc/var/frpc.toml"
-LOG_FILE="/var/packages/frpc/var/frpc.log"
+# DSM7 常见实际路径（/var/packages/frpc/* 往往是符号链接）
+APP_VAR_DIR="/var/packages/frpc/var"
+APP_TARGET_DIR="/var/packages/frpc/target"
+if [ -d "/volume1/@appdata/frpc" ]; then
+    APP_VAR_DIR="/volume1/@appdata/frpc"
+fi
+if [ -d "/volume1/@appstore/frpc" ]; then
+    APP_TARGET_DIR="/volume1/@appstore/frpc"
+fi
+
+CFG_FILE="${APP_VAR_DIR}/frpc.toml"
+LOG_FILE="${APP_VAR_DIR}/frpc.log"
+PID_FILE="${APP_VAR_DIR}/frpc.pid"
 TMP_FILE="/tmp/frpc.toml.$$"
 
 html_escape() {
@@ -27,13 +38,29 @@ read_post_body() {
 }
 
 restart_frpc() {
+    # 1) 优先走 synopkg（若 CGI 权限足够）
     if command -v synopkg >/dev/null 2>&1; then
-        synopkg stop frpc >/dev/null 2>&1 || true
-        synopkg start frpc >/dev/null 2>&1 || true
-    else
+        if synopkg restart frpc >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    # 2) 走标准脚本
+    if [ -x /var/packages/frpc/scripts/start-stop-status ]; then
         /var/packages/frpc/scripts/start-stop-status stop >/dev/null 2>&1 || true
         /var/packages/frpc/scripts/start-stop-status start >/dev/null 2>&1 || true
+        sleep 1
+        if /var/packages/frpc/scripts/start-stop-status status >/dev/null 2>&1; then
+            return 0
+        fi
     fi
+
+    # 3) 最后兜底：直接拉起进程（兼容权限/状态异常场景）
+    pkill -f "${APP_TARGET_DIR}/bin/frpc -c ${CFG_FILE}" >/dev/null 2>&1 || true
+    nohup "${APP_TARGET_DIR}/bin/frpc" -c "${CFG_FILE}" >> "${LOG_FILE}" 2>&1 &
+    echo $! > "${PID_FILE}" 2>/dev/null || true
+    sleep 1
+    kill -0 $! >/dev/null 2>&1
 }
 
 METHOD="${REQUEST_METHOD:-GET}"
@@ -64,8 +91,11 @@ if [ "$METHOD" = "POST" ]; then
         mv "$TMP_FILE" "$CFG_FILE"
         chmod 644 "$CFG_FILE" 2>/dev/null || true
 
-        restart_frpc
-        SAVED_MSG="保存成功，已尝试重启 frpc。"
+        if restart_frpc; then
+            SAVED_MSG="保存成功，frpc 已重启。"
+        else
+            SAVED_MSG="保存成功，但重启失败，请手工执行：${APP_TARGET_DIR}/bin/frpc -c ${CFG_FILE}"
+        fi
     else
         SAVED_MSG="未检测到可保存内容。"
     fi
@@ -102,7 +132,7 @@ small { color: #888; display: block; margin-top: 8px; }
 <body>
 <div class="wrapper">
   <h2>frpc 配置编辑器</h2>
-  <div class="desc">编辑并保存 <code>/var/packages/frpc/var/frpc.toml</code>。保存后会尝试重启 frpc。</div>
+  <div class="desc">编辑并保存 <code>${CFG_FILE}</code>。保存后会尝试重启 frpc。</div>
   <div class="msg" id="statusMsg">$SAVED_MSG</div>
   <form method="post" action="index.cgi?$QUERY">
     <textarea name="textcontent">$CFG_CONTENT</textarea>
@@ -110,7 +140,7 @@ small { color: #888; display: block; margin-top: 8px; }
       <button type="submit">保存并重启</button>
       <button class="secondary" type="button" onclick="loadLog()">查看当前日志</button>
       <button class="secondary" type="button" onclick="toggleLog()">收起/展开日志</button>
-      <button class="secondary" id="autoBtn" type="button" onclick="toggleAutoRefresh()">开启自动刷新(2秒)</button>
+      <button class="secondary" id="autoBtn" type="button" onclick="toggleAutoRefresh()">开启实时刷新日志(2秒)</button>
     </div>
     <small>提示：若 frps 地址不可达，frpc 可能会退出（日志见 $LOG_FILE）。</small>
     <div id="logBox">点击“查看当前日志”加载。</div>
@@ -151,7 +181,7 @@ function toggleAutoRefresh() {
   if (autoTimer) {
     clearInterval(autoTimer);
     autoTimer = null;
-    btn.textContent = '开启自动刷新(2秒)';
+    btn.textContent = '开启实时刷新日志(2秒)';
     return;
   }
   loadLog();
