@@ -110,30 +110,58 @@ small { color: #888; display: block; margin-top: 8px; }
       <button type="submit">保存并重启</button>
       <button class="secondary" type="button" onclick="loadLog()">查看当前日志</button>
       <button class="secondary" type="button" onclick="toggleLog()">收起/展开日志</button>
+      <button class="secondary" id="autoBtn" type="button" onclick="toggleAutoRefresh()">开启自动刷新(2秒)</button>
     </div>
     <small>提示：若 frps 地址不可达，frpc 可能会退出（日志见 $LOG_FILE）。</small>
     <div id="logBox">点击“查看当前日志”加载。</div>
   </form>
 </div>
 <script>
+var autoTimer = null;
+
 function buildLogUrl() {
   var qs = window.location.search || '';
   var sep = qs.indexOf('?') === -1 ? '?' : '&';
   return 'index.cgi' + qs + sep + 'action=log&_=' + Date.now();
 }
+
 function loadLog() {
   var box = document.getElementById('logBox');
   box.style.display = 'block';
-  box.textContent = '加载日志中...';
+  if (!box.dataset.loaded) {
+    box.textContent = '加载日志中...';
+  }
   fetch(buildLogUrl(), { cache: 'no-store' })
     .then(function(r){ return r.text(); })
-    .then(function(t){ box.textContent = t || '日志为空'; box.scrollTop = box.scrollHeight; })
+    .then(function(t){
+      box.textContent = t || '日志为空';
+      box.dataset.loaded = '1';
+      box.scrollTop = box.scrollHeight;
+    })
     .catch(function(e){ box.textContent = '读取日志失败：' + e; });
 }
+
 function toggleLog() {
   var box = document.getElementById('logBox');
   box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
 }
+
+function toggleAutoRefresh() {
+  var btn = document.getElementById('autoBtn');
+  if (autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+    btn.textContent = '开启自动刷新(2秒)';
+    return;
+  }
+  loadLog();
+  autoTimer = setInterval(loadLog, 2000);
+  btn.textContent = '关闭自动刷新';
+}
+
+window.addEventListener('beforeunload', function(){
+  if (autoTimer) clearInterval(autoTimer);
+});
 </script>
 </body>
 </html>
