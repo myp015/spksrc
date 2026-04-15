@@ -52,9 +52,9 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz
 	@tar -xJf $(WORK_DIR)/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz -C $(WORK_DIR)/node-runtime --strip-components=1
-	@cd $(WORK_DIR) && $(WORK_DIR)/node-runtime/bin/npm pack openclaw@2026.4.14 --silent
+	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/node-runtime/bin:$$PATH" npm pack openclaw@2026.4.14 --silent
 	@tar -xzf $(WORK_DIR)/openclaw-2026.4.14.tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
-	@cd $(WORK_DIR)/openclaw-bundle && $(WORK_DIR)/node-runtime/bin/npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
