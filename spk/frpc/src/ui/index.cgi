@@ -40,6 +40,19 @@ METHOD="${REQUEST_METHOD:-GET}"
 QUERY="${QUERY_STRING:-}"
 SAVED_MSG=""
 
+ACTION_RAW=$(get_param "action" "$QUERY")
+ACTION=$(urldecode "$ACTION_RAW")
+
+if [ "$METHOD" = "GET" ] && [ "$ACTION" = "log" ]; then
+    printf 'Content-type: text/plain; charset=UTF-8\r\n\r\n'
+    if [ -f "$LOG_FILE" ]; then
+        tail -n 400 "$LOG_FILE"
+    else
+        echo "日志文件不存在：$LOG_FILE"
+    fi
+    exit 0
+fi
+
 if [ "$METHOD" = "POST" ]; then
     BODY=$(read_post_body)
     RAW_CONTENT=$(get_param "textcontent" "$BODY")
@@ -69,16 +82,21 @@ cat <<HTML
 <meta charset="UTF-8" />
 <title>frpc 配置</title>
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 0; background: #f5f6f7; }
-.wrapper { max-width: 1000px; margin: 20px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 20px; }
+html, body { height: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 0; background: #f5f6f7; overflow: hidden; }
+.wrapper { max-width: 1080px; height: calc(100vh - 40px); margin: 20px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; }
 h2 { margin: 0 0 10px; }
 .desc { color: #666; margin-bottom: 12px; }
-.msg { margin: 10px 0; color: #0a7a0a; font-weight: 600; }
-textarea { width: 100%; height: 520px; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; box-sizing: border-box; }
-.actions { margin-top: 12px; }
+.msg { margin: 10px 0; color: #0a7a0a; font-weight: 600; min-height: 20px; }
+form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+textarea { width: 100%; flex: 1; min-height: 220px; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; box-sizing: border-box; resize: none; }
+.actions { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
 button { border: 0; background: #1677ff; color: white; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
 button:hover { background: #4096ff; }
+button.secondary { background: #5d6778; }
+button.secondary:hover { background: #76839a; }
 small { color: #888; display: block; margin-top: 8px; }
+#logBox { display:none; margin-top: 12px; border: 1px solid #d0d7de; border-radius: 8px; padding: 10px; background: #fafafa; max-height: 240px; overflow: auto; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -90,10 +108,33 @@ small { color: #888; display: block; margin-top: 8px; }
     <textarea name="textcontent">$CFG_CONTENT</textarea>
     <div class="actions">
       <button type="submit">保存并重启</button>
-      <small>提示：若 frps 地址不可达，frpc 可能会退出（日志见 $LOG_FILE）。</small>
+      <button class="secondary" type="button" onclick="loadLog()">查看当前日志</button>
+      <button class="secondary" type="button" onclick="toggleLog()">收起/展开日志</button>
     </div>
+    <small>提示：若 frps 地址不可达，frpc 可能会退出（日志见 $LOG_FILE）。</small>
+    <div id="logBox">点击“查看当前日志”加载。</div>
   </form>
 </div>
+<script>
+function buildLogUrl() {
+  var qs = window.location.search || '';
+  var sep = qs.indexOf('?') === -1 ? '?' : '&';
+  return 'index.cgi' + qs + sep + 'action=log&_=' + Date.now();
+}
+function loadLog() {
+  var box = document.getElementById('logBox');
+  box.style.display = 'block';
+  box.textContent = '加载日志中...';
+  fetch(buildLogUrl(), { cache: 'no-store' })
+    .then(function(r){ return r.text(); })
+    .then(function(t){ box.textContent = t || '日志为空'; box.scrollTop = box.scrollHeight; })
+    .catch(function(e){ box.textContent = '读取日志失败：' + e; });
+}
+function toggleLog() {
+  var box = document.getElementById('logBox');
+  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+}
+</script>
 </body>
 </html>
 HTML
