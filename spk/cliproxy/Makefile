@@ -1,6 +1,6 @@
 SPK_NAME = cliproxy
 SPK_VERS = 6.9.26
-SPK_REV = 1
+SPK_REV = 2
 SPK_ICON = src/cliproxy.png
 
 DEPENDS = cross/cliproxy
@@ -12,7 +12,7 @@ UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 MAINTAINER = myp015
 DESCRIPTION = OpenAI/Gemini/Claude/Codex compatible proxy API server for CLI tools.
 DISPLAY_NAME = CLIProxyAPI
-CHANGELOG = "1. Initial package for CLIProxyAPI v6.9.26."
+CHANGELOG = "1. Fix DSM service env compatibility: use absolute auth-dir and prestart auto-fix for auth path."
 
 HOMEPAGE = https://github.com/router-for-me/CLIProxyAPI
 LICENSE = MIT
