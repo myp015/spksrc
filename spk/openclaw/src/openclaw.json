@@ -62,7 +62,7 @@
       "imageModel": {
         "primary": "default/Pro/MiniMaxAI/MiniMax-M2.5"
       },
-      "workspace": "/home/node/.openclaw/workspace"
+      "workspace": "/volume1/docker/openclaw/.openclaw"
     }
   },
   "messages": {
@@ -120,13 +120,22 @@
       },
       "browser": {
         "enabled": true
+      },
+      "openclaw-dingtalk": {
+        "enabled": false
+      },
+      "openclaw-wecom": {
+        "enabled": false
       }
     },
     "installs": {},
     "enabled": true,
     "allow": [
       "feishu",
-      "browser"
+      "browser",
+      "openclaw-dingtalk",
+      "openclaw-wecom",
+      "qqbot"
     ]
   },
   "memory": {
@@ -149,7 +158,7 @@
       "command": "/usr/local/bin/qmd",
       "paths": [
         {
-          "path": "/home/node/.openclaw/workspace",
+          "path": "/volume1/docker/openclaw/.openclaw",
           "name": "workspace",
           "pattern": "**/*.md"
         }

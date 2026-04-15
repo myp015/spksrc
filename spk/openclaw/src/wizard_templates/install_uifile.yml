@@ -1,6 +1,6 @@
 CONFIGURATION_TITLE: "OpenClaw 安装参数"
 
-WORKSPACE_DIR_DESCRIPTION: "OpenClaw 工作目录（将同步到 openclaw.json 的 agents.defaults.workspace 与 memory.qmd.paths[0].path）"
+WORKSPACE_DIR_DESCRIPTION: "OpenClaw 工作目录（默认 /volume1/docker/openclaw/.openclaw，将同步到 openclaw.json 的 agents.defaults.workspace 与 memory.qmd.paths[0].path）"
 WORKSPACE_DIR_LABEL: "工作目录"
 
 MODEL_ID_DESCRIPTION: "默认模型 ID（同步到 models.providers.default.models[0].id/name 与 agents.defaults.model.primary/imageModel.primary）"

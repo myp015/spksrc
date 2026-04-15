@@ -3,14 +3,15 @@ OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
 OPENCLAW_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_DEFAULT_CONFIG="${SYNOPKG_PKGDEST}/var/openclaw.json"
-OPENCLAW_WORKSPACE="${SYNOPKG_PKGVAR}/workspace"
+OPENCLAW_STATE_DIR_DEFAULT="/volume1/docker/openclaw/.openclaw"
+OPENCLAW_WORKSPACE="${OPENCLAW_STATE_DIR_DEFAULT}"
 
 service_postinst() {
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
         [ -f "${OPENCLAW_CONFIG_FILE}" ] || cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
 
         # Wizard defaults
-        export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw}"
+        export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw/.openclaw}"
         export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
         export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
         export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
@@ -29,7 +30,7 @@ const p = process.argv[1];
 const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
 const trim = (v) => (typeof v === "string" ? v.trim() : "");
 
-const workspace = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw";
+const workspace = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw/.openclaw";
 const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5";
 const baseUrl = trim(process.env.WIZARD_BASE_URL) || "http://127.0.0.1:8317/v1";
 const apiKey = trim(process.env.WIZARD_API_KEY) || "sk-V5zPkG6MJrIpxgmDw";
@@ -81,8 +82,8 @@ if (dingtalkClientId && dingtalkClientSecret) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
-  cfg.plugins.entries.dingtalk = cfg.plugins.entries.dingtalk || {};
-  cfg.plugins.entries.dingtalk.enabled = true;
+  cfg.plugins.entries["openclaw-dingtalk"] = cfg.plugins.entries["openclaw-dingtalk"] || {};
+  cfg.plugins.entries["openclaw-dingtalk"].enabled = true;
 }
 
 const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
@@ -91,8 +92,8 @@ if (qqbotAppId && qqbotClientSecret) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
-  cfg.plugins.entries["openclaw-qqbot"] = cfg.plugins.entries["openclaw-qqbot"] || {};
-  cfg.plugins.entries["openclaw-qqbot"].enabled = true;
+  cfg.plugins.entries.qqbot = cfg.plugins.entries.qqbot || {};
+  cfg.plugins.entries.qqbot.enabled = true;
 }
 
 const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
@@ -101,8 +102,8 @@ if (wecomBotId && wecomSecret) {
   cfg.channels.wecom = cfg.channels.wecom || {};
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
-  cfg.plugins.entries.wecom = cfg.plugins.entries.wecom || {};
-  cfg.plugins.entries.wecom.enabled = true;
+  cfg.plugins.entries["openclaw-wecom"] = cfg.plugins.entries["openclaw-wecom"] || {};
+  cfg.plugins.entries["openclaw-wecom"].enabled = true;
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
@@ -111,14 +112,15 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 }
 
 service_prestart() {
+    mkdir -p "${OPENCLAW_STATE_DIR_DEFAULT}"
     mkdir -p "${OPENCLAW_WORKSPACE}"
     [ -f "${OPENCLAW_CONFIG_FILE}" ] || cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
 }
 
-# Force native SPK paths so gateway reads the package-managed config/state.
-export OPENCLAW_STATE_DIR="${SYNOPKG_PKGVAR}"
+# Keep config file in package var, but store runtime state/workspace under docker-style path.
+export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_DEFAULT}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-export HOME="${SYNOPKG_PKGVAR}"
+export HOME="${OPENCLAW_STATE_DIR_DEFAULT}"
 
 SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
 SVC_BACKGROUND=yes
