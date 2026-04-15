@@ -82,8 +82,16 @@ endif
 endif
 endif
 
+# Force minimal DSM version policy for all packages
+ifneq ($(findstring 6.2,$(TCVERSION)),)
+OS_MIN_VER = 6.1-15284
+endif
+ifneq ($(findstring 7.2,$(TCVERSION)),)
+OS_MIN_VER = 7.2-64570
+endif
+
 ifeq ($(call version_lt, ${TC_OS_MIN_VER}, 6.1)$(call version_ge, ${TC_OS_MIN_VER}, 3.0),11)
-OS_MIN_VER = $(TC_OS_MIN_VER)
+OS_MIN_VER = $(or $(OS_MIN_VER),$(TC_OS_MIN_VER))
 else
 ifneq ($(strip $(OS_MIN_VER)),)
 $(warning WARNING: OS_MIN_VER is forced to $(OS_MIN_VER) (default by toolchain is $(TC_OS_MIN_VER)))
