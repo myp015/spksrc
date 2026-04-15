@@ -1,21 +1,7 @@
 name: Docker
 
 on:
-    # Trigger on file change
-    push:
-        paths:
-            - 'Dockerfile'
-        branches:
-            - master
-    pull_request:
-        paths:
-            - 'Dockerfile'
-    # Trigger build manually
     workflow_dispatch:
-    # Trigger build on a schedule
-    schedule:
-        # every fist day of the month
-        - cron: '0 0 1 * *'
 
 jobs:
   docker:

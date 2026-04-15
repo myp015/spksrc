@@ -1,9 +1,6 @@
 name: Distrib Cache Maintenance
 
 on:
-  # Regular refresh to prevent GitHub's 7-day eviction policy
-  schedule:
-    - cron: '0 4 * * 1,4'  # Monday and Thursday at 4 AM
   workflow_dispatch:
     inputs:
       max_age_days:

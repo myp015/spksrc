@@ -56,20 +56,6 @@ on:
         required: false
         default: false
         type: boolean
-  pull_request:
-    paths:
-      - 'spk/**'
-      - 'cross/**'
-      - 'python/**'
-      - 'native/**'
-  push:
-    branches:
-      - "**"
-    paths:
-      - 'spk/**'
-      - 'cross/**'
-      - 'python/**'
-      - 'native/**'
 
 jobs:
   prepare:
