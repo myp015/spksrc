@@ -1,5 +1,4 @@
 #!/bin/sh
-HOST="$(/bin/hostname)"
 echo "Status: 302 Found"
-echo "Location: http://${HOST}:8317/"
+echo "Location: http://127.0.0.1:8317/management.html"
 echo
