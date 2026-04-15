@@ -1,6 +1,6 @@
 SPK_NAME = cliproxy
 SPK_VERS = 6.9.26
-SPK_REV = 3
+SPK_REV = 4
 SPK_ICON = src/cliproxy.png
 
 DEPENDS = cross/cliproxy
@@ -12,7 +12,7 @@ UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 MAINTAINER = myp015
 DESCRIPTION = OpenAI/Gemini/Claude/Codex compatible proxy API server for CLI tools. 管理后台默认密码: 123456.
 DISPLAY_NAME = CLIProxyAPI
-CHANGELOG = "1. Add DSM UI shortcut to /management.html. 2. Add package description tip: default password 123456."
+CHANGELOG = "1. Ensure Package Center shortcut is visible. 2. Shortcut URL points to 127.0.0.1:8317/management.html."
 
 HOMEPAGE = https://github.com/router-for-me/CLIProxyAPI
 LICENSE = MIT
@@ -23,7 +23,7 @@ STARTABLE = yes
 SERVICE_USER = auto
 SERVICE_PORT = 8317
 ADMIN_PORT = $(SERVICE_PORT)
-NO_SERVICE_SHORTCUT = yes
+NO_SERVICE_SHORTCUT = no
 DSM_UI_DIR = ui
 
 POST_STRIP_TARGET = cliproxy_extra_install
