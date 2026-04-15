@@ -1,6 +1,6 @@
 SPK_NAME = cliproxy
 SPK_VERS = 6.9.26
-SPK_REV = 7
+SPK_REV = 9
 SPK_ICON = src/cliproxy.png
 
 DEPENDS = cross/cliproxy
@@ -12,7 +12,7 @@ UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 MAINTAINER = myp015
 DESCRIPTION = OpenAI/Gemini/Claude/Codex compatible proxy API server for CLI tools. 管理后台默认密码: 123456.
 DISPLAY_NAME = CLIProxyAPI
-CHANGELOG = "1. Use DSM .url app shortcut schema (new window) like ddns-go/jellyfin style. 2. Package Center shortcut path set to /management.html."
+CHANGELOG = "1. Keep DSM .url shortcut opening /management.html. 2. Add ADMIN_URL=/management.html so Package Center detail URL includes path."
 
 HOMEPAGE = https://github.com/router-for-me/CLIProxyAPI
 LICENSE = MIT
@@ -22,7 +22,9 @@ SERVICE_SETUP = src/service-setup.sh
 STARTABLE = yes
 SERVICE_USER = auto
 SERVICE_PORT = 8317
+SERVICE_URL = /management.html
 ADMIN_PORT = $(SERVICE_PORT)
+ADMIN_URL = /management.html
 NO_SERVICE_SHORTCUT = no
 DSM_UI_DIR = app
 
