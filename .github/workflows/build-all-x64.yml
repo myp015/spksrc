@@ -1,85 +1,67 @@
-name: Build All SPK (x64 6.2.4 + 7.2)
+name: Build & Commit OpenClaw SPK (x64 7.2)
 
 on:
   workflow_dispatch:
     inputs:
-      publish:
-        description: 'Publish to repository'
+      ref:
+        description: 'Git ref to build (branch/tag/SHA)'
         required: false
-        default: false
+        default: 'main'
+      commit_result:
+        description: 'Commit built .spk to this repository'
+        required: false
+        default: true
         type: boolean
 
 jobs:
-  prepare:
-    name: Prepare package list
-    runs-on: ubuntu-latest
-    outputs:
-      arch_packages: ${{ steps.packages.outputs.arch_packages }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Collect all packages under spk/
-        id: packages
-        shell: bash
-        run: |
-          PACKAGES=$(find spk -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs)
-          echo "arch_packages=${PACKAGES}" >> "$GITHUB_OUTPUT"
-          echo "Packages to build: ${PACKAGES}"
-
-  build:
-    name: Build (${{ matrix.arch }})
-    needs: prepare
+  build-openclaw:
+    name: Build openclaw (${{ matrix.arch }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         arch:
-          - x64-6.2.4
           - x64-7.2
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || 'main' }}
+          fetch-depth: 0
 
       - name: Cache toolchains
         uses: actions/cache@v5
         with:
           path: toolchain/*/work
-          key: toolchain-${{ matrix.arch }}-v3-${{ hashFiles(format('toolchain/syno-{0}/digests',matrix.arch)) }}
+          key: toolchain-${{ matrix.arch }}-openclaw-v1-${{ hashFiles(format('toolchain/syno-{0}/digests',matrix.arch)) }}
 
-      - name: Build all spk packages
-        continue-on-error: true
+      - name: Build openclaw package
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
-          entrypoint: ./.github/actions/build.sh
-        env:
-          ARCH_PACKAGES: ${{ needs.prepare.outputs.arch_packages }}
-          NOARCH_PACKAGES: ""
-          PUBLISH: ${{ github.event.inputs.publish }}
-          API_KEY: ${{ secrets.PUBLISH_API_KEY }}
-          PACKAGE_TO_PUBLISH: ""
-          GH_ARCH: ${{ matrix.arch }}
-          BUILD_ERROR_FILE: /github/workspace/build_errors.txt
-          BUILD_ERROR_LOGFILE: /github/workspace/build_log_errors.txt
-          BUILD_UNSUPPORTED_FILE: /github/workspace/build_unsupported.txt
-          BUILD_SUCCESS_FILE: /github/workspace/build_success.txt
+          entrypoint: /bin/bash
+          args: -lc "set -e; cd /github/workspace/spk/openclaw && make arch-${{ matrix.arch }}"
 
-      - name: Build Status
-        id: build_status
-        uses: docker://ghcr.io/synocommunity/spksrc:latest
-        with:
-          entrypoint: ./.github/actions/build_status.sh
-        env:
-          BUILD_ERROR_FILE: /github/workspace/build_errors.txt
-          BUILD_ERROR_LOGFILE: /github/workspace/build_log_errors.txt
-          BUILD_UNSUPPORTED_FILE: /github/workspace/build_unsupported.txt
-          BUILD_SUCCESS_FILE: /github/workspace/build_success.txt
-
-      - name: Upload artifacts
-        if: always()
+      - name: Upload SPK artifact
         uses: actions/upload-artifact@v6
         with:
-          name: all-spk-${{ matrix.arch }}
-          path: packages/*.spk
-          if-no-files-found: ignore
+          name: openclaw-${{ matrix.arch }}
+          path: packages/openclaw_${{ matrix.arch }}_*.spk
+          if-no-files-found: error
+
+      - name: Commit built SPK to repository
+        if: github.event.inputs.commit_result == 'true'
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p releases/openclaw
+          cp -f packages/openclaw_${{ matrix.arch }}_*.spk releases/openclaw/
+          git add releases/openclaw/*.spk
+          if git diff --cached --quiet; then
+            echo "No new SPK changes to commit"
+            exit 0
+          fi
+          git commit -m "ci: add openclaw ${{ matrix.arch }} SPK artifact"
+          git push

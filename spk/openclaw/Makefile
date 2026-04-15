@@ -5,8 +5,8 @@ SPK_ICON = src/openclaw.png
 
 DEPENDS =
 
-# Native node_modules are prepared on this arm64 builder, so only ARMv8 targets are supported.
-UNSUPPORTED_ARCHS = $(x64_ARCHS) $(i686_ARCHS) $(ARMv7_ARCHS) $(ARMv5_ARCHS) $(PPC_ARCHS)
+# This package supports x64 and ARMv8 targets (DSM 7.2+).
+UNSUPPORTED_ARCHS = $(i686_ARCHS) $(ARMv7_ARCHS) $(ARMv5_ARCHS) $(PPC_ARCHS)
 
 # Bundled Node.js 22 binary requires newer glibc; keep DSM floor at 7.2.
 REQUIRED_MIN_DSM = 7.2
@@ -34,6 +34,12 @@ PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
 POST_STRIP_TARGET = openclaw_extra_install
 
+ifeq ($(findstring $(ARCH),$(x64_ARCHS)),$(ARCH))
+NODE_DIST_ARCH = x64
+else ifeq ($(findstring $(ARCH),$(ARMv8_ARCHS)),$(ARCH))
+NODE_DIST_ARCH = arm64
+endif
+
 include ../../mk/spksrc.spk.mk
 
 .PHONY: openclaw_prepare_bundle
@@ -42,8 +48,8 @@ openclaw_prepare_bundle:
 	@rm -rf $(WORK_DIR)/node-runtime $(WORK_DIR)/openclaw-bundle
 	@install -d -m 755 $(WORK_DIR)/node-runtime $(WORK_DIR)/openclaw-bundle
 	@cd $(WORK_DIR) && \
-		curl -fsSL -o node-v22.22.0-linux-arm64.tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-arm64.tar.xz
-	@tar -xJf $(WORK_DIR)/node-v22.22.0-linux-arm64.tar.xz -C $(WORK_DIR)/node-runtime --strip-components=1
+		curl -fsSL -o node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz
+	@tar -xJf $(WORK_DIR)/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz -C $(WORK_DIR)/node-runtime --strip-components=1
 	@cd $(WORK_DIR) && $(WORK_DIR)/node-runtime/bin/npm pack openclaw@2026.4.14 --silent
 	@tar -xzf $(WORK_DIR)/openclaw-2026.4.14.tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && $(WORK_DIR)/node-runtime/bin/npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
