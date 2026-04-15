@@ -34,9 +34,11 @@ PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
 POST_STRIP_TARGET = openclaw_extra_install
 
-ifeq ($(findstring $(ARCH),$(x64_ARCHS)),$(ARCH))
+# Resolve node distro arch from target arch reliably (GH action passes ARCH like x64-7.2)
+ARCH_PREFIX := $(word 1,$(subst -, ,$(ARCH)))
+ifeq ($(ARCH_PREFIX),x64)
 NODE_DIST_ARCH = x64
-else ifeq ($(findstring $(ARCH),$(ARMv8_ARCHS)),$(ARCH))
+else ifeq ($(ARCH_PREFIX),aarch64)
 NODE_DIST_ARCH = arm64
 endif
 
