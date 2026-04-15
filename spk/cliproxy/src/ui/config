@@ -1,16 +1,23 @@
 {
-  "allUsers": {
-    "SYNO.SDS.CLIProxyAPI.Application": {
-      "allowMultiInstance": false,
-      "title": "CLIProxyAPI",
-      "desc": "CLIProxyAPI 管理后台（默认密码: 123456）",
-      "icon": "images/icon_72.png",
-      "type": "url",
-      "url": "http://127.0.0.1:8317/management.html",
-      "protocol": "http",
-      "allUsers": true,
-      "grantPrivilege": "all",
-      "advanceGrantPrivilege": true
+    "Main.js": {
+        "SYNO.SDS.CLIProxyAPI.Instance": {
+            "type": "app",
+            "version": "6.9.26",
+            "desc": "CLIProxyAPI 管理后台（默认密码: 123456）",
+            "icon": "images/icon_{0}.png",
+            "title": "CLIProxyAPI",
+            "texts": "texts",
+            "allowMultiInstance": false,
+            "waterfallLoadTexts": true,
+            "appWindow": "SYNO.SDS.CLIProxyAPI.Main",
+            "depend": []
+        },
+        "SYNO.SDS.CLIProxyAPI.Main": {
+            "type": "lib",
+            "title": "CLIProxyAPI",
+            "icon": "images/icon_{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
     }
-  }
 }
