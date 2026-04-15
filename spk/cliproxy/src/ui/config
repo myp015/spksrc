@@ -1,0 +1,16 @@
+{
+  "allUsers": {
+    "SYNO.SDS.CLIProxyAPI.Application": {
+      "allowMultiInstance": false,
+      "title": "CLIProxyAPI",
+      "desc": "CLIProxyAPI web panel",
+      "icon": "images/icon_72.png",
+      "type": "url",
+      "url": "http://@@@HOSTNAME@@@:8317/",
+      "protocol": "http",
+      "allUsers": true,
+      "grantPrivilege": "all",
+      "advanceGrantPrivilege": true
+    }
+  }
+}
