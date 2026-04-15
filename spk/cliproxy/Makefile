@@ -1,6 +1,6 @@
 SPK_NAME = cliproxy
 SPK_VERS = 6.9.26
-SPK_REV = 2
+SPK_REV = 3
 SPK_ICON = src/cliproxy.png
 
 DEPENDS = cross/cliproxy
@@ -10,9 +10,9 @@ UNSUPPORTED_ARCHS = $(ARMv5_ARCHS)
 UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 
 MAINTAINER = myp015
-DESCRIPTION = OpenAI/Gemini/Claude/Codex compatible proxy API server for CLI tools.
+DESCRIPTION = OpenAI/Gemini/Claude/Codex compatible proxy API server for CLI tools. 管理后台默认密码: 123456.
 DISPLAY_NAME = CLIProxyAPI
-CHANGELOG = "1. Fix DSM service env compatibility: use absolute auth-dir and prestart auto-fix for auth path."
+CHANGELOG = "1. Add DSM UI shortcut to /management.html. 2. Add package description tip: default password 123456."
 
 HOMEPAGE = https://github.com/router-for-me/CLIProxyAPI
 LICENSE = MIT

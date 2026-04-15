@@ -3,10 +3,10 @@
     "SYNO.SDS.CLIProxyAPI.Application": {
       "allowMultiInstance": false,
       "title": "CLIProxyAPI",
-      "desc": "CLIProxyAPI web panel",
+      "desc": "CLIProxyAPI 管理后台（默认密码: 123456）",
       "icon": "images/icon_72.png",
       "type": "url",
-      "url": "http://@@@HOSTNAME@@@:8317/",
+      "url": "http://127.0.0.1:8317/management.html",
       "protocol": "http",
       "allUsers": true,
       "grantPrivilege": "all",
