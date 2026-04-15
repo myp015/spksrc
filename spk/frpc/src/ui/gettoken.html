@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>frpc 配置</title>
+</head>
+<body onload="getToken()"></body>
+<script>
+function getToken() {
+    let xhr = new XMLHttpRequest();
+    xhr.open("GET", "/webman/login.cgi", true);
+    xhr.onload = function() {
+        if (this.status === 200) {
+            try {
+                let arr = JSON.parse(this.responseText);
+                window.location = "index.cgi?SynoToken=" + encodeURIComponent(arr.SynoToken || "");
+            } catch (e) {
+                window.location = "index.cgi";
+            }
+        } else {
+            window.location = "index.cgi";
+        }
+    };
+    xhr.onerror = function() { window.location = "index.cgi"; };
+    xhr.send();
+}
+</script>
+</html>

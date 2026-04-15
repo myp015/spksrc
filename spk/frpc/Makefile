@@ -22,6 +22,7 @@ SERVICE_SETUP = src/service-setup.sh
 STARTABLE = yes
 SERVICE_USER = auto
 NO_SERVICE_SHORTCUT = yes
+DSM_UI_DIR = ui
 
 POST_STRIP_TARGET = frpc_extra_install
 
@@ -31,3 +32,6 @@ include ../../mk/spksrc.spk.mk
 frpc_extra_install:
 	@install -d -m 755 $(STAGING_DIR)/var
 	@install -m 644 src/frpc.toml $(STAGING_DIR)/var/
+	@install -d -m 755 $(STAGING_DIR)/ui
+	@cp -rf src/ui/* $(STAGING_DIR)/ui/
+	@chmod 755 $(STAGING_DIR)/ui/index.cgi

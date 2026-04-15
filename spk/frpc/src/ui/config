@@ -1,0 +1,23 @@
+{
+    "Main.js": {
+        "SYNO.SDS.Frpc.Instance": {
+            "type":"app",
+            "version": "0.68.1",
+            "desc": "Frpc客户端",
+            "icon": "images/icon_{0}.png",
+            "title": "Frpc客户端",
+            "texts": "texts",
+            "allowMultiInstance": false,
+            "waterfallLoadTexts": true,
+            "appWindow": "SYNO.SDS.Frpc.Main",
+            "depend": []
+        },
+        "SYNO.SDS.Frpc.Main": {
+            "type": "lib",
+            "title": "Frpc客户端",
+            "icon": "images/icon_{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
+    }
+}
