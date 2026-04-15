@@ -1,0 +1,40 @@
+name: Build OpenClaw SPK (aarch64-7.2)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build (branch/tag/SHA)'
+        required: false
+        default: 'master'
+
+jobs:
+  build-openclaw-aarch64:
+    name: Build openclaw (aarch64-7.2)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || 'master' }}
+          fetch-depth: 0
+
+      - name: Cache toolchains
+        uses: actions/cache@v5
+        with:
+          path: toolchain/*/work
+          key: toolchain-aarch64-7.2-openclaw-v1-${{ hashFiles('toolchain/syno-aarch64-7.2/digests') }}
+
+      - name: Build openclaw package
+        uses: docker://ghcr.io/synocommunity/spksrc:latest
+        with:
+          entrypoint: /bin/bash
+          args: -lc "set -e; cd /github/workspace/spk/openclaw && make arch-aarch64-7.2"
+
+      - name: Upload SPK artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: openclaw-aarch64-7.2
+          path: packages/openclaw_aarch64-7.2_*.spk
+          if-no-files-found: error
