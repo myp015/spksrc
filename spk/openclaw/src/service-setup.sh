@@ -10,6 +10,11 @@ service_prestart() {
     [ -f "${OPENCLAW_CONFIG_FILE}" ] || cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
 }
 
+# Force native SPK paths so gateway reads the package-managed config/state.
+export OPENCLAW_STATE_DIR="${SYNOPKG_PKGVAR}"
+export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
+export HOME="${SYNOPKG_PKGVAR}"
+
 SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
 SVC_BACKGROUND=yes
 SVC_WRITE_PID=yes

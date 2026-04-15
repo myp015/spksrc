@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 2
+SPK_REV = 3
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Switch to native non-Docker packaging. 2. Bundle Node.js runtime + OpenClaw npm package."
+CHANGELOG = "1. Switch to native non-Docker packaging. 2. Bundle Node.js runtime + OpenClaw npm package. 3. Force OPENCLAW_CONFIG_PATH/STATE_DIR/HOME to package var path."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
