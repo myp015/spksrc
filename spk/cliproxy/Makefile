@@ -1,6 +1,6 @@
 SPK_NAME = cliproxy
 SPK_VERS = 6.9.26
-SPK_REV = 6
+SPK_REV = 7
 SPK_ICON = src/cliproxy.png
 
 DEPENDS = cross/cliproxy
@@ -12,7 +12,7 @@ UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 MAINTAINER = myp015
 DESCRIPTION = OpenAI/Gemini/Claude/Codex compatible proxy API server for CLI tools. 管理后台默认密码: 123456.
 DISPLAY_NAME = CLIProxyAPI
-CHANGELOG = "1. Switch DSM UI shortcut to app/lib schema for Package Center icon visibility. 2. Open management page 127.0.0.1:8317/management.html via embedded UI window."
+CHANGELOG = "1. Use DSM .url app shortcut schema (new window) like ddns-go/jellyfin style. 2. Package Center shortcut path set to /management.html."
 
 HOMEPAGE = https://github.com/router-for-me/CLIProxyAPI
 LICENSE = MIT
@@ -24,7 +24,7 @@ SERVICE_USER = auto
 SERVICE_PORT = 8317
 ADMIN_PORT = $(SERVICE_PORT)
 NO_SERVICE_SHORTCUT = no
-DSM_UI_DIR = ui
+DSM_UI_DIR = app
 
 POST_STRIP_TARGET = cliproxy_extra_install
 
@@ -34,6 +34,5 @@ include ../../mk/spksrc.spk.mk
 cliproxy_extra_install:
 	@install -d -m 755 $(STAGING_DIR)/var
 	@install -m 644 src/config.yaml $(STAGING_DIR)/var/
-	@install -d -m 755 $(STAGING_DIR)/ui
-	@cp -rf src/ui/* $(STAGING_DIR)/ui/
-	@chmod 755 $(STAGING_DIR)/ui/index.cgi
+	@install -d -m 755 $(STAGING_DIR)/app
+	@cp -rf src/app/* $(STAGING_DIR)/app/

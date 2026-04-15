@@ -1,0 +1,15 @@
+{
+    ".url": {
+        "com.synocommunity.packages.cliproxy": {
+            "title": "CLIProxyAPI",
+            "desc": "CLIProxyAPI 管理后台（默认密码: 123456）",
+            "icon": "images/cliproxy-{0}.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "8317",
+            "url": "/management.html",
+            "allUsers": true,
+            "grantPrivilege": "local"
+        }
+    }
+}
