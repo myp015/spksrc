@@ -97,6 +97,14 @@ validate_or_rollback_config() {
     fi
 }
 
+ensure_openclaw_spk_in_path() {
+    local target="/var/packages/openclaw/target/bin/openclaw-spk"
+    local link="/usr/local/bin/openclaw-spk"
+    [ -x "${target}" ] || return 0
+    mkdir -p /usr/local/bin
+    ln -sfn "${target}" "${link}" 2>/dev/null || true
+}
+
 sync_provider_models_from_upstream() {
     "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
@@ -298,6 +306,7 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 }
 
 service_postinst() {
+    ensure_openclaw_spk_in_path
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
         mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
@@ -806,6 +815,7 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
 if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 ' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" || true
 
+    ensure_openclaw_spk_in_path
     sync_provider_models_from_upstream
     sync_skills_to_workspace
     validate_or_rollback_config
