@@ -43,6 +43,10 @@ sync_bundled_channel_plugins_to_extensions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/.openclaw/extensions"
     mkdir -p "${ext_dir}"
 
+    # Let extensions resolve bundled runtime deps from app/node_modules.
+    rm -f "${ext_dir}/node_modules"
+    ln -s "${OPENCLAW_APP_DIR}/node_modules" "${ext_dir}/node_modules"
+
     # Keep channel plugins discoverable under workspace/extensions while preserving
     # Node module resolution from app/node_modules via symlink (avoids missing hoisted deps).
     for src in \
