@@ -519,6 +519,79 @@ EOF
     export HOME="${OPENCLAW_STATE_DIR}"
 
     harden_extension_permissions
+
+    # Safety: if a channel config exists but its plugin is unavailable in current runtime,
+    # drop that channel config and stale plugin refs to avoid "unknown channel id" startup failures.
+    "${OPENCLAW_NODE}" -e '
+const fs = require("fs");
+const path = require("path");
+
+const cfgPath = process.argv[1];
+const appDir = process.argv[2];
+const stateDir = process.argv[3];
+
+function safeReadJson(fp) {
+  try { return JSON.parse(fs.readFileSync(fp, "utf8")); } catch { return null; }
+}
+function walkForPluginManifests(root, maxDepth = 6) {
+  const out = [];
+  if (!root || !fs.existsSync(root)) return out;
+  const stack = [{ p: root, d: 0 }];
+  while (stack.length) {
+    const cur = stack.pop();
+    let ents = [];
+    try { ents = fs.readdirSync(cur.p, { withFileTypes: true }); } catch { continue; }
+    for (const ent of ents) {
+      const full = path.join(cur.p, ent.name);
+      if (ent.isFile() && ent.name === "openclaw.plugin.json") out.push(full);
+      if (ent.isDirectory() && cur.d < maxDepth) stack.push({ p: full, d: cur.d + 1 });
+    }
+  }
+  return out;
+}
+
+const cfg = safeReadJson(cfgPath);
+if (!cfg || typeof cfg !== "object") process.exit(0);
+
+const availablePluginIds = new Set(["browser"]);
+for (const root of [
+  path.join(appDir, "dist", "extensions"),
+  path.join(stateDir, "extensions")
+]) {
+  for (const manifest of walkForPluginManifests(root, 6)) {
+    const j = safeReadJson(manifest);
+    if (j && typeof j.id === "string" && j.id.trim()) availablePluginIds.add(j.id.trim());
+  }
+}
+
+cfg.plugins = cfg.plugins || {};
+cfg.plugins.entries = cfg.plugins.entries || {};
+cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
+cfg.channels = cfg.channels || {};
+
+const candidates = {
+  feishu: ["feishu", "feishu-openclaw-plugin"],
+  dingtalk: ["dingtalk", "openclaw-dingtalk"],
+  wecom: ["wecom", "wecom-openclaw-plugin", "openclaw-wecom"],
+  qqbot: ["qqbot", "openclaw-qqbot"]
+};
+
+let changed = false;
+for (const [channelId, ids] of Object.entries(candidates)) {
+  const channelConfigured = cfg.channels[channelId] && typeof cfg.channels[channelId] === "object";
+  if (!channelConfigured) continue;
+  const hasAnyPlugin = ids.some((id) => availablePluginIds.has(id));
+  if (hasAnyPlugin) continue;
+
+  delete cfg.channels[channelId];
+  for (const id of ids) delete cfg.plugins.entries[id];
+  cfg.plugins.allow = cfg.plugins.allow.filter((id) => !ids.includes(id));
+  changed = true;
+}
+
+if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" || true
+
     sync_provider_models_from_upstream
     sync_skills_to_workspace
 }
