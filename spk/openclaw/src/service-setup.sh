@@ -445,11 +445,9 @@ if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   // Clean deprecated top-level fields to avoid strict-schema "additionalProperties" failures.
   delete cfg.channels.feishu.appId;
   delete cfg.channels.feishu.appSecret;
-  // Keep Feishu config minimal for strict schema compatibility on bundled builds.
-  delete cfg.channels.feishu.dmPolicy;
-  delete cfg.channels.feishu.groupPolicy;
-  delete cfg.channels.feishu.allowFrom;
-  delete cfg.channels.feishu.groupAllowFrom;
+  // Disable pairing gate by default for wizard provisioned Feishu credentials.
+  cfg.channels.feishu.dmPolicy = "open";
+  cfg.channels.feishu.groupPolicy = "open";
   enablePlugin(selectedPluginIds.feishu);
 }
 
@@ -682,12 +680,13 @@ if (cfg.channels.feishu && typeof cfg.channels.feishu === "object") {
     f.accounts[defaultAccountId].appSecret = migratedAppSecret;
     changed = true;
   }
-  for (const k of ["clientId", "clientSecret", "appId", "appSecret", "allowFrom", "groupAllowFrom"]) {
+  for (const k of ["clientId", "clientSecret", "appId", "appSecret"]) {
     if (Object.prototype.hasOwnProperty.call(f, k)) {
       delete f[k];
       changed = true;
     }
   }
+  normalizePolicy(f, "open", "open");
 }
 
 // Normalize DingTalk config to schema-compatible values.

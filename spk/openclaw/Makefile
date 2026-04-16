@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 42
+SPK_REV = 43
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Add compatibility-mode prestart normalization for bundled channels (Feishu/WeCom/DingTalk/QQ): migrate alias credential keys, sanitize unsupported keys, and coerce invalid policy enums to schema-allowed values. 2. Enable generic plugin pin auto-repair by mapping channel ids from discovered plugin manifests (covers additional channels like Telegram) and remove stale alias pins. 3. Replace heavy prestart doctor-run rollback with lightweight JSON parse + last-known-good snapshot restore guard to avoid slow startup and online checks."
+CHANGELOG = "1. Keep wizard-provisioned Feishu in auto-approve mode by default (dmPolicy/groupPolicy=open) while retaining schema-safe credential normalization. 2. Keep compatibility-mode prestart normalization for Feishu/WeCom/DingTalk/QQ and generic plugin pin auto-repair via discovered plugin manifests. 3. Keep lightweight JSON parse + last-known-good snapshot restore guard (no heavy prestart doctor run)."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
