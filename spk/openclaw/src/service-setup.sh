@@ -43,12 +43,12 @@ sync_bundled_channel_plugins_to_extensions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
     mkdir -p "${ext_dir}"
 
-    # Keep channel plugins in workspace/extensions so runtime discovery is stable
-    # across restarts and independent from package-internal node_modules layout.
+    # Keep channel plugins discoverable under workspace/extensions while preserving
+    # Node module resolution from app/node_modules via symlink (avoids missing hoisted deps).
     for src in \
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
-        "${OPENCLAW_APP_DIR}/node_modules/openclaw-channel-dingtalk" \
-        "${OPENCLAW_APP_DIR}/node_modules/@wecom/wecom-openclaw-plugin" \
+        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
+        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot"
     do
         [ -d "${src}" ] || continue
@@ -59,8 +59,7 @@ sync_bundled_channel_plugins_to_extensions() {
         local target_dir="${ext_dir}/${pkg_name}"
 
         rm -rf "${target_dir}"
-        mkdir -p "${target_dir}"
-        cp -a "${src}/." "${target_dir}/"
+        ln -s "${src}" "${target_dir}"
     done
 }
 
@@ -488,6 +487,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
 
+        sync_bundled_channel_plugins_to_extensions
         sync_skills_to_workspace
     fi
 }
@@ -557,6 +557,7 @@ EOF
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
     export HOME="${OPENCLAW_STATE_DIR}"
 
+    sync_bundled_channel_plugins_to_extensions
     harden_extension_permissions
 
     # Safety: if a channel config exists but its plugin is unavailable in current runtime,
