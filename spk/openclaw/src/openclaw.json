@@ -100,42 +100,30 @@
   "channels": {},
   "plugins": {
     "entries": {
-      "feishu": {
-        "enabled": true
+      "feishu-openclaw-plugin": {
+        "enabled": false
       },
       "dingtalk": {
+        "enabled": false
+      },
+      "wecom-openclaw-plugin": {
         "enabled": false
       },
       "openclaw-qqbot": {
         "enabled": false
       },
-      "wecom": {
-        "enabled": false
-      },
-      "qqbot": {
-        "enabled": false
-      },
-      "openclaw-lark": {
-        "enabled": false
-      },
       "browser": {
         "enabled": true
-      },
-      "openclaw-dingtalk": {
-        "enabled": false
-      },
-      "openclaw-wecom": {
-        "enabled": false
       }
     },
     "installs": {},
     "enabled": true,
     "allow": [
-      "feishu",
       "browser",
-      "openclaw-dingtalk",
-      "openclaw-wecom",
-      "qqbot"
+      "feishu-openclaw-plugin",
+      "dingtalk",
+      "wecom-openclaw-plugin",
+      "openclaw-qqbot"
     ]
   },
   "memory": {

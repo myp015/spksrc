@@ -3,9 +3,38 @@ OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
 OPENCLAW_STATE_DIR_DEFAULT="/volume1/docker/openclaw/.openclaw"
 OPENCLAW_WORKSPACE="${OPENCLAW_STATE_DIR_DEFAULT}"
+OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_WORKSPACE}/skills/_bundled"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR_DEFAULT}/openclaw.json"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_DEFAULT_CONFIG="${SYNOPKG_PKGDEST}/var/openclaw.json"
+
+sync_skills_to_workspace() {
+    mkdir -p "${OPENCLAW_BUNDLED_SKILLS_DIR}"
+
+    # Sync built-in extension skills from OpenClaw core bundle.
+    if [ -d "${OPENCLAW_APP_DIR}/dist/extensions" ]; then
+        find "${OPENCLAW_APP_DIR}/dist/extensions" -mindepth 2 -maxdepth 2 -type d -name skills | while read -r skills_dir; do
+            plugin_id="$(basename "$(dirname "${skills_dir}")")"
+            target_dir="${OPENCLAW_BUNDLED_SKILLS_DIR}/${plugin_id}"
+            rm -rf "${target_dir}"
+            mkdir -p "${target_dir}"
+            cp -a "${skills_dir}/." "${target_dir}/"
+        done
+    fi
+
+    # Sync plugin skills from bundled npm plugins.
+    if [ -d "${OPENCLAW_APP_DIR}/node_modules" ]; then
+        find "${OPENCLAW_APP_DIR}/node_modules" -mindepth 2 -maxdepth 4 -type d -name skills | while read -r skills_dir; do
+            rel_pkg="${skills_dir#${OPENCLAW_APP_DIR}/node_modules/}"
+            rel_pkg="${rel_pkg%/skills}"
+            plugin_id="$(echo "${rel_pkg}" | tr '/' '_')"
+            target_dir="${OPENCLAW_BUNDLED_SKILLS_DIR}/${plugin_id}"
+            rm -rf "${target_dir}"
+            mkdir -p "${target_dir}"
+            cp -a "${skills_dir}/." "${target_dir}/"
+        done
+    fi
+}
 
 service_postinst() {
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
@@ -75,14 +104,45 @@ cfg.channels = cfg.channels || {};
 cfg.plugins = cfg.plugins || {};
 cfg.plugins.entries = cfg.plugins.entries || {};
 
+cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
+
+const targetPluginIds = [
+  "feishu-openclaw-plugin",
+  "dingtalk",
+  "wecom-openclaw-plugin",
+  "openclaw-qqbot",
+  "browser"
+];
+const stalePluginIds = [
+  "feishu",
+  "wecom",
+  "qqbot",
+  "openclaw-lark",
+  "openclaw-dingtalk",
+  "openclaw-wecom"
+];
+
+for (const staleId of stalePluginIds) {
+  delete cfg.plugins.entries[staleId];
+}
+
+for (const id of targetPluginIds) {
+  cfg.plugins.entries[id] = cfg.plugins.entries[id] || {};
+  if (id !== "browser") cfg.plugins.entries[id].enabled = false;
+}
+cfg.plugins.entries.browser.enabled = true;
+cfg.plugins.allow = Array.from(new Set([
+  ...cfg.plugins.allow.filter((id) => !stalePluginIds.includes(id)),
+  ...targetPluginIds,
+]));
+
 const feishuAppId = trim(process.env.WIZARD_FEISHU_APP_ID);
 const feishuAppSecret = trim(process.env.WIZARD_FEISHU_APP_SECRET);
 if (feishuAppId && feishuAppSecret) {
   cfg.channels.feishu = cfg.channels.feishu || {};
   cfg.channels.feishu.appId = feishuAppId;
   cfg.channels.feishu.appSecret = feishuAppSecret;
-  cfg.plugins.entries.feishu = cfg.plugins.entries.feishu || {};
-  cfg.plugins.entries.feishu.enabled = true;
+  cfg.plugins.entries["feishu-openclaw-plugin"].enabled = true;
 }
 
 const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
@@ -91,8 +151,7 @@ if (dingtalkClientId && dingtalkClientSecret) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
-  cfg.plugins.entries["openclaw-dingtalk"] = cfg.plugins.entries["openclaw-dingtalk"] || {};
-  cfg.plugins.entries["openclaw-dingtalk"].enabled = true;
+  cfg.plugins.entries["dingtalk"].enabled = true;
 }
 
 const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
@@ -101,8 +160,7 @@ if (qqbotAppId && qqbotClientSecret) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
-  cfg.plugins.entries.qqbot = cfg.plugins.entries.qqbot || {};
-  cfg.plugins.entries.qqbot.enabled = true;
+  cfg.plugins.entries["openclaw-qqbot"].enabled = true;
 }
 
 const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
@@ -111,12 +169,13 @@ if (wecomBotId && wecomSecret) {
   cfg.channels.wecom = cfg.channels.wecom || {};
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
-  cfg.plugins.entries["openclaw-wecom"] = cfg.plugins.entries["openclaw-wecom"] || {};
-  cfg.plugins.entries["openclaw-wecom"].enabled = true;
+  cfg.plugins.entries["wecom-openclaw-plugin"].enabled = true;
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 ' "${OPENCLAW_CONFIG_FILE}"
+
+        sync_skills_to_workspace
     fi
 }
 
@@ -131,6 +190,61 @@ service_prestart() {
             cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
         fi
     fi
+
+    "${OPENCLAW_NODE}" -e '
+const fs = require("fs");
+const p = process.argv[1];
+const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
+const trim = (v) => (typeof v === "string" ? v.trim() : "");
+
+cfg.plugins = cfg.plugins || {};
+cfg.plugins.entries = cfg.plugins.entries || {};
+cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
+
+const targetPluginIds = [
+  "feishu-openclaw-plugin",
+  "dingtalk",
+  "wecom-openclaw-plugin",
+  "openclaw-qqbot",
+  "browser"
+];
+const stalePluginIds = [
+  "feishu",
+  "wecom",
+  "qqbot",
+  "openclaw-lark",
+  "openclaw-dingtalk",
+  "openclaw-wecom"
+];
+
+for (const staleId of stalePluginIds) delete cfg.plugins.entries[staleId];
+for (const id of targetPluginIds) {
+  cfg.plugins.entries[id] = cfg.plugins.entries[id] || {};
+  if (id !== "browser") cfg.plugins.entries[id].enabled = false;
+}
+cfg.plugins.entries.browser.enabled = true;
+cfg.plugins.allow = Array.from(new Set([
+  ...cfg.plugins.allow.filter((id) => !stalePluginIds.includes(id)),
+  ...targetPluginIds,
+]));
+
+cfg.channels = cfg.channels || {};
+const feishu = cfg.channels.feishu || {};
+if (trim(feishu.appId) && trim(feishu.appSecret)) cfg.plugins.entries["feishu-openclaw-plugin"].enabled = true;
+
+const dingtalk = cfg.channels.dingtalk || {};
+if (trim(dingtalk.clientId) && trim(dingtalk.clientSecret)) cfg.plugins.entries["dingtalk"].enabled = true;
+
+const qqbot = cfg.channels.qqbot || {};
+if (trim(qqbot.appId) && trim(qqbot.clientSecret)) cfg.plugins.entries["openclaw-qqbot"].enabled = true;
+
+const wecom = cfg.channels.wecom || {};
+if (trim(wecom.botId) && trim(wecom.secret)) cfg.plugins.entries["wecom-openclaw-plugin"].enabled = true;
+
+fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+' "${OPENCLAW_CONFIG_FILE}"
+
+    sync_skills_to_workspace
 }
 
 # Keep config + runtime state/workspace under docker-style path.

@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 6
+SPK_REV = 7
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Switch to native non-Docker packaging. 2. Bundle Node.js runtime + OpenClaw npm package. 3. Move runtime config path to /volume1/docker/openclaw/.openclaw/openclaw.json (auto-migrate legacy /var/packages/openclaw/var/openclaw.json when present). 4. Add install wizard and sync wizard values into openclaw.json. 5. Bundle feishu/dingtalk/wecom/qqbot plugins and default runtime state/workspace at /volume1/docker/openclaw/.openclaw."
+CHANGELOG = "1. Move runtime config to /volume1/docker/openclaw/.openclaw/openclaw.json with legacy auto-migration. 2. Refresh bundled Feishu/DingTalk/WeCom/QQ plugins with valid plugin ids. 3. Keep these four channels disabled by default and only enable via wizard credentials. 4. Sync bundled skills into workspace /volume1/docker/openclaw/.openclaw/skills at install/start. 5. Update package logo."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -57,10 +57,10 @@ openclaw_prepare_bundle:
 	@tar -xzf $(WORK_DIR)/openclaw-2026.4.14.tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
-		@openclaw/feishu@2026.3.13 \
-		openclaw-dingtalk@2.6.4 \
-		openclaw-wecom@0.1.39 \
-		openclaw-qqbot@1.5.5
+		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
+		openclaw-channel-dingtalk@2.2.2 \
+		@wecom/wecom-openclaw-plugin@2026.4.8 \
+		@tencent-connect/openclaw-qqbot@1.7.1
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
