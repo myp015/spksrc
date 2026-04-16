@@ -37,4 +37,4 @@ WECOM_SECRET_DESCRIPTION: "企业微信 Secret（留空则不启用 wecom 插件
 WECOM_SECRET_LABEL: "WECOM_SECRET"
 
 INSTALLATION_NOTES_TITLE: "<b>说明</b><br/>"
-INSTALLATION_NOTES_TEXT1: "首次安装时填写上述参数；安装器会将值写入 /var/packages/openclaw/var/openclaw.json。"
+INSTALLATION_NOTES_TEXT1: "首次安装时填写上述参数；安装器会将值写入 /volume1/docker/openclaw/.openclaw/openclaw.json（若检测到旧版 /var/packages/openclaw/var/openclaw.json 会自动迁移）。"

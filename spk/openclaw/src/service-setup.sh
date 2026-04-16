@@ -1,14 +1,23 @@
 OPENCLAW_NODE="${SYNOPKG_PKGDEST}/bin/node"
 OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
-OPENCLAW_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
-OPENCLAW_DEFAULT_CONFIG="${SYNOPKG_PKGDEST}/var/openclaw.json"
 OPENCLAW_STATE_DIR_DEFAULT="/volume1/docker/openclaw/.openclaw"
 OPENCLAW_WORKSPACE="${OPENCLAW_STATE_DIR_DEFAULT}"
+OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR_DEFAULT}/openclaw.json"
+OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
+OPENCLAW_DEFAULT_CONFIG="${SYNOPKG_PKGDEST}/var/openclaw.json"
 
 service_postinst() {
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
-        [ -f "${OPENCLAW_CONFIG_FILE}" ] || cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+        mkdir -p "${OPENCLAW_STATE_DIR_DEFAULT}"
+
+        if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
+            if [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
+                cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE}"
+            else
+                cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+            fi
+        fi
 
         # Wizard defaults
         export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw/.openclaw}"
@@ -114,10 +123,17 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 service_prestart() {
     mkdir -p "${OPENCLAW_STATE_DIR_DEFAULT}"
     mkdir -p "${OPENCLAW_WORKSPACE}"
-    [ -f "${OPENCLAW_CONFIG_FILE}" ] || cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+
+    if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
+        if [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
+            cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE}"
+        else
+            cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+        fi
+    fi
 }
 
-# Keep config file in package var, but store runtime state/workspace under docker-style path.
+# Keep config + runtime state/workspace under docker-style path.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_DEFAULT}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
 export HOME="${OPENCLAW_STATE_DIR_DEFAULT}"
