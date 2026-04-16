@@ -37,6 +37,20 @@ openclaw-spk models list
 openclaw-spk plugins install @tencent-connect/openclaw-qqbot@latest
 ```
 
+指定配置文件（推荐多实例/测试目录场景）：
+
+```bash
+openclaw-spk --config /volume1/docker/test/openclaw.json doctor --fix
+```
+
+你也可以直接导出环境变量覆盖：
+
+```bash
+OPENCLAW_CONFIG_PATH=/volume1/docker/test/openclaw.json \
+OPENCLAW_STATE_DIR=/volume1/docker/test \
+openclaw-spk config get
+```
+
 ## 诊断
 
 查看 wrapper 实际解析到的路径：

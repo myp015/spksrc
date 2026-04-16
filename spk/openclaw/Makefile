@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 22
+SPK_REV = 23
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Add built-in openclaw-spk wrapper command for SPK environments (auto-resolve config/workspace and forward to CLI entry). 2. Document openclaw-spk usage and default token (template default: 123456). 3. Fix cross-arch CI when host npm is missing by bootstrapping host Node runtime for npm steps. 4. Keep default config/workspace base path at /volume1/docker/openclaw and remove invalid legacy plugin-deny defaults. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior."
+CHANGELOG = "1. Improve openclaw-spk wrapper: support --config and respect OPENCLAW_CONFIG_PATH/OPENCLAW_STATE_DIR overrides for multi-workspace usage. 2. Add wrapper docs/examples for custom config paths (e.g. /volume1/docker/test/openclaw.json). 3. Fix cross-arch CI when host npm is missing by bootstrapping host Node runtime for npm steps. 4. Keep default config/workspace base path at /volume1/docker/openclaw and remove invalid legacy plugin-deny defaults. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
