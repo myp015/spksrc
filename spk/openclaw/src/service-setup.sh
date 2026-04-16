@@ -421,8 +421,16 @@ const feishuAppId = trim(process.env.WIZARD_FEISHU_APP_ID);
 const feishuAppSecret = trim(process.env.WIZARD_FEISHU_APP_SECRET);
 if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   cfg.channels.feishu = cfg.channels.feishu || {};
-  cfg.channels.feishu.appId = feishuAppId;
-  cfg.channels.feishu.appSecret = feishuAppSecret;
+  // Feishu schema expects credentials under accounts.<id>, not top-level appId/appSecret.
+  const defaultAccountId = trim(cfg.channels.feishu.defaultAccount) || "default";
+  cfg.channels.feishu.defaultAccount = defaultAccountId;
+  cfg.channels.feishu.accounts = cfg.channels.feishu.accounts || {};
+  cfg.channels.feishu.accounts[defaultAccountId] = cfg.channels.feishu.accounts[defaultAccountId] || {};
+  cfg.channels.feishu.accounts[defaultAccountId].appId = feishuAppId;
+  cfg.channels.feishu.accounts[defaultAccountId].appSecret = feishuAppSecret;
+  // Clean deprecated top-level fields to avoid strict-schema "additionalProperties" failures.
+  delete cfg.channels.feishu.appId;
+  delete cfg.channels.feishu.appSecret;
   // Disable pairing gate by default: credentials are enough to communicate.
   cfg.channels.feishu.dmPolicy = "open";
   cfg.channels.feishu.groupPolicy = "open";
@@ -618,13 +626,26 @@ let changed = false;
 for (const [channelId, ids] of Object.entries(candidates)) {
   const channelConfigured = cfg.channels[channelId] && typeof cfg.channels[channelId] === "object";
   if (!channelConfigured) continue;
-  const hasAnyPlugin = ids.some((id) => availablePluginIds.has(id));
-  if (hasAnyPlugin) continue;
+  const available = ids.filter((id) => availablePluginIds.has(id));
+  if (!available.length) {
+    delete cfg.channels[channelId];
+    for (const id of ids) delete cfg.plugins.entries[id];
+    cfg.plugins.allow = cfg.plugins.allow.filter((id) => !ids.includes(id));
+    changed = true;
+    continue;
+  }
 
-  delete cfg.channels[channelId];
-  for (const id of ids) delete cfg.plugins.entries[id];
-  cfg.plugins.allow = cfg.plugins.allow.filter((id) => !ids.includes(id));
-  changed = true;
+  // If channel config exists and plugin is available, keep plugin pinning in sync.
+  const selectedId = available[0];
+  cfg.plugins.entries[selectedId] = cfg.plugins.entries[selectedId] || {};
+  if (cfg.plugins.entries[selectedId].enabled !== true) {
+    cfg.plugins.entries[selectedId].enabled = true;
+    changed = true;
+  }
+  if (!cfg.plugins.allow.includes(selectedId)) {
+    cfg.plugins.allow.push(selectedId);
+    changed = true;
+  }
 }
 
 if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
