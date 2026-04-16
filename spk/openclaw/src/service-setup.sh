@@ -414,197 +414,30 @@ service_prestart() {
     local selected_workspace=""
     local selected_source_config="${OPENCLAW_CONFIG_FILE_BASE}"
 
-    # Resolve active config source (base or workspace copy), sanitize managed plugin ids by installed plugins,
-    # and return selected workspace/source paths.
+    # Resolve active config source only (do not mutate config on restart).
     IFS='|' read -r selected_workspace selected_source_config <<EOF
 $(${OPENCLAW_NODE} -e '
 const fs = require("fs");
 const path = require("path");
 
 const baseConfigPath = process.argv[1];
-const appDir = process.argv[2];
 const trim = (v) => (typeof v === "string" ? v.trim() : "");
 
 function safeReadJson(p) {
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf8"));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; }
 }
-
-function walkForPluginManifests(root, maxDepth = 6) {
-  const out = [];
-  if (!fs.existsSync(root)) return out;
-  const stack = [{ p: root, d: 0 }];
-  while (stack.length) {
-    const cur = stack.pop();
-    let ents = [];
-    try { ents = fs.readdirSync(cur.p, { withFileTypes: true }); } catch { continue; }
-    for (const ent of ents) {
-      const full = path.join(cur.p, ent.name);
-      if (ent.isFile() && ent.name === "openclaw.plugin.json") out.push(full);
-      if (ent.isDirectory() && cur.d < maxDepth) stack.push({ p: full, d: cur.d + 1 });
-    }
-  }
-  return out;
-}
-
-function collectAvailablePluginIds(appDirPath) {
-  const ids = new Set();
-  const roots = [
-    path.join(appDirPath, "dist", "extensions"),
-    path.join(appDirPath, "node_modules")
-  ];
-  for (const root of roots) {
-    for (const manifest of walkForPluginManifests(root, 6)) {
-      const j = safeReadJson(manifest);
-      if (j && typeof j.id === "string" && j.id.trim()) ids.add(j.id.trim());
-    }
-  }
-  // Browser is expected built-in in this package profile.
-  ids.add("browser");
-  return ids;
-}
-
-const available = collectAvailablePluginIds(appDir);
 
 const baseCfg = safeReadJson(baseConfigPath) || {};
 const wsFromBase = trim(baseCfg?.agents?.defaults?.workspace);
 const wsConfigPath = wsFromBase ? path.join(wsFromBase, "openclaw.json") : "";
 
 let sourcePath = baseConfigPath;
-let cfg = baseCfg;
 if (wsConfigPath && wsConfigPath !== baseConfigPath && fs.existsSync(wsConfigPath)) {
-  const wsCfg = safeReadJson(wsConfigPath);
-  if (wsCfg) {
-    sourcePath = wsConfigPath;
-    cfg = wsCfg;
-  }
+  if (safeReadJson(wsConfigPath)) sourcePath = wsConfigPath;
 }
 
-cfg.plugins = cfg.plugins || {};
-cfg.plugins.entries = cfg.plugins.entries || {};
-cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
-cfg.plugins.deny = Array.isArray(cfg.plugins.deny) ? cfg.plugins.deny : [];
-cfg.channels = cfg.channels || {};
-
-const candidates = {
-  feishu: ["feishu-openclaw-plugin", "feishu"],
-  dingtalk: ["dingtalk", "openclaw-dingtalk"],
-  wecom: ["wecom-openclaw-plugin", "wecom", "openclaw-wecom"],
-  qqbot: ["openclaw-qqbot", "qqbot"]
-};
-
-const stalePluginIds = [
-  "openclaw-lark",
-  "openclaw-dingtalk",
-  "openclaw-wecom",
-  "feishu",
-  "wecom",
-  "qqbot"
-];
-
-const pick = (arr) => arr.find((id) => available.has(id)) || null;
-const selected = {
-  browser: available.has("browser") ? "browser" : null,
-  feishu: pick(candidates.feishu),
-  dingtalk: pick(candidates.dingtalk),
-  wecom: pick(candidates.wecom),
-  qqbot: pick(candidates.qqbot)
-};
-
-const managedCandidateIds = new Set([
-  ...candidates.feishu,
-  ...candidates.dingtalk,
-  ...candidates.wecom,
-  ...candidates.qqbot,
-  ...stalePluginIds,
-  "browser"
-]);
-
-const legacyDeniedIds = [
-  "feishu-openclaw-plugin",
-  "openclaw-dingtalk",
-  "openclaw-wecom",
-  "openclaw-qqbot"
-];
-cfg.plugins.deny = Array.from(new Set([...(cfg.plugins.deny || []), ...legacyDeniedIds]));
-
-for (const id of managedCandidateIds) {
-  delete cfg.plugins.entries[id];
-}
-
-const baseBrowser = cfg.plugins.entries.browser && typeof cfg.plugins.entries.browser === "object"
-  ? cfg.plugins.entries.browser
-  : {};
-
-cfg.plugins.entries = {};
-if (selected.browser) {
-  cfg.plugins.entries[selected.browser] = {
-    enabled: baseBrowser.enabled !== false
-  };
-}
-
-const allowKeep = cfg.plugins.allow.filter((id) => !managedCandidateIds.has(id) && available.has(id));
-cfg.plugins.allow = Array.from(new Set([
-  ...allowKeep,
-  ...(selected.browser ? [selected.browser] : [])
-]));
-
-const feishu = cfg.channels.feishu || {};
-if (selected.feishu && trim(feishu.appId) && trim(feishu.appSecret)) {
-  // Disable pairing gate by default after restart/reinstall.
-  cfg.channels.feishu = cfg.channels.feishu || {};
-  cfg.channels.feishu.dmPolicy = "open";
-  cfg.channels.feishu.groupPolicy = "open";
-  cfg.plugins.entries[selected.feishu] = { enabled: true };
-  if (!cfg.plugins.allow.includes(selected.feishu)) cfg.plugins.allow.push(selected.feishu);
-}
-
-const dingtalk = cfg.channels.dingtalk || {};
-if (selected.dingtalk && trim(dingtalk.clientId) && trim(dingtalk.clientSecret)) {
-  // Disable pairing gate by default after restart/reinstall.
-  cfg.channels.dingtalk = cfg.channels.dingtalk || {};
-  cfg.channels.dingtalk.dmPolicy = "open";
-  cfg.channels.dingtalk.groupPolicy = "open";
-  cfg.plugins.entries[selected.dingtalk] = { enabled: true };
-  if (!cfg.plugins.allow.includes(selected.dingtalk)) cfg.plugins.allow.push(selected.dingtalk);
-}
-
-const qqbot = cfg.channels.qqbot || {};
-if (selected.qqbot && trim(qqbot.appId) && trim(qqbot.clientSecret)) {
-  // Disable pairing gate by default after restart/reinstall.
-  cfg.channels.qqbot = cfg.channels.qqbot || {};
-  cfg.channels.qqbot.dmPolicy = "open";
-  cfg.channels.qqbot.groupPolicy = "open";
-  cfg.channels.qqbot.allowFrom = ["*"];
-  cfg.plugins.entries[selected.qqbot] = { enabled: true };
-  if (!cfg.plugins.allow.includes(selected.qqbot)) cfg.plugins.allow.push(selected.qqbot);
-}
-
-const wecom = cfg.channels.wecom || {};
-if (selected.wecom && trim(wecom.botId) && trim(wecom.secret)) {
-  // Disable pairing gate by default after restart/reinstall.
-  cfg.channels.wecom = cfg.channels.wecom || {};
-  cfg.channels.wecom.dmPolicy = "open";
-  cfg.channels.wecom.groupPolicy = "open";
-  cfg.channels.wecom.allowFrom = ["*"];
-  cfg.plugins.entries[selected.wecom] = { enabled: true };
-  if (!cfg.plugins.allow.includes(selected.wecom)) cfg.plugins.allow.push(selected.wecom);
-}
-
-const workspace = trim(cfg?.agents?.defaults?.workspace);
-
-const normalized = JSON.stringify(cfg, null, 2) + "\n";
-fs.writeFileSync(sourcePath, normalized, "utf8");
-if (sourcePath !== baseConfigPath) {
-  // Keep bootstrap config in sync so workspace migration survives restarts.
-  fs.writeFileSync(baseConfigPath, normalized, "utf8");
-}
-
-process.stdout.write(`${workspace}|${sourcePath}`);
-' "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_APP_DIR}")
+process.stdout.write(`${wsFromBase}|${sourcePath}`);
+' "${OPENCLAW_CONFIG_FILE_BASE}")
 EOF
 
     if [ -z "${selected_workspace}" ]; then
@@ -631,9 +464,6 @@ EOF
 
     sync_provider_models_from_upstream
     sync_skills_to_workspace
-
-    # Persist the latest runtime config back to bootstrap location for restart continuity.
-    cp -f "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}" || true
 }
 
 # Default exports before prestart recalculates runtime paths.
