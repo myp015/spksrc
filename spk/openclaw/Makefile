@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 14
+SPK_REV = 15
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Keep runtime config generated from template and avoid legacy plugin residue. 2. Keep browser default-only policy; add channel plugins only when wizard credentials are provided. 3. Disable pairing gate by default for credentialed Feishu/DingTalk (dmPolicy/groupPolicy=open), so id+secret can communicate directly. 4. Keep installed-manifest-based plugin id refresh on restart/reinstall. 5. Keep workspace/source priority, wipe recovery, model-sync, and bundled-skill sync behavior."
+CHANGELOG = "1. Keep runtime config generated from template and avoid legacy plugin residue. 2. Keep browser default-only policy; add channel plugins only when wizard credentials are provided. 3. Disable pairing gate by default for credentialed Feishu/DingTalk/WeCom/QQ (dmPolicy/groupPolicy=open, plus allowFrom=['*'] for WeCom/QQ compatibility). 4. Keep installed-manifest-based plugin id refresh on restart/reinstall. 5. Keep workspace/source priority, wipe recovery, model-sync, and bundled-skill sync behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT

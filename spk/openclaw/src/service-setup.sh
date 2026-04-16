@@ -351,6 +351,10 @@ if (qqbotAppId && qqbotClientSecret) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
+  // Disable pairing gate by default: credentials are enough to communicate.
+  cfg.channels.qqbot.dmPolicy = "open";
+  cfg.channels.qqbot.groupPolicy = "open";
+  cfg.channels.qqbot.allowFrom = ["*"];
 }
 
 const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
@@ -359,6 +363,10 @@ if (wecomBotId && wecomSecret) {
   cfg.channels.wecom = cfg.channels.wecom || {};
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
+  // Disable pairing gate by default: credentials are enough to communicate.
+  cfg.channels.wecom.dmPolicy = "open";
+  cfg.channels.wecom.groupPolicy = "open";
+  cfg.channels.wecom.allowFrom = ["*"];
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
@@ -548,12 +556,22 @@ if (selected.dingtalk && trim(dingtalk.clientId) && trim(dingtalk.clientSecret))
 
 const qqbot = cfg.channels.qqbot || {};
 if (selected.qqbot && trim(qqbot.appId) && trim(qqbot.clientSecret)) {
+  // Disable pairing gate by default after restart/reinstall.
+  cfg.channels.qqbot = cfg.channels.qqbot || {};
+  cfg.channels.qqbot.dmPolicy = "open";
+  cfg.channels.qqbot.groupPolicy = "open";
+  cfg.channels.qqbot.allowFrom = ["*"];
   cfg.plugins.entries[selected.qqbot] = { enabled: true };
   if (!cfg.plugins.allow.includes(selected.qqbot)) cfg.plugins.allow.push(selected.qqbot);
 }
 
 const wecom = cfg.channels.wecom || {};
 if (selected.wecom && trim(wecom.botId) && trim(wecom.secret)) {
+  // Disable pairing gate by default after restart/reinstall.
+  cfg.channels.wecom = cfg.channels.wecom || {};
+  cfg.channels.wecom.dmPolicy = "open";
+  cfg.channels.wecom.groupPolicy = "open";
+  cfg.channels.wecom.allowFrom = ["*"];
   cfg.plugins.entries[selected.wecom] = { enabled: true };
   if (!cfg.plugins.allow.includes(selected.wecom)) cfg.plugins.allow.push(selected.wecom);
 }
