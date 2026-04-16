@@ -38,9 +38,7 @@ auth-dir: "/var/packages/cliproxy/var/auth"
 
 # API keys for authentication
 api-keys:
-  - "your-api-key-1"
-  - "your-api-key-2"
-  - "your-api-key-3"
+  - "sk-B6eI0vuWk0IO3u8Uz"
 
 # Enable debug logging
 debug: false
