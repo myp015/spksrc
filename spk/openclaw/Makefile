@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 19
+SPK_REV = 20
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Change default config/workspace base path to /volume1/docker/openclaw (from /volume1/docker/openclaw/.openclaw). 2. Remove plugin-deny legacy ids from template/post-install writes to avoid strict config validation errors on fresh installs. 3. Only mutate openclaw.json during first-install wizard stage; restart no longer rewrites plugin/channel config. 4. On each restart, only perform non-blocking provider model-list sync and bundled-skill sync. 5. Keep browser default-only policy and wizard-driven channel plugin activation behavior."
+CHANGELOG = "1. Fix cross-arch CI build: use host npm/node for npm pack/install; only bundle target-arch node binary into SPK. 2. Change default config/workspace base path to /volume1/docker/openclaw. 3. Remove plugin-deny legacy ids from template/post-install writes to avoid strict config validation errors on fresh installs. 4. Only mutate openclaw.json during first-install wizard stage; restart no longer rewrites plugin/channel config (model/skills sync only). 5. Keep browser default-only policy and wizard-driven channel plugin activation behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -53,10 +53,10 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz
 	@tar -xJf $(WORK_DIR)/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz -C $(WORK_DIR)/node-runtime --strip-components=1
-	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/node-runtime/bin:$$PATH" npm pack openclaw@2026.4.14 --silent
+	@cd $(WORK_DIR) && npm pack openclaw@2026.4.14 --silent
 	@tar -xzf $(WORK_DIR)/openclaw-2026.4.14.tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
+	@cd $(WORK_DIR)/openclaw-bundle && npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+	@cd $(WORK_DIR)/openclaw-bundle && npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
 		openclaw-channel-dingtalk@2.2.2 \
 		@wecom/wecom-openclaw-plugin@2026.4.8 \
