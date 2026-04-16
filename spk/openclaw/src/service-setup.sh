@@ -85,20 +85,15 @@ harden_extension_permissions() {
 
 validate_or_rollback_config() {
     local lkg="${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json"
-    local meta_dir="${OPENCLAW_STATE_DIR}/.openclaw"
-    local doctor_log="${meta_dir}/doctor-prestart.log"
-    mkdir -p "${meta_dir}"
 
-    if OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}" OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" HOME="${OPENCLAW_STATE_DIR}" \
-        "${OPENCLAW_NODE}" "${OPENCLAW_ENTRY}" doctor --fix --non-interactive --no-workspace-suggestions >"${doctor_log}" 2>&1; then
+    # Lightweight guard only: avoid running `doctor --fix` on every start (too slow, may perform network checks).
+    if "${OPENCLAW_NODE}" -e 'const fs=require("fs"); const p=process.argv[1]; JSON.parse(fs.readFileSync(p,"utf8"));' "${OPENCLAW_CONFIG_FILE}" >/dev/null 2>&1; then
         cp -f "${OPENCLAW_CONFIG_FILE}" "${lkg}"
         return 0
     fi
 
     if [ -f "${lkg}" ]; then
         cp -f "${lkg}" "${OPENCLAW_CONFIG_FILE}"
-        OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}" OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" HOME="${OPENCLAW_STATE_DIR}" \
-            "${OPENCLAW_NODE}" "${OPENCLAW_ENTRY}" doctor --fix --non-interactive --no-workspace-suggestions >>"${doctor_log}" 2>&1 || true
     fi
 }
 
