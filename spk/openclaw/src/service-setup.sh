@@ -2,13 +2,14 @@ OPENCLAW_NODE="${SYNOPKG_PKGDEST}/bin/node"
 OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
 OPENCLAW_STATE_DIR_DEFAULT="/volume1/docker/openclaw/.openclaw"
-OPENCLAW_WORKSPACE="${OPENCLAW_STATE_DIR_DEFAULT}"
-OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_WORKSPACE}/skills/_bundled"
+OPENCLAW_WORKSPACE_DEFAULT="${OPENCLAW_STATE_DIR_DEFAULT}"
+OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR_DEFAULT}/openclaw.json"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_DEFAULT_CONFIG="${SYNOPKG_PKGDEST}/var/openclaw.json"
 
 sync_skills_to_workspace() {
+    OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_WORKSPACE}/skills/_bundled"
     mkdir -p "${OPENCLAW_BUNDLED_SKILLS_DIR}"
 
     # Sync built-in extension skills from OpenClaw core bundle.
@@ -181,7 +182,6 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
 service_prestart() {
     mkdir -p "${OPENCLAW_STATE_DIR_DEFAULT}"
-    mkdir -p "${OPENCLAW_WORKSPACE}"
 
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
         if [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
@@ -191,7 +191,7 @@ service_prestart() {
         fi
     fi
 
-    "${OPENCLAW_NODE}" -e '
+    OPENCLAW_WORKSPACE="$("${OPENCLAW_NODE}" -e '
 const fs = require("fs");
 const p = process.argv[1];
 const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
@@ -241,9 +241,16 @@ if (trim(qqbot.appId) && trim(qqbot.clientSecret)) cfg.plugins.entries["openclaw
 const wecom = cfg.channels.wecom || {};
 if (trim(wecom.botId) && trim(wecom.secret)) cfg.plugins.entries["wecom-openclaw-plugin"].enabled = true;
 
+const workspace = trim(cfg?.agents?.defaults?.workspace) || "";
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-' "${OPENCLAW_CONFIG_FILE}"
+process.stdout.write(workspace);
+' "${OPENCLAW_CONFIG_FILE}")"
 
+    if [ -z "${OPENCLAW_WORKSPACE}" ]; then
+        OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
+    fi
+
+    mkdir -p "${OPENCLAW_WORKSPACE}"
     sync_skills_to_workspace
 }
 
