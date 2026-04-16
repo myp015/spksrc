@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 28
+SPK_REV = 29
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Fix channel plugin discoverability in SPK: sync bundled Feishu/DingTalk/WeCom/QQ plugins into workspace/extensions at install and every prestart. 2. Keep extension permission hardening + ownership normalization to prevent plugin quarantine (mode=777/root-owned). 3. openclaw-spk wrapper auto-drops root calls to package runtime user (sc-openclaw) to prevent permission drift during plugins install/doctor. 4. Keep unknown-channel startup guard and wizard-driven channel auto-enable with open-policy defaults for credentialed channels. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior with base path /volume1/docker/openclaw."
+CHANGELOG = "1. Revert bundled channel plugin mirroring into workspace/extensions to avoid dependency breakage from raw copy (missing transitive deps like dingtalk-stream/@wecom/aibot-node-sdk). 2. Keep extension permission hardening + ownership normalization to prevent plugin quarantine (mode=777/root-owned). 3. openclaw-spk wrapper auto-drops root calls to package runtime user (sc-openclaw) to prevent permission drift during plugins install/doctor. 4. Keep unknown-channel startup guard and wizard-driven channel auto-enable with open-policy defaults for credentialed channels. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior with base path /volume1/docker/openclaw."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT

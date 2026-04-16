@@ -488,7 +488,6 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
 
-        sync_bundled_channel_plugins_to_extensions
         sync_skills_to_workspace
     fi
 }
@@ -558,7 +557,6 @@ EOF
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
     export HOME="${OPENCLAW_STATE_DIR}"
 
-    sync_bundled_channel_plugins_to_extensions
     harden_extension_permissions
 
     # Safety: if a channel config exists but its plugin is unavailable in current runtime,
