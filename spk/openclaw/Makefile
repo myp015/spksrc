@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 10
+SPK_REV = 11
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Keep bootstrap config at /volume1/docker/openclaw/.openclaw/openclaw.json, but move runtime config/state/home to the configured workspace path. 2. On startup, auto-recover workspace openclaw.json from bootstrap config when workspace is wiped. 3. Honor wizard workspace path consistently for skills/runtime files. 4. Auto-sync API providers model lists from upstream /models on each start/restart (non-blocking). 5. Refresh CN channel plugin defaults and stale-plugin cleanup behavior."
+CHANGELOG = "1. Fix workspace migration: always prefer workspace openclaw.json when present, and keep bootstrap config synced bidirectionally. 2. Auto-recover workspace openclaw.json when workspace is wiped. 3. Sanitize managed plugin ids by detected installed plugins (avoid stale plugin-not-found warnings). 4. Keep runtime config/state/home aligned with workspace path and sync bundled skills/model lists on start. 5. Preserve wizard-driven channel enable behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
