@@ -1,0 +1,9 @@
+
+$ make arch-x64-7.2 -C ./spk/openclaw
+make: Entering directory '/root/project/_analysis/spksrc/spk/openclaw'
+/bin/sh: 1: time: not found
+make: *** [../../mk/spksrc.supported.mk:62: arch-x64-7.2] Error 127
+make: Leaving directory '/root/project/_analysis/spksrc/spk/openclaw'
+make: Entering directory '/root/project/_analysis/spksrc/spk/openclaw'
+rm -fr work work-* build.log build-*.log publish-*.log status-*.log
+make: Leaving directory '/root/project/_analysis/spksrc/spk/openclaw'
