@@ -37,6 +37,206 @@ sync_skills_to_workspace() {
     fi
 }
 
+sync_provider_models_from_upstream() {
+    "${OPENCLAW_NODE}" -e '
+const fs = require("fs");
+
+const configPath = process.argv[1];
+const SUPPORTED_APIS = new Set(["openai-completions", "openai-responses"]);
+
+const trim = (v) => (typeof v === "string" ? v.trim() : "");
+const modelRef = (providerName, modelId) => `${providerName}/${modelId}`;
+
+function getPrimaryRef(defaultsObj) {
+  const modelObj = defaultsObj?.model;
+  if (typeof modelObj === "string") return modelObj;
+  if (modelObj && typeof modelObj === "object" && typeof modelObj.primary === "string") return modelObj.primary;
+  return null;
+}
+
+function setPrimaryRef(defaultsObj, newRef) {
+  const modelObj = defaultsObj?.model;
+  if (typeof modelObj === "string") {
+    defaultsObj.model = newRef;
+    return;
+  }
+  if (modelObj && typeof modelObj === "object") {
+    modelObj.primary = newRef;
+    return;
+  }
+  defaultsObj.model = { primary: newRef };
+}
+
+function collectAvailableRefs(providersObj, excludeProvider) {
+  const refs = [];
+  for (const [pname, p] of Object.entries(providersObj || {})) {
+    if (!p || typeof p !== "object") continue;
+    if (excludeProvider && pname === excludeProvider) continue;
+    const models = Array.isArray(p.models) ? p.models : [];
+    for (const m of models) {
+      if (m && typeof m === "object" && m.id) refs.push(modelRef(pname, String(m.id)));
+    }
+  }
+  return refs;
+}
+
+async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
+  let lastErr = null;
+  for (let i = 1; i <= retries; i += 1) {
+    try {
+      const res = await fetch(baseUrl.replace(/\/$/, "") + "/models", {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": "openclaw-spk-model-sync/1.0"
+        }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return { data, attempts: i, error: null };
+    } catch (e) {
+      lastErr = e;
+      if (i < retries) await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  return { data: null, attempts: retries, error: lastErr };
+}
+
+(async () => {
+  if (!fs.existsSync(configPath)) return;
+
+  const raw = fs.readFileSync(configPath, "utf8");
+  const cfg = JSON.parse(raw);
+
+  const providers = cfg?.models?.providers;
+  if (!providers || typeof providers !== "object") return;
+
+  cfg.agents = cfg.agents || {};
+  cfg.agents.defaults = cfg.agents.defaults || {};
+  const defaults = cfg.agents.defaults;
+
+  let defaultsModels = defaults.models;
+  if (Array.isArray(defaultsModels)) {
+    defaultsModels = Object.fromEntries(defaultsModels.filter((x) => typeof x === "string").map((x) => [x, {}]));
+  } else if (!defaultsModels || typeof defaultsModels !== "object") {
+    defaultsModels = {};
+  }
+  defaults.models = defaultsModels;
+
+  let changed = false;
+  const summary = [];
+
+  for (const [name, provider] of Object.entries(providers)) {
+    if (!provider || typeof provider !== "object") continue;
+
+    const api = trim(provider.api);
+    const baseUrl = trim(provider.baseUrl);
+    const apiKey = trim(provider.apiKey);
+    const modelList = Array.isArray(provider.models) ? provider.models : [];
+
+    if (!baseUrl || !apiKey || !modelList.length) continue;
+    if (!SUPPORTED_APIS.has(api)) continue;
+
+    const { data, attempts, error } = await fetchRemoteModels(baseUrl, apiKey, 3);
+    if (error) {
+      summary.push(`⚠️ ${name}: /models 探测失败，保留本地模型 (${error.message || error})`);
+      continue;
+    }
+    if (!data || !Array.isArray(data.data)) {
+      summary.push(`⚠️ ${name}: /models 返回结构不可识别，保留本地模型`);
+      continue;
+    }
+
+    const remoteIds = data.data
+      .filter((item) => item && typeof item === "object" && item.id)
+      .map((item) => String(item.id));
+    const remoteSet = new Set(remoteIds);
+
+    if (!remoteSet.size) {
+      summary.push(`⚠️ ${name}: /models 为空，保留本地模型`);
+      continue;
+    }
+
+    const localModels = modelList.filter((m) => m && typeof m === "object" && m.id);
+    if (!localModels.length) continue;
+
+    const localIds = localModels.map((m) => String(m.id));
+    const localSet = new Set(localIds);
+    const template = JSON.parse(JSON.stringify(localModels[0]));
+
+    const removedIds = localIds.filter((id) => !remoteSet.has(id));
+    const addedIds = remoteIds.filter((id) => !localSet.has(id));
+
+    const keptModels = localModels.filter((m) => remoteSet.has(String(m.id))).map((m) => JSON.parse(JSON.stringify(m)));
+    const newModels = [...keptModels];
+
+    for (const mid of addedIds) {
+      const nm = JSON.parse(JSON.stringify(template));
+      nm.id = mid;
+      if (typeof nm.name === "string") nm.name = `${name} / ${mid}`;
+      newModels.push(nm);
+    }
+
+    if (!newModels.length) {
+      summary.push(`⚠️ ${name}: 同步结果为空，保留本地模型`);
+      continue;
+    }
+
+    const expectedRefs = new Set(newModels.filter((m) => m && m.id).map((m) => modelRef(name, String(m.id))));
+    const localRefs = new Set(localIds.map((id) => modelRef(name, id)));
+    const firstRef = modelRef(name, String(newModels[0].id));
+
+    const primaryRef = getPrimaryRef(defaults);
+    if (typeof primaryRef === "string" && localRefs.has(primaryRef) && !expectedRefs.has(primaryRef)) {
+      setPrimaryRef(defaults, firstRef);
+      changed = true;
+      summary.push(`🔁 ${name}: 默认主模型兜底 ${primaryRef} -> ${firstRef}`);
+    }
+
+    for (const fk of ["modelFallback", "imageModelFallback"]) {
+      const v = defaults[fk];
+      if (typeof v === "string" && localRefs.has(v) && !expectedRefs.has(v)) {
+        defaults[fk] = firstRef;
+        changed = true;
+        summary.push(`🔁 ${name}: ${fk} 兜底 ${v} -> ${firstRef}`);
+      }
+    }
+
+    for (const key of Object.keys(defaultsModels)) {
+      if (key.startsWith(name + "/") && !expectedRefs.has(key)) {
+        delete defaultsModels[key];
+        changed = true;
+      }
+    }
+
+    for (const ref of expectedRefs) {
+      if (!(ref in defaultsModels)) {
+        defaultsModels[ref] = {};
+        changed = true;
+      }
+    }
+
+    const changedModels = removedIds.length || addedIds.length || localModels.length !== newModels.length;
+    if (changedModels) {
+      provider.models = newModels;
+      changed = true;
+      summary.push(`✅ ${name}: 新增 ${addedIds.length}，删除 ${removedIds.length}，当前 ${newModels.length}（重试 ${attempts} 次）`);
+    }
+  }
+
+  if (changed) {
+    fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+  }
+
+  if (summary.length) {
+    for (const line of summary) console.error(`[model-sync] ${line}`);
+    if (changed) console.error("[model-sync] 已写入 openclaw.json");
+  }
+})().catch((e) => {
+  console.error(`[model-sync] 同步失败（忽略，不阻塞启动）: ${e && e.message ? e.message : e}`);
+});
+' "${OPENCLAW_CONFIG_FILE}" >/dev/null 2>&1 || true
+}
+
 service_postinst() {
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
         mkdir -p "${OPENCLAW_STATE_DIR_DEFAULT}"
@@ -251,6 +451,7 @@ process.stdout.write(workspace);
     fi
 
     mkdir -p "${OPENCLAW_WORKSPACE}"
+    sync_provider_models_from_upstream
     sync_skills_to_workspace
 }
 
