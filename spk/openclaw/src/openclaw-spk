@@ -1,0 +1,109 @@
+#!/bin/sh
+set -eu
+
+BASE_DEFAULT="/volume1/docker/openclaw"
+BASE_CFG="${BASE_DEFAULT}/openclaw.json"
+LEGACY_CFG="/var/packages/openclaw/var/openclaw.json"
+APP_NODE="/volume1/@appstore/openclaw/bin/node"
+APP_ENTRY="/volume1/@appstore/openclaw/app/openclaw/dist/index.js"
+
+if [ ! -x "$APP_NODE" ] || [ ! -f "$APP_ENTRY" ]; then
+  echo "❌ openclaw-spk: OpenClaw SPK not found under /volume1/@appstore/openclaw" >&2
+  exit 1
+fi
+
+CONFIG_PATH=""
+if [ -f "$BASE_CFG" ]; then
+  CONFIG_PATH="$BASE_CFG"
+elif [ -f "$LEGACY_CFG" ]; then
+  CONFIG_PATH="$LEGACY_CFG"
+fi
+
+WORKDIR="$BASE_DEFAULT"
+if [ -n "$CONFIG_PATH" ]; then
+  W=$(python3 - "$CONFIG_PATH" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+    c=json.load(open(p,'r',encoding='utf-8'))
+    w=((c.get('agents') or {}).get('defaults') or {}).get('workspace')
+    print((w or '').strip())
+except Exception:
+    print('')
+PY
+)
+  if [ -n "$W" ]; then
+    WORKDIR="$W"
+  fi
+fi
+
+if [ ! -f "$WORKDIR/openclaw.json" ] && [ -f "$BASE_CFG" ]; then
+  mkdir -p "$WORKDIR"
+  cp -f "$BASE_CFG" "$WORKDIR/openclaw.json"
+fi
+
+OPENCLAW_CONFIG_PATH="${WORKDIR}/openclaw.json"
+OPENCLAW_STATE_DIR="$WORKDIR"
+HOME="$WORKDIR"
+export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
+
+show_help() {
+  cat <<'EOF'
+openclaw-spk - OpenClaw Synology SPK wrapper
+
+What it does:
+- Auto-locates SPK config/workspace (default: /volume1/docker/openclaw)
+- Exports OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR / HOME
+- Forwards args to OpenClaw CLI entry inside SPK
+
+Usage:
+  openclaw-spk <command> [args...]
+
+Common examples:
+  openclaw-spk gateway status
+  openclaw-spk gateway restart
+  openclaw-spk config get
+  openclaw-spk plugins install @tencent-connect/openclaw-qqbot@latest
+  openclaw-spk models list
+
+Helper commands:
+  openclaw-spk env      # print resolved paths
+  openclaw-spk token    # print gateway auth token from current config
+
+Note:
+- SPK template default token is 123456 unless changed in openclaw.json.
+EOF
+}
+
+if [ $# -eq 0 ]; then
+  show_help
+  exit 0
+fi
+
+case "$1" in
+  --help|-h|help)
+    show_help
+    exit 0
+    ;;
+  env)
+    echo "OPENCLAW_CONFIG_PATH=$OPENCLAW_CONFIG_PATH"
+    echo "OPENCLAW_STATE_DIR=$OPENCLAW_STATE_DIR"
+    echo "HOME=$HOME"
+    exit 0
+    ;;
+  token)
+    python3 - "$OPENCLAW_CONFIG_PATH" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+    c=json.load(open(p,'r',encoding='utf-8'))
+    t=((c.get('gateway') or {}).get('auth') or {}).get('token')
+    print(t if t else '')
+except Exception:
+    print('')
+PY
+    exit 0
+    ;;
+esac
+
+exec "$APP_NODE" "$APP_ENTRY" "$@"

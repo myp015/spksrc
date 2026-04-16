@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 21
+SPK_REV = 22
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Fix cross-arch CI when host npm is missing: bootstrap a host-arch Node runtime under work/build-node-runtime and use it for npm pack/install; keep target-arch Node runtime only for SPK payload. 2. Change default config/workspace base path to /volume1/docker/openclaw. 3. Remove plugin-deny legacy ids from template/post-install writes to avoid strict config validation errors on fresh installs. 4. Only mutate openclaw.json during first-install wizard stage; restart no longer rewrites plugin/channel config (model/skills sync only). 5. Keep browser default-only policy and wizard-driven channel plugin activation behavior."
+CHANGELOG = "1. Add built-in openclaw-spk wrapper command for SPK environments (auto-resolve config/workspace and forward to CLI entry). 2. Document openclaw-spk usage and default token (template default: 123456). 3. Fix cross-arch CI when host npm is missing by bootstrapping host Node runtime for npm steps. 4. Keep default config/workspace base path at /volume1/docker/openclaw and remove invalid legacy plugin-deny defaults. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -84,6 +84,9 @@ openclaw_copy_target:
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json
 	@install -d -m 755 $(STAGING_DIR)/app
 	@cp -rf src/app/* $(STAGING_DIR)/app/
+	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw-spk
+	@chmod 755 $(STAGING_DIR)/bin/openclaw-spk
+	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
 
 .PHONY: openclaw_extra_install
 openclaw_extra_install:
