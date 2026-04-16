@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 12
+SPK_REV = 13
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Remove channel plugin defaults from openclaw.json; keep only browser by default. 2. Only add/enable Feishu/DingTalk/WeCom/QQ plugin entries when wizard has corresponding credentials. 3. Auto-map plugin ids by installed manifests at prestart to avoid stale plugin-not-found warnings. 4. Keep workspace config/source priority and wipe recovery behavior stable. 5. Continue non-blocking provider model sync + bundled skills sync on start."
+CHANGELOG = "1. Stop shipping runtime openclaw.json in /var; package now ships a template at app/openclaw/config/openclaw.template.json and creates runtime config on first start/install. 2. On first install, prefer template config over legacy carried config to avoid stale plugin residues. 3. On restart/reinstall, sanitize and refresh plugin entries/allowlist by installed plugin manifests. 4. Keep browser default-only policy; add channel plugins only when wizard credentials are provided. 5. Keep workspace/source priority, wipe recovery, model-sync, and bundled-skill sync behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -71,7 +71,8 @@ openclaw_copy_target:
 	@install -d -m 755 $(STAGING_DIR)/var
 	@cp -f $(WORK_DIR)/node-runtime/bin/node $(STAGING_DIR)/bin/node
 	@cp -rf $(WORK_DIR)/openclaw-bundle/* $(STAGING_DIR)/app/openclaw/
-	@cp -f src/openclaw.json $(STAGING_DIR)/var/openclaw.json
+	@install -d -m 755 $(STAGING_DIR)/app/openclaw/config
+	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json
 	@install -d -m 755 $(STAGING_DIR)/app
 	@cp -rf src/app/* $(STAGING_DIR)/app/
 

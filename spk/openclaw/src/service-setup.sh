@@ -8,7 +8,7 @@ OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
 OPENCLAW_STATE_DIR="${OPENCLAW_WORKSPACE_DEFAULT}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
-OPENCLAW_DEFAULT_CONFIG="${SYNOPKG_PKGDEST}/var/openclaw.json"
+OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 
 sync_skills_to_workspace() {
     OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_WORKSPACE}/skills/_bundled"
@@ -244,10 +244,12 @@ service_postinst() {
         mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
         if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
-            if [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
+            if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
+                cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
+            elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
                 cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
             else
-                cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
+                echo "{}" > "${OPENCLAW_CONFIG_FILE_BASE}"
             fi
         fi
 
@@ -377,10 +379,12 @@ service_prestart() {
 
     # Ensure bootstrap config exists at fixed base path.
     if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
-        if [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
+        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
+            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
+        elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
             cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
         else
-            cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
+            echo "{}" > "${OPENCLAW_CONFIG_FILE_BASE}"
         fi
     fi
 
