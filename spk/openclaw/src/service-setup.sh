@@ -309,6 +309,15 @@ cfg.channels = cfg.channels || {};
 cfg.plugins = cfg.plugins || {};
 cfg.plugins.entries = cfg.plugins.entries || {};
 cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
+cfg.plugins.deny = Array.isArray(cfg.plugins.deny) ? cfg.plugins.deny : [];
+
+const legacyDeniedIds = [
+  "feishu-openclaw-plugin",
+  "openclaw-dingtalk",
+  "openclaw-wecom",
+  "openclaw-qqbot"
+];
+cfg.plugins.deny = Array.from(new Set([...cfg.plugins.deny, ...legacyDeniedIds]));
 
 cfg.channels = cfg.channels || {};
 
@@ -477,6 +486,7 @@ if (wsConfigPath && wsConfigPath !== baseConfigPath && fs.existsSync(wsConfigPat
 cfg.plugins = cfg.plugins || {};
 cfg.plugins.entries = cfg.plugins.entries || {};
 cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
+cfg.plugins.deny = Array.isArray(cfg.plugins.deny) ? cfg.plugins.deny : [];
 cfg.channels = cfg.channels || {};
 
 const candidates = {
@@ -512,6 +522,14 @@ const managedCandidateIds = new Set([
   ...stalePluginIds,
   "browser"
 ]);
+
+const legacyDeniedIds = [
+  "feishu-openclaw-plugin",
+  "openclaw-dingtalk",
+  "openclaw-wecom",
+  "openclaw-qqbot"
+];
+cfg.plugins.deny = Array.from(new Set([...(cfg.plugins.deny || []), ...legacyDeniedIds]));
 
 for (const id of managedCandidateIds) {
   delete cfg.plugins.entries[id];
