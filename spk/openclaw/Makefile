@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 26
+SPK_REV = 27
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Add prestart permission hardening for workspace/extensions and plugin-manifest scan from both bundled and workspace extensions. 2. Prevent startup crash on unknown channel id: if a channel is configured but no matching plugin is available, auto-prune that channel and stale plugin refs before gateway start. 3. Keep wizard channel enable behavior (manifest-detected plugin ids) and open-policy defaults for credentialed channels. 4. Keep openclaw-spk --config compatibility and docs. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior with base path /volume1/docker/openclaw."
+CHANGELOG = "1. Harden SPK self-healing for plugin installs: prestart now normalizes extension ownership to config/state owner and removes world-writable bits. 2. openclaw-spk wrapper now auto-drops root calls to package runtime user (sc-openclaw) to prevent root-owned plugin files after plugins install/doctor runs. 3. Keep unknown-channel startup guard: auto-prune channel configs when matching plugins are unavailable. 4. Keep wizard channel enable behavior (manifest-detected plugin ids) and open-policy defaults for credentialed channels. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior with base path /volume1/docker/openclaw."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT

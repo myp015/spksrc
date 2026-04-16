@@ -69,6 +69,12 @@ OPENCLAW_STATE_DIR="$WORKDIR"
 HOME="${HOME:-$WORKDIR}"
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
 
+# If running as root, transparently drop to package runtime user to avoid root-owned plugin files.
+PKG_USER=""
+if [ "$(id -u)" -eq 0 ] && [ -r "/var/packages/openclaw/conf/privilege" ]; then
+  PKG_USER="$(awk -F'"' '/"username"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
+fi
+
 show_help() {
   cat <<'EOF'
 openclaw-spk - OpenClaw Synology SPK wrapper
@@ -146,5 +152,15 @@ PY
     exit 0
     ;;
 esac
+
+if [ -n "${PKG_USER}" ] && id "${PKG_USER}" >/dev/null 2>&1; then
+  exec su -s /bin/sh "${PKG_USER}" -c '
+    export OPENCLAW_CONFIG_PATH="$1"
+    export OPENCLAW_STATE_DIR="$2"
+    export HOME="$3"
+    shift 3
+    exec "$@"
+  ' sh "$OPENCLAW_CONFIG_PATH" "$OPENCLAW_STATE_DIR" "$HOME" "$APP_NODE" "$APP_ENTRY" "$@"
+fi
 
 exec "$APP_NODE" "$APP_ENTRY" "$@"

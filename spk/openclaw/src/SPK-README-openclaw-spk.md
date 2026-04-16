@@ -12,6 +12,7 @@
    - `OPENCLAW_STATE_DIR`
    - `HOME`
 3. 将你的命令转发到 SPK 内置 OpenClaw CLI 入口
+4. 以 root 调用时，会自动降权到包运行用户（`sc-openclaw`）执行，避免插件文件被写成 root 导致后续加载失败
 
 这样你不需要每次手工写一长串 node/dist 路径。
 
