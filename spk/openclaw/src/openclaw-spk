@@ -66,7 +66,7 @@ fi
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
-HOME="${HOME:-$WORKDIR}"
+HOME="${OPENCLAW_HOME:-$WORKDIR}"
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
 
 # If running as root, transparently drop to package runtime user to avoid root-owned plugin files.

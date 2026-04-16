@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 43
+SPK_REV = 44
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Keep wizard-provisioned Feishu in auto-approve mode by default (dmPolicy/groupPolicy=open) while retaining schema-safe credential normalization. 2. Keep compatibility-mode prestart normalization for Feishu/WeCom/DingTalk/QQ and generic plugin pin auto-repair via discovered plugin manifests. 3. Keep lightweight JSON parse + last-known-good snapshot restore guard (no heavy prestart doctor run)."
+CHANGELOG = "1. Fix openclaw-spk HOME resolution: default HOME now follows workspace/state dir (or explicit OPENCLAW_HOME) instead of inheriting /root when run from root shell. 2. Keep wizard-provisioned Feishu auto-approve defaults with compatibility-mode channel normalization and generic plugin pin auto-repair. 3. Keep lightweight JSON parse + last-known-good snapshot restore guard (no heavy prestart doctor run)."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
