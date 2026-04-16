@@ -83,6 +83,25 @@ harden_extension_permissions() {
     [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 664 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
 }
 
+validate_or_rollback_config() {
+    local lkg="${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json"
+    local meta_dir="${OPENCLAW_STATE_DIR}/.openclaw"
+    local doctor_log="${meta_dir}/doctor-prestart.log"
+    mkdir -p "${meta_dir}"
+
+    if OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}" OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" HOME="${OPENCLAW_STATE_DIR}" \
+        "${OPENCLAW_NODE}" "${OPENCLAW_ENTRY}" doctor --fix --non-interactive --no-workspace-suggestions >"${doctor_log}" 2>&1; then
+        cp -f "${OPENCLAW_CONFIG_FILE}" "${lkg}"
+        return 0
+    fi
+
+    if [ -f "${lkg}" ]; then
+        cp -f "${lkg}" "${OPENCLAW_CONFIG_FILE}"
+        OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}" OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" HOME="${OPENCLAW_STATE_DIR}" \
+            "${OPENCLAW_NODE}" "${OPENCLAW_ENTRY}" doctor --fix --non-interactive --no-workspace-suggestions >>"${doctor_log}" 2>&1 || true
+    fi
+}
+
 sync_provider_models_from_upstream() {
     "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
@@ -599,6 +618,7 @@ const cfg = safeReadJson(cfgPath);
 if (!cfg || typeof cfg !== "object") process.exit(0);
 
 const availablePluginIds = new Set(["browser"]);
+const pluginChannelMap = new Map();
 for (const root of [
   path.join(appDir, "dist", "extensions"),
   path.join(appDir, "node_modules"),
@@ -608,7 +628,11 @@ for (const root of [
 ]) {
   for (const manifest of walkForPluginManifests(root, 6)) {
     const j = safeReadJson(manifest);
-    if (j && typeof j.id === "string" && j.id.trim()) availablePluginIds.add(j.id.trim());
+    if (!j || typeof j.id !== "string" || !j.id.trim()) continue;
+    const pluginId = j.id.trim();
+    availablePluginIds.add(pluginId);
+    const channels = Array.isArray(j.channels) ? j.channels.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim()) : [];
+    pluginChannelMap.set(pluginId, channels);
   }
 }
 
@@ -618,6 +642,30 @@ cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
 cfg.channels = cfg.channels || {};
 
 let changed = false;
+
+const normalizePolicy = (obj, dmDefault = "open", groupDefault = "open") => {
+  const norm = (v) => typeof v === "string" ? v.trim().toLowerCase() : "";
+  const allowedDm = new Set(["open", "pairing", "allowlist"]);
+  const allowedGroup = new Set(["open", "allowlist", "disabled"]);
+  const dm = norm(obj.dmPolicy);
+  const gp = norm(obj.groupPolicy);
+  const mappedDm = dm === "allowall" ? "open" : dm;
+  const mappedGp = gp === "allowall" ? "open" : gp;
+  if (!allowedDm.has(mappedDm)) {
+    obj.dmPolicy = dmDefault;
+    changed = true;
+  } else if (mappedDm !== obj.dmPolicy) {
+    obj.dmPolicy = mappedDm;
+    changed = true;
+  }
+  if (!allowedGroup.has(mappedGp)) {
+    obj.groupPolicy = groupDefault;
+    changed = true;
+  } else if (mappedGp !== obj.groupPolicy) {
+    obj.groupPolicy = mappedGp;
+    changed = true;
+  }
+};
 
 // Normalize Feishu credentials to schema-compatible location.
 // Some UI surfaces may write clientId/clientSecret (or top-level appId/appSecret)
@@ -665,26 +713,7 @@ if (cfg.channels.dingtalk && typeof cfg.channels.dingtalk === "object") {
       changed = true;
     }
   }
-  const allowedDm = new Set(["open", "pairing", "allowlist"]);
-  const allowedGroup = new Set(["open", "allowlist", "disabled"]);
-  const dm = norm(d.dmPolicy).toLowerCase();
-  const gp = norm(d.groupPolicy).toLowerCase();
-  const mappedDm = dm === "allowall" ? "open" : dm;
-  const mappedGp = gp === "allowall" ? "open" : gp;
-  if (!allowedDm.has(mappedDm)) {
-    d.dmPolicy = "open";
-    changed = true;
-  } else if (mappedDm !== d.dmPolicy) {
-    d.dmPolicy = mappedDm;
-    changed = true;
-  }
-  if (!allowedGroup.has(mappedGp)) {
-    d.groupPolicy = "open";
-    changed = true;
-  } else if (mappedGp !== d.groupPolicy) {
-    d.groupPolicy = mappedGp;
-    changed = true;
-  }
+  normalizePolicy(d, "open", "open");
 }
 
 // Normalize WeCom config to schema-compatible values.
@@ -705,48 +734,57 @@ if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
       changed = true;
     }
   }
-  const allowedDm = new Set(["open", "pairing", "allowlist"]);
-  const allowedGroup = new Set(["open", "allowlist", "disabled"]);
-  const dm = norm(w.dmPolicy).toLowerCase();
-  const gp = norm(w.groupPolicy).toLowerCase();
-  const mappedDm = dm === "allowall" ? "open" : dm;
-  const mappedGp = gp === "allowall" ? "open" : gp;
-  if (!allowedDm.has(mappedDm)) {
-    w.dmPolicy = "open";
-    changed = true;
-  } else if (mappedDm !== w.dmPolicy) {
-    w.dmPolicy = mappedDm;
-    changed = true;
-  }
-  if (!allowedGroup.has(mappedGp)) {
-    w.groupPolicy = "open";
-    changed = true;
-  } else if (mappedGp !== w.groupPolicy) {
-    w.groupPolicy = mappedGp;
-    changed = true;
-  }
+  normalizePolicy(w, "open", "open");
 }
 
-const candidates = {
+// Normalize QQBot aliases + policy enums for schema safety.
+if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
+  const q = cfg.channels.qqbot;
+  const norm = (v) => typeof v === "string" ? v.trim() : "";
+  if (!norm(q.appId) && norm(q.clientId)) {
+    q.appId = norm(q.clientId);
+    changed = true;
+  }
+  if (!norm(q.clientSecret) && norm(q.appSecret)) {
+    q.clientSecret = norm(q.appSecret);
+    changed = true;
+  }
+  for (const k of ["clientId", "appSecret"]) {
+    if (Object.prototype.hasOwnProperty.call(q, k)) {
+      delete q[k];
+      changed = true;
+    }
+  }
+  normalizePolicy(q, "open", "open");
+}
+
+const legacyAliases = {
   feishu: ["feishu", "feishu-openclaw-plugin"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],
   wecom: ["wecom", "wecom-openclaw-plugin", "openclaw-wecom"],
   qqbot: ["qqbot", "openclaw-qqbot"]
 };
 
-for (const [channelId, ids] of Object.entries(candidates)) {
-  const channelConfigured = cfg.channels[channelId] && typeof cfg.channels[channelId] === "object";
-  if (!channelConfigured) continue;
-  const available = ids.filter((id) => availablePluginIds.has(id));
+const resolvePluginsForChannel = (channelId) => {
+  const ids = [];
+  for (const [pluginId, channels] of pluginChannelMap.entries()) {
+    if (pluginId === channelId || channels.includes(channelId)) ids.push(pluginId);
+  }
+  return ids;
+};
+
+for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
+  if (!channelCfg || typeof channelCfg !== "object") continue;
+  const available = resolvePluginsForChannel(channelId);
+  const aliases = legacyAliases[channelId] || [channelId];
   if (!available.length) {
     delete cfg.channels[channelId];
-    for (const id of ids) delete cfg.plugins.entries[id];
-    cfg.plugins.allow = cfg.plugins.allow.filter((id) => !ids.includes(id));
+    for (const id of aliases) delete cfg.plugins.entries[id];
+    cfg.plugins.allow = cfg.plugins.allow.filter((id) => !aliases.includes(id));
     changed = true;
     continue;
   }
 
-  // If channel config exists and plugin is available, keep plugin pinning in sync.
   const selectedId = available[0];
   cfg.plugins.entries[selectedId] = cfg.plugins.entries[selectedId] || {};
   if (cfg.plugins.entries[selectedId].enabled !== true) {
@@ -757,6 +795,18 @@ for (const [channelId, ids] of Object.entries(candidates)) {
     cfg.plugins.allow.push(selectedId);
     changed = true;
   }
+  // Clean stale legacy aliases if they differ from selected plugin id.
+  for (const id of aliases) {
+    if (id !== selectedId) {
+      if (cfg.plugins.entries[id]) {
+        delete cfg.plugins.entries[id];
+        changed = true;
+      }
+      const before = cfg.plugins.allow.length;
+      cfg.plugins.allow = cfg.plugins.allow.filter((x) => x !== id);
+      if (cfg.plugins.allow.length !== before) changed = true;
+    }
+  }
 }
 
 if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
@@ -764,6 +814,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 
     sync_provider_models_from_upstream
     sync_skills_to_workspace
+    validate_or_rollback_config
 }
 
 # Default exports before prestart recalculates runtime paths.
