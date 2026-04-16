@@ -5,7 +5,7 @@
         "desc": "{{{WORKSPACE_DIR_DESCRIPTION}}}",
         "subitems": [{
             "key": "wizard_workspace_dir",
-            "defaultValue": "/volume1/docker/openclaw/.openclaw",
+            "defaultValue": "/volume1/docker/openclaw",
             "desc": "{{{WORKSPACE_DIR_LABEL}}}",
             "validator": {
               "allowBlank": false

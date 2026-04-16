@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 18
+SPK_REV = 19
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Remove plugin-deny legacy ids from template/post-install writes to avoid strict config validation errors on fresh installs. 2. Only mutate openclaw.json during first-install wizard stage; restart no longer rewrites plugin/channel config. 3. On each restart, only perform non-blocking provider model-list sync and bundled-skill sync. 4. Keep browser default-only policy; add channel plugins/policies only when wizard credentials are provided. 5. Keep workspace/source priority and wipe recovery behavior."
+CHANGELOG = "1. Change default config/workspace base path to /volume1/docker/openclaw (from /volume1/docker/openclaw/.openclaw). 2. Remove plugin-deny legacy ids from template/post-install writes to avoid strict config validation errors on fresh installs. 3. Only mutate openclaw.json during first-install wizard stage; restart no longer rewrites plugin/channel config. 4. On each restart, only perform non-blocking provider model-list sync and bundled-skill sync. 5. Keep browser default-only policy and wizard-driven channel plugin activation behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT

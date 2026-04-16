@@ -1,7 +1,7 @@
 OPENCLAW_NODE="${SYNOPKG_PKGDEST}/bin/node"
 OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
-OPENCLAW_STATE_DIR_BASE="/volume1/docker/openclaw/.openclaw"
+OPENCLAW_STATE_DIR_BASE="/volume1/docker/openclaw"
 OPENCLAW_WORKSPACE_DEFAULT="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
@@ -254,7 +254,7 @@ service_postinst() {
         fi
 
         # Wizard defaults
-        export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw/.openclaw}"
+        export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw}"
         export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
         export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
         export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
@@ -273,7 +273,7 @@ const p = process.argv[1];
 const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
 const trim = (v) => (typeof v === "string" ? v.trim() : "");
 
-const workspace = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw/.openclaw";
+const workspace = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw";
 const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5";
 const baseUrl = trim(process.env.WIZARD_BASE_URL) || "http://127.0.0.1:8317/v1";
 const apiKey = trim(process.env.WIZARD_API_KEY) || "sk-V5zPkG6MJrIpxgmDw";
