@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 30
+SPK_REV = 31
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Bundle DingTalk plugin @soimy/dingtalk@3.5.3 and WeCom plugin @sunnoy/wecom@3.0.0. 2. Keep permission hardening and root drop-wrapper behavior. 3. Keep install-based plugin lifecycle to avoid missing transitive dependencies."
+CHANGELOG = "1. Fix channel auto-prune false negatives by scanning app/node_modules and workspace/node_modules in addition to extensions paths. 2. Bundle DingTalk plugin @soimy/dingtalk@3.5.3 and WeCom plugin @sunnoy/wecom@3.0.0. 3. Keep permission hardening and root drop-wrapper behavior."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT

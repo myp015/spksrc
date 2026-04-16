@@ -595,7 +595,9 @@ if (!cfg || typeof cfg !== "object") process.exit(0);
 const availablePluginIds = new Set(["browser"]);
 for (const root of [
   path.join(appDir, "dist", "extensions"),
-  path.join(stateDir, "extensions")
+  path.join(appDir, "node_modules"),
+  path.join(stateDir, "extensions"),
+  path.join(stateDir, "node_modules")
 ]) {
   for (const manifest of walkForPluginManifests(root, 6)) {
     const j = safeReadJson(manifest);
