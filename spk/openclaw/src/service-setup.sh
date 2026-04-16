@@ -431,9 +431,11 @@ if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   // Clean deprecated top-level fields to avoid strict-schema "additionalProperties" failures.
   delete cfg.channels.feishu.appId;
   delete cfg.channels.feishu.appSecret;
-  // Disable pairing gate by default: credentials are enough to communicate.
-  cfg.channels.feishu.dmPolicy = "open";
-  cfg.channels.feishu.groupPolicy = "open";
+  // Keep Feishu config minimal for strict schema compatibility on bundled builds.
+  delete cfg.channels.feishu.dmPolicy;
+  delete cfg.channels.feishu.groupPolicy;
+  delete cfg.channels.feishu.allowFrom;
+  delete cfg.channels.feishu.groupAllowFrom;
   enablePlugin(selectedPluginIds.feishu);
 }
 
