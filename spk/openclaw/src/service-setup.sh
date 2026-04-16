@@ -39,6 +39,17 @@ sync_skills_to_workspace() {
     fi
 }
 
+harden_extension_permissions() {
+    local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
+    [ -d "${ext_dir}" ] || return 0
+
+    # OpenClaw blocks plugins under world-writable paths. Normalize perms to avoid plugin quarantine.
+    find "${ext_dir}" -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find "${ext_dir}" -type f -exec chmod 664 {} \; 2>/dev/null || true
+    # Ensure no world-writable bits remain.
+    find "${ext_dir}" -perm -0002 -exec chmod o-w {} \; 2>/dev/null || true
+}
+
 sync_provider_models_from_upstream() {
     "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
@@ -507,6 +518,7 @@ EOF
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
     export HOME="${OPENCLAW_STATE_DIR}"
 
+    harden_extension_permissions
     sync_provider_models_from_upstream
     sync_skills_to_workspace
 }

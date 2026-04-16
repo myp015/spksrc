@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 24
+SPK_REV = 25
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Fix wizard channel enable behavior: when WeCom/Feishu/DingTalk/QQ credentials are provided, auto-enable the actually installed plugin id (manifest-detected) and write matching plugins.entries/plugins.allow. 2. Improve openclaw-spk wrapper compatibility for mis-forwarded config-file first arg and keep --config override support. 3. Add wrapper docs/examples for custom config paths. 4. Fix cross-arch CI when host npm is missing by bootstrapping host Node runtime for npm steps. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior with default base path /volume1/docker/openclaw."
+CHANGELOG = "1. Add prestart permission hardening for workspace/extensions: remove world-writable bits to prevent OpenClaw plugin quarantine (blocked plugin candidate mode=777). 2. Fix wizard channel enable behavior: when WeCom/Feishu/DingTalk/QQ credentials are provided, auto-enable the actually installed plugin id (manifest-detected) and write matching plugins.entries/plugins.allow. 3. Improve openclaw-spk wrapper compatibility for mis-forwarded config-file first arg and keep --config override support. 4. Add wrapper docs/examples for custom config paths and keep cross-arch CI host-node bootstrap for npm steps. 5. Keep first-install-only config mutation + restart-time model/skills sync behavior with default base path /volume1/docker/openclaw."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
