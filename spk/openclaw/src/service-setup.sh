@@ -40,7 +40,7 @@ sync_skills_to_workspace() {
 }
 
 sync_bundled_channel_plugins_to_extensions() {
-    local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
+    local ext_dir="${OPENCLAW_STATE_DIR}/.openclaw/extensions"
     mkdir -p "${ext_dir}"
 
     # Keep channel plugins discoverable under workspace/extensions while preserving
@@ -59,30 +59,21 @@ sync_bundled_channel_plugins_to_extensions() {
         local target_dir="${ext_dir}/${pkg_name}"
 
         rm -rf "${target_dir}"
-        ln -s "${src}" "${target_dir}"
+        mkdir -p "${target_dir}"
+        cp -a "${src}/." "${target_dir}/"
     done
 }
 
 harden_extension_permissions() {
-    local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
+    local ext_dir="${OPENCLAW_STATE_DIR}/.openclaw/extensions"
     [ -d "${ext_dir}" ] || return 0
 
-    # Align ownership with runtime config owner when possible (prevents root-installed plugin files from breaking runtime).
-    local owner_spec=""
-    if [ -f "${OPENCLAW_CONFIG_FILE}" ]; then
-        owner_spec="$(stat -c '%u:%g' "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true)"
-    fi
-    if [ -z "${owner_spec}" ]; then
-        owner_spec="$(stat -c '%u:%g' "${OPENCLAW_STATE_DIR}" 2>/dev/null || true)"
-    fi
-    if [ -n "${owner_spec}" ]; then
-        chown -R "${owner_spec}" "${ext_dir}" 2>/dev/null || true
-        [ -f "${OPENCLAW_CONFIG_FILE}" ] && chown "${owner_spec}" "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
-    fi
+    # OpenClaw plugin discovery expects trusted plugin directories. Keep bundled plugin copies root-owned.
+    chown -R root:root "${ext_dir}" 2>/dev/null || true
 
-    # OpenClaw blocks plugins under world-writable paths. Normalize perms to avoid plugin quarantine.
-    find "${ext_dir}" -type d -exec chmod 775 {} \; 2>/dev/null || true
-    find "${ext_dir}" -type f -exec chmod 664 {} \; 2>/dev/null || true
+    # OpenClaw blocks plugins under writable paths. Normalize perms conservatively.
+    find "${ext_dir}" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    find "${ext_dir}" -type f -exec chmod 644 {} \; 2>/dev/null || true
     # Ensure no world-writable bits remain.
     find "${ext_dir}" -perm -0002 -exec chmod o-w {} \; 2>/dev/null || true
     [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 664 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
@@ -597,6 +588,7 @@ const availablePluginIds = new Set(["browser"]);
 for (const root of [
   path.join(appDir, "dist", "extensions"),
   path.join(appDir, "node_modules"),
+  path.join(stateDir, ".openclaw", "extensions"),
   path.join(stateDir, "extensions"),
   path.join(stateDir, "node_modules")
 ]) {
