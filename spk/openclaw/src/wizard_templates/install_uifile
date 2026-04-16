@@ -66,18 +66,18 @@
         ]
       },{
         "type": "textfield",
-        "desc": "{{{DINGTALK_CLIENT_ID_DESCRIPTION}}}",
+        "desc": "{{{WECOM_BOT_ID_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_dingtalk_client_id",
-            "desc": "{{{DINGTALK_CLIENT_ID_LABEL}}}"
+            "key": "wizard_wecom_bot_id",
+            "desc": "{{{WECOM_BOT_ID_LABEL}}}"
           }
         ]
       },{
         "type": "password",
-        "desc": "{{{DINGTALK_CLIENT_SECRET_DESCRIPTION}}}",
+        "desc": "{{{WECOM_SECRET_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_dingtalk_client_secret",
-            "desc": "{{{DINGTALK_CLIENT_SECRET_LABEL}}}"
+            "key": "wizard_wecom_secret",
+            "desc": "{{{WECOM_SECRET_LABEL}}}"
           }
         ]
       },{
@@ -98,18 +98,18 @@
         ]
       },{
         "type": "textfield",
-        "desc": "{{{WECOM_BOT_ID_DESCRIPTION}}}",
+        "desc": "{{{DINGTALK_CLIENT_ID_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_wecom_bot_id",
-            "desc": "{{{WECOM_BOT_ID_LABEL}}}"
+            "key": "wizard_dingtalk_client_id",
+            "desc": "{{{DINGTALK_CLIENT_ID_LABEL}}}"
           }
         ]
       },{
         "type": "password",
-        "desc": "{{{WECOM_SECRET_DESCRIPTION}}}",
+        "desc": "{{{DINGTALK_CLIENT_SECRET_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_wecom_secret",
-            "desc": "{{{WECOM_SECRET_LABEL}}}"
+            "key": "wizard_dingtalk_client_secret",
+            "desc": "{{{DINGTALK_CLIENT_SECRET_LABEL}}}"
           }
         ]
       },{
