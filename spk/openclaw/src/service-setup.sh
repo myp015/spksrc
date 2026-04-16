@@ -329,6 +329,9 @@ if (feishuAppId && feishuAppSecret) {
   cfg.channels.feishu = cfg.channels.feishu || {};
   cfg.channels.feishu.appId = feishuAppId;
   cfg.channels.feishu.appSecret = feishuAppSecret;
+  // Disable pairing gate by default: credentials are enough to communicate.
+  cfg.channels.feishu.dmPolicy = "open";
+  cfg.channels.feishu.groupPolicy = "open";
 }
 
 const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
@@ -337,6 +340,9 @@ if (dingtalkClientId && dingtalkClientSecret) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
+  // Disable pairing gate by default: credentials are enough to communicate.
+  cfg.channels.dingtalk.dmPolicy = "open";
+  cfg.channels.dingtalk.groupPolicy = "open";
 }
 
 const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
@@ -522,12 +528,20 @@ cfg.plugins.allow = Array.from(new Set([
 
 const feishu = cfg.channels.feishu || {};
 if (selected.feishu && trim(feishu.appId) && trim(feishu.appSecret)) {
+  // Disable pairing gate by default after restart/reinstall.
+  cfg.channels.feishu = cfg.channels.feishu || {};
+  cfg.channels.feishu.dmPolicy = "open";
+  cfg.channels.feishu.groupPolicy = "open";
   cfg.plugins.entries[selected.feishu] = { enabled: true };
   if (!cfg.plugins.allow.includes(selected.feishu)) cfg.plugins.allow.push(selected.feishu);
 }
 
 const dingtalk = cfg.channels.dingtalk || {};
 if (selected.dingtalk && trim(dingtalk.clientId) && trim(dingtalk.clientSecret)) {
+  // Disable pairing gate by default after restart/reinstall.
+  cfg.channels.dingtalk = cfg.channels.dingtalk || {};
+  cfg.channels.dingtalk.dmPolicy = "open";
+  cfg.channels.dingtalk.groupPolicy = "open";
   cfg.plugins.entries[selected.dingtalk] = { enabled: true };
   if (!cfg.plugins.allow.includes(selected.dingtalk)) cfg.plugins.allow.push(selected.dingtalk);
 }
