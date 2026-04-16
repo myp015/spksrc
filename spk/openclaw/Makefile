@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = 1. Switch bundled DingTalk/WeCom channel plugins to @soimy/dingtalk@3.5.3 and @sunnoy/wecom@3.0.0 for better upstream compatibility. 2. Fix malformed CHANGELOG from previous commit. 3. Reset per-start plugin sync to keep install-based plugin lifecycle (avoid missing transitive deps from raw copy).
+CHANGELOG = "1. Bundle DingTalk plugin @soimy/dingtalk@3.5.3 and WeCom plugin @sunnoy/wecom@3.0.0. 2. Keep permission hardening and root drop-wrapper behavior. 3. Keep install-based plugin lifecycle to avoid missing transitive dependencies."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
