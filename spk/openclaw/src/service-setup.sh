@@ -647,6 +647,86 @@ if (cfg.channels.feishu && typeof cfg.channels.feishu === "object") {
   }
 }
 
+// Normalize DingTalk config to schema-compatible values.
+if (cfg.channels.dingtalk && typeof cfg.channels.dingtalk === "object") {
+  const d = cfg.channels.dingtalk;
+  const norm = (v) => typeof v === "string" ? v.trim() : "";
+  if (!norm(d.clientId) && norm(d.appId)) {
+    d.clientId = norm(d.appId);
+    changed = true;
+  }
+  if (!norm(d.clientSecret) && norm(d.appSecret)) {
+    d.clientSecret = norm(d.appSecret);
+    changed = true;
+  }
+  for (const k of ["appId", "appSecret"]) {
+    if (Object.prototype.hasOwnProperty.call(d, k)) {
+      delete d[k];
+      changed = true;
+    }
+  }
+  const allowedDm = new Set(["open", "pairing", "allowlist"]);
+  const allowedGroup = new Set(["open", "allowlist", "disabled"]);
+  const dm = norm(d.dmPolicy).toLowerCase();
+  const gp = norm(d.groupPolicy).toLowerCase();
+  const mappedDm = dm === "allowall" ? "open" : dm;
+  const mappedGp = gp === "allowall" ? "open" : gp;
+  if (!allowedDm.has(mappedDm)) {
+    d.dmPolicy = "open";
+    changed = true;
+  } else if (mappedDm !== d.dmPolicy) {
+    d.dmPolicy = mappedDm;
+    changed = true;
+  }
+  if (!allowedGroup.has(mappedGp)) {
+    d.groupPolicy = "open";
+    changed = true;
+  } else if (mappedGp !== d.groupPolicy) {
+    d.groupPolicy = mappedGp;
+    changed = true;
+  }
+}
+
+// Normalize WeCom config to schema-compatible values.
+if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
+  const w = cfg.channels.wecom;
+  const norm = (v) => typeof v === "string" ? v.trim() : "";
+  if (!norm(w.botId) && norm(w.clientId)) {
+    w.botId = norm(w.clientId);
+    changed = true;
+  }
+  if (!norm(w.secret) && norm(w.clientSecret)) {
+    w.secret = norm(w.clientSecret);
+    changed = true;
+  }
+  for (const k of ["clientId", "clientSecret", "appId", "appSecret"]) {
+    if (Object.prototype.hasOwnProperty.call(w, k)) {
+      delete w[k];
+      changed = true;
+    }
+  }
+  const allowedDm = new Set(["open", "pairing", "allowlist"]);
+  const allowedGroup = new Set(["open", "allowlist", "disabled"]);
+  const dm = norm(w.dmPolicy).toLowerCase();
+  const gp = norm(w.groupPolicy).toLowerCase();
+  const mappedDm = dm === "allowall" ? "open" : dm;
+  const mappedGp = gp === "allowall" ? "open" : gp;
+  if (!allowedDm.has(mappedDm)) {
+    w.dmPolicy = "open";
+    changed = true;
+  } else if (mappedDm !== w.dmPolicy) {
+    w.dmPolicy = mappedDm;
+    changed = true;
+  }
+  if (!allowedGroup.has(mappedGp)) {
+    w.groupPolicy = "open";
+    changed = true;
+  } else if (mappedGp !== w.groupPolicy) {
+    w.groupPolicy = mappedGp;
+    changed = true;
+  }
+}
+
 const candidates = {
   feishu: ["feishu", "feishu-openclaw-plugin"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],

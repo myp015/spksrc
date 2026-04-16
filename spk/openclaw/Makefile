@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 39
+SPK_REV = 40
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Auto-normalize Feishu config during prestart: migrate UI-written clientId/clientSecret (or top-level appId/appSecret) into channels.feishu.accounts.<defaultAccount> and strip unsupported keys to prevent strict additionalProperties reload failures. 2. Keep Feishu/QQ bootstrap schema-safe minimal writes and plugin pin auto-repair when channel config exists. 3. Keep bundled channel plugins under ~/.openclaw/extensions with root-owned strict perms, dependency-resolution symlink, and wizard order Feishu -> WeCom -> QQ -> DingTalk."
+CHANGELOG = "1. Extend prestart auto-normalization to WeCom/DingTalk as well as Feishu: migrate alias credential keys, sanitize unsupported keys, and coerce invalid policy values to schema-allowed enums to prevent config-reload crashes. 2. Keep Feishu/QQ bootstrap schema-safe minimal writes and plugin pin auto-repair when channel config exists. 3. Keep bundled channel plugins under ~/.openclaw/extensions with root-owned strict perms, dependency-resolution symlink, and wizard order Feishu -> WeCom -> QQ -> DingTalk."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
