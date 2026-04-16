@@ -100,18 +100,6 @@
   "channels": {},
   "plugins": {
     "entries": {
-      "feishu-openclaw-plugin": {
-        "enabled": false
-      },
-      "dingtalk": {
-        "enabled": false
-      },
-      "wecom-openclaw-plugin": {
-        "enabled": false
-      },
-      "openclaw-qqbot": {
-        "enabled": false
-      },
       "browser": {
         "enabled": true
       }
@@ -119,11 +107,7 @@
     "installs": {},
     "enabled": true,
     "allow": [
-      "browser",
-      "feishu-openclaw-plugin",
-      "dingtalk",
-      "wecom-openclaw-plugin",
-      "openclaw-qqbot"
+      "browser"
     ]
   },
   "memory": {

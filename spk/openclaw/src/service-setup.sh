@@ -306,37 +306,19 @@ if (!cfg.memory.qmd.paths.length) {
 cfg.channels = cfg.channels || {};
 cfg.plugins = cfg.plugins || {};
 cfg.plugins.entries = cfg.plugins.entries || {};
-
 cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
 
-const targetPluginIds = [
-  "feishu-openclaw-plugin",
-  "dingtalk",
-  "wecom-openclaw-plugin",
-  "openclaw-qqbot",
-  "browser"
-];
-const stalePluginIds = [
-  "feishu",
-  "wecom",
-  "qqbot",
-  "openclaw-lark",
-  "openclaw-dingtalk",
-  "openclaw-wecom"
-];
+cfg.channels = cfg.channels || {};
 
-for (const staleId of stalePluginIds) {
-  delete cfg.plugins.entries[staleId];
-}
-
-for (const id of targetPluginIds) {
-  cfg.plugins.entries[id] = cfg.plugins.entries[id] || {};
-  if (id !== "browser") cfg.plugins.entries[id].enabled = false;
-}
-cfg.plugins.entries.browser.enabled = true;
+const browserEntry = cfg.plugins.entries.browser || {};
+cfg.plugins.entries = {
+  browser: {
+    enabled: browserEntry.enabled !== false
+  }
+};
 cfg.plugins.allow = Array.from(new Set([
-  ...cfg.plugins.allow.filter((id) => !stalePluginIds.includes(id)),
-  ...targetPluginIds,
+  ...cfg.plugins.allow.filter((id) => id === "browser"),
+  "browser"
 ]));
 
 const feishuAppId = trim(process.env.WIZARD_FEISHU_APP_ID);
@@ -345,7 +327,6 @@ if (feishuAppId && feishuAppSecret) {
   cfg.channels.feishu = cfg.channels.feishu || {};
   cfg.channels.feishu.appId = feishuAppId;
   cfg.channels.feishu.appSecret = feishuAppSecret;
-  cfg.plugins.entries["feishu-openclaw-plugin"].enabled = true;
 }
 
 const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
@@ -354,7 +335,6 @@ if (dingtalkClientId && dingtalkClientSecret) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
-  cfg.plugins.entries["dingtalk"].enabled = true;
 }
 
 const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
@@ -363,7 +343,6 @@ if (qqbotAppId && qqbotClientSecret) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
-  cfg.plugins.entries["openclaw-qqbot"].enabled = true;
 }
 
 const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
@@ -372,7 +351,6 @@ if (wecomBotId && wecomSecret) {
   cfg.channels.wecom = cfg.channels.wecom || {};
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
-  cfg.plugins.entries["wecom-openclaw-plugin"].enabled = true;
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
@@ -521,33 +499,46 @@ for (const id of managedCandidateIds) {
   delete cfg.plugins.entries[id];
 }
 
-const ensureEntry = (id, enabled) => {
-  if (!id) return;
-  cfg.plugins.entries[id] = cfg.plugins.entries[id] || {};
-  cfg.plugins.entries[id].enabled = !!enabled;
-};
+const baseBrowser = cfg.plugins.entries.browser && typeof cfg.plugins.entries.browser === "object"
+  ? cfg.plugins.entries.browser
+  : {};
 
-ensureEntry(selected.browser, true);
-ensureEntry(selected.feishu, false);
-ensureEntry(selected.dingtalk, false);
-ensureEntry(selected.wecom, false);
-ensureEntry(selected.qqbot, false);
+cfg.plugins.entries = {};
+if (selected.browser) {
+  cfg.plugins.entries[selected.browser] = {
+    enabled: baseBrowser.enabled !== false
+  };
+}
+
+const allowKeep = cfg.plugins.allow.filter((id) => !managedCandidateIds.has(id) && available.has(id));
+cfg.plugins.allow = Array.from(new Set([
+  ...allowKeep,
+  ...(selected.browser ? [selected.browser] : [])
+]));
 
 const feishu = cfg.channels.feishu || {};
-if (selected.feishu && trim(feishu.appId) && trim(feishu.appSecret)) cfg.plugins.entries[selected.feishu].enabled = true;
+if (selected.feishu && trim(feishu.appId) && trim(feishu.appSecret)) {
+  cfg.plugins.entries[selected.feishu] = { enabled: true };
+  if (!cfg.plugins.allow.includes(selected.feishu)) cfg.plugins.allow.push(selected.feishu);
+}
 
 const dingtalk = cfg.channels.dingtalk || {};
-if (selected.dingtalk && trim(dingtalk.clientId) && trim(dingtalk.clientSecret)) cfg.plugins.entries[selected.dingtalk].enabled = true;
+if (selected.dingtalk && trim(dingtalk.clientId) && trim(dingtalk.clientSecret)) {
+  cfg.plugins.entries[selected.dingtalk] = { enabled: true };
+  if (!cfg.plugins.allow.includes(selected.dingtalk)) cfg.plugins.allow.push(selected.dingtalk);
+}
 
 const qqbot = cfg.channels.qqbot || {};
-if (selected.qqbot && trim(qqbot.appId) && trim(qqbot.clientSecret)) cfg.plugins.entries[selected.qqbot].enabled = true;
+if (selected.qqbot && trim(qqbot.appId) && trim(qqbot.clientSecret)) {
+  cfg.plugins.entries[selected.qqbot] = { enabled: true };
+  if (!cfg.plugins.allow.includes(selected.qqbot)) cfg.plugins.allow.push(selected.qqbot);
+}
 
 const wecom = cfg.channels.wecom || {};
-if (selected.wecom && trim(wecom.botId) && trim(wecom.secret)) cfg.plugins.entries[selected.wecom].enabled = true;
-
-const managedSelectedIds = [selected.browser, selected.feishu, selected.dingtalk, selected.wecom, selected.qqbot].filter(Boolean);
-const allowKeep = cfg.plugins.allow.filter((id) => !managedCandidateIds.has(id) && available.has(id));
-cfg.plugins.allow = Array.from(new Set([...allowKeep, ...managedSelectedIds]));
+if (selected.wecom && trim(wecom.botId) && trim(wecom.secret)) {
+  cfg.plugins.entries[selected.wecom] = { enabled: true };
+  if (!cfg.plugins.allow.includes(selected.wecom)) cfg.plugins.allow.push(selected.wecom);
+}
 
 const workspace = trim(cfg?.agents?.defaults?.workspace);
 

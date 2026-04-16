@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 11
+SPK_REV = 12
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Fix workspace migration: always prefer workspace openclaw.json when present, and keep bootstrap config synced bidirectionally. 2. Auto-recover workspace openclaw.json when workspace is wiped. 3. Sanitize managed plugin ids by detected installed plugins (avoid stale plugin-not-found warnings). 4. Keep runtime config/state/home aligned with workspace path and sync bundled skills/model lists on start. 5. Preserve wizard-driven channel enable behavior."
+CHANGELOG = "1. Remove channel plugin defaults from openclaw.json; keep only browser by default. 2. Only add/enable Feishu/DingTalk/WeCom/QQ plugin entries when wizard has corresponding credentials. 3. Auto-map plugin ids by installed manifests at prestart to avoid stale plugin-not-found warnings. 4. Keep workspace config/source priority and wipe recovery behavior stable. 5. Continue non-blocking provider model sync + bundled skills sync on start."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
