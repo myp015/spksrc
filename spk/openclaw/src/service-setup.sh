@@ -617,6 +617,36 @@ cfg.plugins.entries = cfg.plugins.entries || {};
 cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
 cfg.channels = cfg.channels || {};
 
+let changed = false;
+
+// Normalize Feishu credentials to schema-compatible location.
+// Some UI surfaces may write clientId/clientSecret (or top-level appId/appSecret)
+// which strict Feishu config schema rejects as additional properties.
+if (cfg.channels.feishu && typeof cfg.channels.feishu === "object") {
+  const f = cfg.channels.feishu;
+  const norm = (v) => typeof v === "string" ? v.trim() : "";
+  const migratedAppId = norm(f.clientId) || norm(f.appId);
+  const migratedAppSecret = norm(f.clientSecret) || norm(f.appSecret);
+  const defaultAccountId = norm(f.defaultAccount) || "default";
+  f.defaultAccount = defaultAccountId;
+  f.accounts = f.accounts && typeof f.accounts === "object" ? f.accounts : {};
+  f.accounts[defaultAccountId] = f.accounts[defaultAccountId] && typeof f.accounts[defaultAccountId] === "object" ? f.accounts[defaultAccountId] : {};
+  if (migratedAppId && !norm(f.accounts[defaultAccountId].appId)) {
+    f.accounts[defaultAccountId].appId = migratedAppId;
+    changed = true;
+  }
+  if (migratedAppSecret && !norm(f.accounts[defaultAccountId].appSecret)) {
+    f.accounts[defaultAccountId].appSecret = migratedAppSecret;
+    changed = true;
+  }
+  for (const k of ["clientId", "clientSecret", "appId", "appSecret", "allowFrom", "groupAllowFrom"]) {
+    if (Object.prototype.hasOwnProperty.call(f, k)) {
+      delete f[k];
+      changed = true;
+    }
+  }
+}
+
 const candidates = {
   feishu: ["feishu", "feishu-openclaw-plugin"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],
@@ -624,7 +654,6 @@ const candidates = {
   qqbot: ["qqbot", "openclaw-qqbot"]
 };
 
-let changed = false;
 for (const [channelId, ids] of Object.entries(candidates)) {
   const channelConfigured = cfg.channels[channelId] && typeof cfg.channels[channelId] === "object";
   if (!channelConfigured) continue;
