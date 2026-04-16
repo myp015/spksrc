@@ -1,10 +1,12 @@
 OPENCLAW_NODE="${SYNOPKG_PKGDEST}/bin/node"
 OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
-OPENCLAW_STATE_DIR_DEFAULT="/volume1/docker/openclaw/.openclaw"
-OPENCLAW_WORKSPACE_DEFAULT="${OPENCLAW_STATE_DIR_DEFAULT}"
+OPENCLAW_STATE_DIR_BASE="/volume1/docker/openclaw/.openclaw"
+OPENCLAW_WORKSPACE_DEFAULT="${OPENCLAW_STATE_DIR_BASE}"
+OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
-OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR_DEFAULT}/openclaw.json"
+OPENCLAW_STATE_DIR="${OPENCLAW_WORKSPACE_DEFAULT}"
+OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_DEFAULT_CONFIG="${SYNOPKG_PKGDEST}/var/openclaw.json"
 
@@ -239,13 +241,13 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 
 service_postinst() {
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
-        mkdir -p "${OPENCLAW_STATE_DIR_DEFAULT}"
+        mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
-        if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
+        if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
             if [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
-                cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE}"
+                cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
             else
-                cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+                cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
             fi
         fi
 
@@ -374,24 +376,38 @@ if (wecomBotId && wecomSecret) {
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-' "${OPENCLAW_CONFIG_FILE}"
+' "${OPENCLAW_CONFIG_FILE_BASE}"
+
+        OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${OPENCLAW_CONFIG_FILE_BASE}")"
+        if [ -z "${OPENCLAW_WORKSPACE}" ]; then
+            OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
+        fi
+        OPENCLAW_STATE_DIR="${OPENCLAW_WORKSPACE}"
+        OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
+
+        mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+        if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
+            cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
+        fi
 
         sync_skills_to_workspace
     fi
 }
 
 service_prestart() {
-    mkdir -p "${OPENCLAW_STATE_DIR_DEFAULT}"
+    mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
-    if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
+    # Ensure bootstrap config exists at fixed base path.
+    if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
         if [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
-            cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE}"
+            cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
         else
-            cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+            cp -f "${OPENCLAW_DEFAULT_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
         fi
     fi
 
-    OPENCLAW_WORKSPACE="$("${OPENCLAW_NODE}" -e '
+    # Read workspace from bootstrap config and sanitize plugin ids there.
+    OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e '
 const fs = require("fs");
 const p = process.argv[1];
 const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
@@ -431,34 +447,44 @@ cfg.plugins.allow = Array.from(new Set([
 cfg.channels = cfg.channels || {};
 const feishu = cfg.channels.feishu || {};
 if (trim(feishu.appId) && trim(feishu.appSecret)) cfg.plugins.entries["feishu-openclaw-plugin"].enabled = true;
-
 const dingtalk = cfg.channels.dingtalk || {};
 if (trim(dingtalk.clientId) && trim(dingtalk.clientSecret)) cfg.plugins.entries["dingtalk"].enabled = true;
-
 const qqbot = cfg.channels.qqbot || {};
 if (trim(qqbot.appId) && trim(qqbot.clientSecret)) cfg.plugins.entries["openclaw-qqbot"].enabled = true;
-
 const wecom = cfg.channels.wecom || {};
 if (trim(wecom.botId) && trim(wecom.secret)) cfg.plugins.entries["wecom-openclaw-plugin"].enabled = true;
 
 const workspace = trim(cfg?.agents?.defaults?.workspace) || "";
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 process.stdout.write(workspace);
-' "${OPENCLAW_CONFIG_FILE}")"
+' "${OPENCLAW_CONFIG_FILE_BASE}")"
 
     if [ -z "${OPENCLAW_WORKSPACE}" ]; then
         OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
     fi
 
-    mkdir -p "${OPENCLAW_WORKSPACE}"
+    OPENCLAW_STATE_DIR="${OPENCLAW_WORKSPACE}"
+    OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
+
+    mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+
+    # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from base config.
+    if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
+        cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
+    fi
+
+    export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
+    export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
+    export HOME="${OPENCLAW_STATE_DIR}"
+
     sync_provider_models_from_upstream
     sync_skills_to_workspace
 }
 
-# Keep config + runtime state/workspace under docker-style path.
-export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_DEFAULT}"
-export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-export HOME="${OPENCLAW_STATE_DIR_DEFAULT}"
+# Default exports before prestart recalculates runtime paths.
+export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
+export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
+export HOME="${OPENCLAW_STATE_DIR_BASE}"
 
 SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
 SVC_BACKGROUND=yes
