@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS = 2026.4.14
-SPK_REV = 37
+SPK_REV = 38
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Keep Feishu channel config schema-safe by writing credentials to channels.feishu.accounts.<defaultAccount> and removing deprecated/unsupported top-level fields and policy keys on bootstrap. 2. Keep bundled channel plugins under ~/.openclaw/extensions with root-owned strict perms and extensions/node_modules -> app/node_modules dependency resolution. 3. Auto-repair plugin pinning when channel config exists and plugin is discoverable; reorder install wizard channels to Feishu, WeCom, QQ, DingTalk."
+CHANGELOG = "1. Keep Feishu/QQ channel bootstrap config schema-safe by using minimal credential fields and removing policy keys that can trigger strict additionalProperties validation on bundled builds. 2. Keep bundled channel plugins under ~/.openclaw/extensions with root-owned strict perms and extensions/node_modules -> app/node_modules dependency resolution. 3. Auto-repair plugin pinning when channel config exists and plugin is discoverable; reorder install wizard channels to Feishu, WeCom, QQ, DingTalk."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT

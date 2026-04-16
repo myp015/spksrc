@@ -457,10 +457,10 @@ if (qqbotAppId && qqbotClientSecret && selectedPluginIds.qqbot) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
-  // Disable pairing gate by default: credentials are enough to communicate.
-  cfg.channels.qqbot.dmPolicy = "open";
-  cfg.channels.qqbot.groupPolicy = "open";
-  cfg.channels.qqbot.allowFrom = ["*"];
+  // Keep QQ config minimal for strict schema compatibility on bundled builds.
+  delete cfg.channels.qqbot.dmPolicy;
+  delete cfg.channels.qqbot.groupPolicy;
+  delete cfg.channels.qqbot.allowFrom;
   enablePlugin(selectedPluginIds.qqbot);
 }
 
