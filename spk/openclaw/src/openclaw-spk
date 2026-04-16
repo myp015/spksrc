@@ -12,6 +12,7 @@ if [ ! -x "$APP_NODE" ] || [ ! -f "$APP_ENTRY" ]; then
   exit 1
 fi
 
+ORIGINAL_ARGS="$*"
 CLI_CONFIG_PATH=""
 if [ "${1:-}" = "--config" ]; then
   if [ $# -lt 2 ]; then
@@ -101,6 +102,24 @@ if [ $# -eq 0 ]; then
   show_help
   exit 0
 fi
+
+# Backward compatibility: older wrappers may have forwarded --config path as first bare arg.
+# If first arg is a readable *.json file and second token looks like a CLI command, treat it as config path.
+case "$1" in
+  /*.json|*.json)
+    if [ -f "$1" ]; then
+      case "${2:-}" in
+        gateway|config|plugins|models|doctor|channels|status|logs|memory|sessions|tools|commands|help)
+          OPENCLAW_CONFIG_PATH="$1"
+          OPENCLAW_STATE_DIR="$(dirname "$1")"
+          HOME="$OPENCLAW_STATE_DIR"
+          export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
+          shift 1
+          ;;
+      esac
+    fi
+    ;;
+esac
 
 case "$1" in
   --help|-h|help)

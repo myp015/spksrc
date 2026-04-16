@@ -269,9 +269,52 @@ service_postinst() {
 
         "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
+const path = require("path");
 const p = process.argv[1];
+const appDir = process.argv[2] || "";
 const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
 const trim = (v) => (typeof v === "string" ? v.trim() : "");
+
+function safeReadJson(fp) {
+  try { return JSON.parse(fs.readFileSync(fp, "utf8")); } catch { return null; }
+}
+
+function walkForPluginManifests(root, maxDepth = 6) {
+  const out = [];
+  if (!root || !fs.existsSync(root)) return out;
+  const stack = [{ p: root, d: 0 }];
+  while (stack.length) {
+    const cur = stack.pop();
+    let ents = [];
+    try { ents = fs.readdirSync(cur.p, { withFileTypes: true }); } catch { continue; }
+    for (const ent of ents) {
+      const full = path.join(cur.p, ent.name);
+      if (ent.isFile() && ent.name === "openclaw.plugin.json") out.push(full);
+      if (ent.isDirectory() && cur.d < maxDepth) stack.push({ p: full, d: cur.d + 1 });
+    }
+  }
+  return out;
+}
+
+function collectAvailablePluginIds(appDirPath) {
+  const ids = new Set(["browser"]);
+  for (const root of [path.join(appDirPath, "dist", "extensions"), path.join(appDirPath, "node_modules")]) {
+    for (const manifest of walkForPluginManifests(root, 6)) {
+      const j = safeReadJson(manifest);
+      if (j && typeof j.id === "string" && j.id.trim()) ids.add(j.id.trim());
+    }
+  }
+  return ids;
+}
+
+const availablePluginIds = collectAvailablePluginIds(appDir);
+const pickPluginId = (candidates) => candidates.find((id) => availablePluginIds.has(id)) || null;
+const selectedPluginIds = {
+  feishu: pickPluginId(["feishu", "feishu-openclaw-plugin"]),
+  dingtalk: pickPluginId(["dingtalk", "openclaw-dingtalk"]),
+  wecom: pickPluginId(["wecom", "wecom-openclaw-plugin", "openclaw-wecom"]),
+  qqbot: pickPluginId(["qqbot", "openclaw-qqbot"])
+};
 
 const workspace = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw";
 const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5";
@@ -323,31 +366,40 @@ cfg.plugins.allow = Array.from(new Set([
   "browser"
 ]));
 
+const enablePlugin = (pluginId) => {
+  if (!pluginId) return;
+  cfg.plugins.entries[pluginId] = cfg.plugins.entries[pluginId] || {};
+  cfg.plugins.entries[pluginId].enabled = true;
+  if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
+};
+
 const feishuAppId = trim(process.env.WIZARD_FEISHU_APP_ID);
 const feishuAppSecret = trim(process.env.WIZARD_FEISHU_APP_SECRET);
-if (feishuAppId && feishuAppSecret) {
+if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   cfg.channels.feishu = cfg.channels.feishu || {};
   cfg.channels.feishu.appId = feishuAppId;
   cfg.channels.feishu.appSecret = feishuAppSecret;
   // Disable pairing gate by default: credentials are enough to communicate.
   cfg.channels.feishu.dmPolicy = "open";
   cfg.channels.feishu.groupPolicy = "open";
+  enablePlugin(selectedPluginIds.feishu);
 }
 
 const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
 const dingtalkClientSecret = trim(process.env.WIZARD_DINGTALK_CLIENT_SECRET);
-if (dingtalkClientId && dingtalkClientSecret) {
+if (dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
   // Disable pairing gate by default: credentials are enough to communicate.
   cfg.channels.dingtalk.dmPolicy = "open";
   cfg.channels.dingtalk.groupPolicy = "open";
+  enablePlugin(selectedPluginIds.dingtalk);
 }
 
 const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
 const qqbotClientSecret = trim(process.env.WIZARD_QQBOT_CLIENT_SECRET);
-if (qqbotAppId && qqbotClientSecret) {
+if (qqbotAppId && qqbotClientSecret && selectedPluginIds.qqbot) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
@@ -355,11 +407,12 @@ if (qqbotAppId && qqbotClientSecret) {
   cfg.channels.qqbot.dmPolicy = "open";
   cfg.channels.qqbot.groupPolicy = "open";
   cfg.channels.qqbot.allowFrom = ["*"];
+  enablePlugin(selectedPluginIds.qqbot);
 }
 
 const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
 const wecomSecret = trim(process.env.WIZARD_WECOM_SECRET);
-if (wecomBotId && wecomSecret) {
+if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
   cfg.channels.wecom = cfg.channels.wecom || {};
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
@@ -367,10 +420,11 @@ if (wecomBotId && wecomSecret) {
   cfg.channels.wecom.dmPolicy = "open";
   cfg.channels.wecom.groupPolicy = "open";
   cfg.channels.wecom.allowFrom = ["*"];
+  enablePlugin(selectedPluginIds.wecom);
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-' "${OPENCLAW_CONFIG_FILE_BASE}"
+' "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_APP_DIR}"
 
         OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${OPENCLAW_CONFIG_FILE_BASE}")"
         if [ -z "${OPENCLAW_WORKSPACE}" ]; then
