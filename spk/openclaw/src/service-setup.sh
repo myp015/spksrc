@@ -118,7 +118,14 @@ ensure_openclaw_spk_in_path() {
     local link_spk="/usr/local/bin/openclaw-spk"
 
     mkdir -p /usr/local/bin
-    [ -x "${target_cli}" ] && ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null || true
+
+    if [ -x "${target_cli}" ]; then
+        ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null || true
+    elif [ -x "${target_spk}" ]; then
+        # Fallback: always expose `openclaw` command even if target/bin/openclaw is absent.
+        ln -sfn "${target_spk}" "${link_cli}" 2>/dev/null || true
+    fi
+
     [ -x "${target_spk}" ] && ln -sfn "${target_spk}" "${link_spk}" 2>/dev/null || true
 }
 
