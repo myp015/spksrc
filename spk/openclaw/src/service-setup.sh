@@ -111,6 +111,27 @@ validate_or_rollback_config() {
     fi
 }
 
+ensure_session_store_dir() {
+    local agents_dir="${OPENCLAW_STATE_DIR}/agents"
+    local main_dir="${agents_dir}/main"
+    local sessions_dir="${main_dir}/sessions"
+
+    mkdir -p "${sessions_dir}" 2>/dev/null || true
+    chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
+
+    # Best-effort ownership alignment with package runtime identity.
+    local pkg_user=""
+    local pkg_group=""
+    if [ -r "/var/packages/openclaw/conf/privilege" ]; then
+        pkg_user="$(awk -F'"' '/"username"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
+        pkg_group="$(awk -F'"' '/"groupname"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
+    fi
+    [ -z "${pkg_group}" ] && pkg_group="synocommunity"
+    if [ -n "${pkg_user}" ] && id "${pkg_user}" >/dev/null 2>&1; then
+        chown -R "${pkg_user}:${pkg_group}" "${agents_dir}" 2>/dev/null || true
+    fi
+}
+
 ensure_openclaw_in_path() {
     local target_cli="/var/packages/openclaw/target/bin/openclaw"
     local link_cli="/usr/local/bin/openclaw"
@@ -542,6 +563,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+        ensure_session_store_dir
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
@@ -606,6 +628,7 @@ EOF
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
     mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+    ensure_session_store_dir
 
     # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
