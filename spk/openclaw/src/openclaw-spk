@@ -154,14 +154,15 @@ PY
 esac
 
 if [ -n "${PKG_USER}" ] && id "${PKG_USER}" >/dev/null 2>&1; then
-  # Keep -c before USER for broader su compatibility (BusyBox/util-linux).
-  exec su -s /bin/sh -c '
+  # DSM su variants differ in option parsing. Use sh -c with $0/$@ forwarding so
+  # CLI flags like --fix / --non-interactive are never interpreted as su options.
+  exec su -s /bin/sh "${PKG_USER}" -c '
     export OPENCLAW_CONFIG_PATH="$1"
     export OPENCLAW_STATE_DIR="$2"
     export HOME="$3"
     shift 3
-    exec "$@"
-  ' "${PKG_USER}" sh "$OPENCLAW_CONFIG_PATH" "$OPENCLAW_STATE_DIR" "$HOME" "$APP_NODE" "$APP_ENTRY" "$@"
+    exec "$0" "$@"
+  ' "$APP_NODE" "$OPENCLAW_CONFIG_PATH" "$OPENCLAW_STATE_DIR" "$HOME" "$APP_ENTRY" "$@"
 fi
 
 exec "$APP_NODE" "$APP_ENTRY" "$@"
