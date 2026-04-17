@@ -69,11 +69,8 @@ OPENCLAW_STATE_DIR="$WORKDIR"
 HOME="${OPENCLAW_HOME:-$WORKDIR}"
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
 
-# If running as root, transparently drop to package runtime user to avoid root-owned plugin files.
-PKG_USER=""
-if [ "$(id -u)" -eq 0 ] && [ -r "/var/packages/openclaw/conf/privilege" ]; then
-  PKG_USER="$(awk -F'"' '/"username"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
-fi
+# No automatic user switching here. If needed, run manually as sc-openclaw:
+#   su -s /bin/sh sc-openclaw
 
 show_help() {
   cat <<'EOF'
@@ -152,17 +149,5 @@ PY
     exit 0
     ;;
 esac
-
-if [ -n "${PKG_USER}" ] && id "${PKG_USER}" >/dev/null 2>&1; then
-  # DSM su variants differ in option parsing. Use sh -c with $0/$@ forwarding so
-  # CLI flags like --fix / --non-interactive are never interpreted as su options.
-  exec su -s /bin/sh "${PKG_USER}" -c '
-    export OPENCLAW_CONFIG_PATH="$1"
-    export OPENCLAW_STATE_DIR="$2"
-    export HOME="$3"
-    shift 3
-    exec "$0" "$@"
-  ' "$APP_NODE" "$OPENCLAW_CONFIG_PATH" "$OPENCLAW_STATE_DIR" "$HOME" "$APP_ENTRY" "$@"
-fi
 
 exec "$APP_NODE" "$APP_ENTRY" "$@"
