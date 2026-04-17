@@ -112,11 +112,14 @@ validate_or_rollback_config() {
 }
 
 ensure_openclaw_spk_in_path() {
-    local target="/var/packages/openclaw/target/bin/openclaw-spk"
-    local link="/usr/local/bin/openclaw-spk"
-    [ -x "${target}" ] || return 0
+    local target_cli="/var/packages/openclaw/target/bin/openclaw"
+    local target_spk="/var/packages/openclaw/target/bin/openclaw-spk"
+    local link_cli="/usr/local/bin/openclaw"
+    local link_spk="/usr/local/bin/openclaw-spk"
+
     mkdir -p /usr/local/bin
-    ln -sfn "${target}" "${link}" 2>/dev/null || true
+    [ -x "${target_cli}" ] && ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null || true
+    [ -x "${target_spk}" ] && ln -sfn "${target_spk}" "${link_spk}" 2>/dev/null || true
 }
 
 sync_provider_models_from_upstream() {
