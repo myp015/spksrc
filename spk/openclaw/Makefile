@@ -5,10 +5,11 @@ LATEST_OPENCLAW_VERS := $(shell git ls-remote --tags --refs https://github.com/o
 ifeq ($(strip $(LATEST_OPENCLAW_VERS)),)
 $(error Failed to resolve latest stable openclaw version from upstream tags)
 endif
-SPK_BUILD_ID := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
+# Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
+# Put custom build identity into numeric SPK_REV only.
 OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
-SPK_VERS := $(LATEST_OPENCLAW_VERS)-$(SPK_BUILD_ID)
-SPK_REV = 1
+SPK_VERS := $(LATEST_OPENCLAW_VERS)
+SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -22,7 +23,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings. 5. Default memory backend to builtin in SPK template and auto-fallback to builtin when qmd binary is unavailable. 6. Tighten runtime config permission to 600. 7. Provide /usr/local/bin/openclaw alias (keep openclaw-spk for compatibility). 8. Append numeric build suffix to SPK version (e.g. 2026.4.15-1234) for DSM/SPK compatibility."
+CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings. 5. Default memory backend to builtin in SPK template and auto-fallback to builtin when qmd binary is unavailable. 6. Tighten runtime config permission to 600. 7. Provide /usr/local/bin/openclaw alias (keep openclaw-spk for compatibility). 8. Keep SPK_VERS clean and use numeric SPK_REV as build identity for DSM/SPK format compatibility."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
