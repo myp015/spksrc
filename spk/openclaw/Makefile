@@ -5,9 +5,9 @@ LATEST_OPENCLAW_VERS := $(shell git ls-remote --tags --refs https://github.com/o
 ifeq ($(strip $(LATEST_OPENCLAW_VERS)),)
 $(error Failed to resolve latest stable openclaw version from upstream tags)
 endif
-SPK_COMMIT_SHORT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+SPK_BUILD_ID := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
-SPK_VERS := $(LATEST_OPENCLAW_VERS)-$(SPK_COMMIT_SHORT)
+SPK_VERS := $(LATEST_OPENCLAW_VERS)-$(SPK_BUILD_ID)
 SPK_REV = 1
 SPK_ICON = src/openclaw.png
 
@@ -22,7 +22,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings. 5. Default memory backend to builtin in SPK template and auto-fallback to builtin when qmd binary is unavailable. 6. Tighten runtime config permission to 600. 7. Provide /usr/local/bin/openclaw alias (keep openclaw-spk for compatibility). 8. Append spksrc commit suffix to SPK version (e.g. 2026.4.15-89e0864)."
+CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings. 5. Default memory backend to builtin in SPK template and auto-fallback to builtin when qmd binary is unavailable. 6. Tighten runtime config permission to 600. 7. Provide /usr/local/bin/openclaw alias (keep openclaw-spk for compatibility). 8. Append numeric build suffix to SPK version (e.g. 2026.4.15-1234) for DSM/SPK compatibility."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
