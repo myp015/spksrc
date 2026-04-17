@@ -154,13 +154,14 @@ PY
 esac
 
 if [ -n "${PKG_USER}" ] && id "${PKG_USER}" >/dev/null 2>&1; then
-  exec su -s /bin/sh "${PKG_USER}" -c '
+  # Keep -c before USER for broader su compatibility (BusyBox/util-linux).
+  exec su -s /bin/sh -c '
     export OPENCLAW_CONFIG_PATH="$1"
     export OPENCLAW_STATE_DIR="$2"
     export HOME="$3"
     shift 3
     exec "$@"
-  ' sh "$OPENCLAW_CONFIG_PATH" "$OPENCLAW_STATE_DIR" "$HOME" "$APP_NODE" "$APP_ENTRY" "$@"
+  ' "${PKG_USER}" sh "$OPENCLAW_CONFIG_PATH" "$OPENCLAW_STATE_DIR" "$HOME" "$APP_NODE" "$APP_ENTRY" "$@"
 fi
 
 exec "$APP_NODE" "$APP_ENTRY" "$@"
