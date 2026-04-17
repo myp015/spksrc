@@ -877,6 +877,11 @@ if (Array.isArray(cfg.agents.list)) {
   changed = true;
 }
 const knownAgentIds = new Set(agentsList.map((x) => x.id));
+if (!knownAgentIds.has("main")) {
+  agentsList.unshift({ id: "main", heartbeat: {} });
+  knownAgentIds.add("main");
+  changed = true;
+}
 try {
   const agentsRoot = path.join(stateDir, "agents");
   if (fs.existsSync(agentsRoot)) {
@@ -888,7 +893,7 @@ try {
     for (const agentId of diskAgentIds) {
       if (!knownAgentIds.has(agentId)) {
         knownAgentIds.add(agentId);
-        agentsList.push({ id: agentId });
+        agentsList.push({ id: agentId, heartbeat: {} });
         changed = true;
       }
     }
