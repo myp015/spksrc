@@ -119,8 +119,16 @@ ensure_openclaw_in_path() {
 
     if [ -x "${target_cli}" ]; then
         if ! ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null; then
-            echo "[openclaw] WARN: cannot create ${link_cli} (permission denied). Run as root:" 1>&2
-            echo "[openclaw]       ln -sfn ${target_cli} ${link_cli}" 1>&2
+            # Fallback for package runtime users: use passwordless sudo when available.
+            if command -v sudo >/dev/null 2>&1; then
+                if ! sudo -n ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null; then
+                    echo "[openclaw] WARN: cannot create ${link_cli}. Grant sudo NOPASSWD for ln, then rerun start/restart." 1>&2
+                    echo "[openclaw]       sudo -n ln -sfn ${target_cli} ${link_cli}" 1>&2
+                fi
+            else
+                echo "[openclaw] WARN: cannot create ${link_cli} (permission denied). Run as root:" 1>&2
+                echo "[openclaw]       ln -sfn ${target_cli} ${link_cli}" 1>&2
+            fi
         fi
     fi
 
