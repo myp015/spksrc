@@ -867,7 +867,7 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
   }
 }
 
-// Ensure agents.list contains on-disk agent dirs so doctor doesn't flag
+// Ensure agents.list contains on-disk agent dirs so doctor does not flag
 // newly created per-channel agent dirs as stale/orphaned.
 cfg.agents = cfg.agents && typeof cfg.agents === "object" ? cfg.agents : {};
 let agentsList = cfg.agents.list;
