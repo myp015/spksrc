@@ -1,5 +1,5 @@
 SPK_NAME = openclaw
-SPK_VERS = 2026.4.15
+SPK_VERS = $(shell curl -s https://api.github.com/repos/openclaw/openclaw/releases/latest | grep -o '"tag_name": "v[^"]*' | cut -d'"' -f4 | sed 's/v//')
 SPK_REV = 1
 SPK_ICON = src/openclaw.png
 
