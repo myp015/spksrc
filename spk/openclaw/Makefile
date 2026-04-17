@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
 SPK_VERS ?= 2026.4.15
-# Override with SPK_VERS= to auto-fetch latest
+# Override with SPK_VERS=<version> to pin a specific release
 SPK_REV = 1
 SPK_ICON = src/openclaw.png
 

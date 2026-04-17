@@ -1,6 +1,6 @@
 SPK_NAME = frpc
 SPK_VERS ?= 0.68.1
-# Override with SPK_VERS= to auto-fetch latest
+# Override with SPK_VERS=<version> to pin a specific release
 SPK_REV = 1
 SPK_ICON = src/frpc.png
 
