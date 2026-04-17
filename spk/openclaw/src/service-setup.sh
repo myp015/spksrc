@@ -120,18 +120,46 @@ ensure_session_store_dir() {
 
     mkdir -p "${sessions_dir}" 2>/dev/null || true
     chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
+}
 
-    # Best-effort ownership alignment with package runtime identity.
-    local pkg_user=""
-    local pkg_group=""
+get_pkg_identity() {
+    local out_user=""
+    local out_group=""
     if [ -r "/var/packages/openclaw/conf/privilege" ]; then
-        pkg_user="$(awk -F'"' '/"username"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
-        pkg_group="$(awk -F'"' '/"groupname"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
+        out_user="$(awk -F'"' '/"username"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
+        out_group="$(awk -F'"' '/"groupname"/{print $4; exit}' /var/packages/openclaw/conf/privilege 2>/dev/null || true)"
     fi
-    [ -z "${pkg_group}" ] && pkg_group="synocommunity"
+    [ -z "${out_group}" ] && out_group="synocommunity"
+    printf '%s:%s' "${out_user}" "${out_group}"
+}
+
+normalize_nested_state_artifacts() {
+    local nested_dir="${OPENCLAW_STATE_DIR}/.openclaw"
+    local nested_ws_state="${nested_dir}/workspace-state.json"
+    local ws_state="${OPENCLAW_STATE_DIR}/workspace-state.json"
+
+    if [ -f "${nested_ws_state}" ]; then
+        [ -f "${ws_state}" ] || mv -f "${nested_ws_state}" "${ws_state}" 2>/dev/null || true
+        rm -f "${nested_ws_state}" 2>/dev/null || true
+    fi
+    rmdir "${nested_dir}" 2>/dev/null || true
+}
+
+ensure_state_dir_permissions() {
+    [ -d "${OPENCLAW_STATE_DIR}" ] || return 0
+
+    local ident
+    ident="$(get_pkg_identity)"
+    local pkg_user="${ident%%:*}"
+    local pkg_group="${ident##*:}"
+
     if [ -n "${pkg_user}" ] && id "${pkg_user}" >/dev/null 2>&1; then
-        chown -R "${pkg_user}:${pkg_group}" "${agents_dir}" 2>/dev/null || true
+        chown -R "${pkg_user}:${pkg_group}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
     fi
+
+    find "${OPENCLAW_STATE_DIR}" -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find "${OPENCLAW_STATE_DIR}" -type f -exec chmod 664 {} \; 2>/dev/null || true
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
 }
 
 ensure_openclaw_in_path() {
@@ -567,6 +595,8 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
         ensure_session_store_dir
+        normalize_nested_state_artifacts
+        ensure_state_dir_permissions
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
@@ -632,6 +662,8 @@ EOF
 
     mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
     ensure_session_store_dir
+    normalize_nested_state_artifacts
+    ensure_state_dir_permissions
 
     # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
