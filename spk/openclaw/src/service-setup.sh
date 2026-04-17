@@ -11,7 +11,7 @@ OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 
 sync_skills_to_workspace() {
-    OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_WORKSPACE}/skills/_bundled"
+    OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_STATE_DIR}/skills/_bundled"
     mkdir -p "${OPENCLAW_BUNDLED_SKILLS_DIR}"
 
     # Sync built-in extension skills from OpenClaw core bundle.
@@ -41,7 +41,8 @@ sync_skills_to_workspace() {
 
 sync_bundled_channel_plugins_to_extensions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
-    local legacy_ext_dir="${OPENCLAW_STATE_DIR}/.openclaw/extensions"
+    # Legacy broken path from older SPK revisions: <workspace>/.openclaw/.openclaw/extensions
+    local legacy_ext_dir="${OPENCLAW_WORKSPACE}/.openclaw/.openclaw/extensions"
     mkdir -p "${ext_dir}"
 
     # Migrate legacy nested extension location to unified stateDir/extensions.
@@ -52,9 +53,9 @@ sync_bundled_channel_plugins_to_extensions() {
             rm -rf "${ext_dir}/${plugin_name}"
             cp -a "${legacy_plugin_dir}" "${ext_dir}/${plugin_name}"
         done
-        # Legacy location cleanup to avoid state split warnings.
-        rm -rf "${OPENCLAW_STATE_DIR}/.openclaw/extensions" 2>/dev/null || true
-        rmdir "${OPENCLAW_STATE_DIR}/.openclaw" 2>/dev/null || true
+        # Legacy location cleanup to avoid nested .openclaw paths.
+        rm -rf "${OPENCLAW_WORKSPACE}/.openclaw/.openclaw/extensions" 2>/dev/null || true
+        rmdir "${OPENCLAW_WORKSPACE}/.openclaw/.openclaw" 2>/dev/null || true
     fi
 
     # Let extensions resolve bundled runtime deps from app/node_modules.
