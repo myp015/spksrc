@@ -40,8 +40,22 @@ sync_skills_to_workspace() {
 }
 
 sync_bundled_channel_plugins_to_extensions() {
-    local ext_dir="${OPENCLAW_STATE_DIR}/.openclaw/extensions"
+    local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
+    local legacy_ext_dir="${OPENCLAW_STATE_DIR}/.openclaw/extensions"
     mkdir -p "${ext_dir}"
+
+    # Migrate legacy nested extension location to unified stateDir/extensions.
+    if [ -d "${legacy_ext_dir}" ]; then
+        find "${legacy_ext_dir}" -mindepth 1 -maxdepth 1 -type d | while read -r legacy_plugin_dir; do
+            plugin_name="$(basename "${legacy_plugin_dir}")"
+            [ "${plugin_name}" = "node_modules" ] && continue
+            rm -rf "${ext_dir}/${plugin_name}"
+            cp -a "${legacy_plugin_dir}" "${ext_dir}/${plugin_name}"
+        done
+        # Legacy location cleanup to avoid state split warnings.
+        rm -rf "${OPENCLAW_STATE_DIR}/.openclaw/extensions" 2>/dev/null || true
+        rmdir "${OPENCLAW_STATE_DIR}/.openclaw" 2>/dev/null || true
+    fi
 
     # Let extensions resolve bundled runtime deps from app/node_modules.
     rm -f "${ext_dir}/node_modules"
@@ -69,7 +83,7 @@ sync_bundled_channel_plugins_to_extensions() {
 }
 
 harden_extension_permissions() {
-    local ext_dir="${OPENCLAW_STATE_DIR}/.openclaw/extensions"
+    local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
     [ -d "${ext_dir}" ] || return 0
 
     # OpenClaw plugin discovery expects trusted plugin directories. Keep bundled plugin copies root-owned.
@@ -457,6 +471,7 @@ if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   // Disable pairing gate by default for wizard provisioned Feishu credentials.
   cfg.channels.feishu.dmPolicy = "open";
   cfg.channels.feishu.groupPolicy = "open";
+  cfg.channels.feishu.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.feishu);
 }
 
@@ -624,7 +639,6 @@ const pluginChannelMap = new Map();
 for (const root of [
   path.join(appDir, "dist", "extensions"),
   path.join(appDir, "node_modules"),
-  path.join(stateDir, ".openclaw", "extensions"),
   path.join(stateDir, "extensions"),
   path.join(stateDir, "node_modules")
 ]) {
@@ -696,6 +710,15 @@ if (cfg.channels.feishu && typeof cfg.channels.feishu === "object") {
     }
   }
   normalizePolicy(f, "open", "open");
+  const allowFrom = Array.isArray(f.allowFrom)
+    ? f.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
+    : [];
+  if (f.dmPolicy === "open") {
+    if (!allowFrom.includes("*")) {
+      f.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
+      changed = true;
+    }
+  }
 }
 
 // Normalize DingTalk config to schema-compatible values.
