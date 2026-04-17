@@ -541,6 +541,11 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
   cfg.channels.wecom.dmPolicy = "open";
   cfg.channels.wecom.groupPolicy = "open";
   cfg.channels.wecom.allowFrom = ["*"];
+  // SPK default: keep all channels on main agent to avoid dynamic agent/config churn.
+  cfg.channels.wecom.dynamicAgents = cfg.channels.wecom.dynamicAgents || {};
+  cfg.channels.wecom.dynamicAgents.enabled = false;
+  cfg.channels.wecom.dm = cfg.channels.wecom.dm || {};
+  cfg.channels.wecom.dm.createAgentOnFirstMessage = false;
   enablePlugin(selectedPluginIds.wecom);
 }
 
@@ -809,6 +814,24 @@ if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
     }
   }
   normalizePolicy(w, "open", "open");
+  const allowFrom = Array.isArray(w.allowFrom)
+    ? w.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
+    : [];
+  if (w.dmPolicy === "open" && !allowFrom.includes("*")) {
+    w.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
+    changed = true;
+  }
+  // SPK default: disable dynamic agent creation to keep config stable.
+  w.dynamicAgents = w.dynamicAgents && typeof w.dynamicAgents === "object" ? w.dynamicAgents : {};
+  if (w.dynamicAgents.enabled !== false) {
+    w.dynamicAgents.enabled = false;
+    changed = true;
+  }
+  w.dm = w.dm && typeof w.dm === "object" ? w.dm : {};
+  if (w.dm.createAgentOnFirstMessage !== false) {
+    w.dm.createAgentOnFirstMessage = false;
+    changed = true;
+  }
 }
 
 // Normalize memory backend for SPK defaults: prefer builtin when qmd binary is unavailable.
