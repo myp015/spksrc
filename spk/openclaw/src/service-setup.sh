@@ -94,7 +94,7 @@ harden_extension_permissions() {
     find "${ext_dir}" -type f -exec chmod 644 {} \; 2>/dev/null || true
     # Ensure no world-writable bits remain.
     find "${ext_dir}" -perm -0002 -exec chmod o-w {} \; 2>/dev/null || true
-    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 664 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
 }
 
 validate_or_rollback_config() {
@@ -761,6 +761,23 @@ if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
     }
   }
   normalizePolicy(w, "open", "open");
+}
+
+// Normalize memory backend for SPK defaults: prefer builtin when qmd binary is unavailable.
+cfg.memory = cfg.memory && typeof cfg.memory === "object" ? cfg.memory : {};
+const memBackend = (typeof cfg.memory.backend === "string" ? cfg.memory.backend.trim().toLowerCase() : "") || "builtin";
+if (!cfg.memory.backend) {
+  cfg.memory.backend = "builtin";
+  changed = true;
+}
+if (memBackend === "qmd") {
+  const qmdCmd = cfg.memory?.qmd && typeof cfg.memory.qmd.command === "string" && cfg.memory.qmd.command.trim()
+    ? cfg.memory.qmd.command.trim()
+    : "/usr/local/bin/qmd";
+  if (qmdCmd.startsWith("/") && !fs.existsSync(qmdCmd)) {
+    cfg.memory.backend = "builtin";
+    changed = true;
+  }
 }
 
 // Normalize QQBot aliases + policy enums for schema safety.

@@ -1,6 +1,12 @@
 name: Build OpenClaw SPK (x64-7.2)
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'spk/openclaw/**'
+      - '.github/workflows/build-openclaw-x64.yml'
   workflow_dispatch:
     inputs:
       ref:
