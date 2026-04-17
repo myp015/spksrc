@@ -867,16 +867,27 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
   }
 }
 
-// Ensure agents.list (array schema) contains on-disk agent dirs so doctor does not flag
+// Ensure agents.list (object-array schema) contains on-disk agent dirs so doctor does not flag
 // newly created per-channel agent dirs as stale/orphaned.
 cfg.agents = cfg.agents && typeof cfg.agents === "object" ? cfg.agents : {};
-let agentsList = Array.isArray(cfg.agents.list)
-  ? cfg.agents.list.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim())
-  : [];
-if (!Array.isArray(cfg.agents.list)) {
+let agentsList = [];
+if (Array.isArray(cfg.agents.list)) {
+  for (const item of cfg.agents.list) {
+    if (typeof item === "string" && item.trim()) {
+      agentsList.push({ id: item.trim() });
+      changed = true;
+      continue;
+    }
+    if (item && typeof item === "object" && typeof item.id === "string" && item.id.trim()) {
+      const next = { ...item, id: item.id.trim() };
+      agentsList.push(next);
+      if (next.id !== item.id) changed = true;
+    }
+  }
+} else if (cfg.agents.list != null) {
   changed = true;
 }
-const knownAgentIds = new Set(agentsList);
+const knownAgentIds = new Set(agentsList.map((x) => x.id));
 try {
   const agentsRoot = path.join(stateDir, "agents");
   if (fs.existsSync(agentsRoot)) {
@@ -888,7 +899,7 @@ try {
     for (const agentId of diskAgentIds) {
       if (!knownAgentIds.has(agentId)) {
         knownAgentIds.add(agentId);
-        agentsList.push(agentId);
+        agentsList.push({ id: agentId });
         changed = true;
       }
     }
