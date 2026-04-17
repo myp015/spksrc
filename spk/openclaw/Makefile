@@ -20,7 +20,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Prebundle all doctor-reported bundled plugin runtime dependencies."
+CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -71,38 +71,12 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(SPK_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(SPK_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
 		@soimy/dingtalk@3.5.3 \
 		@sunnoy/wecom@3.0.0 \
-		@tencent-connect/openclaw-qqbot@1.7.1 \
-		@aws-sdk/client-s3@3.1028.0 \
-		@aws-sdk/s3-request-presigner@3.1028.0 \
-		@azure/identity@^4.13.1 \
-		@clawdbot/lobster@2026.4.6 \
-		@line/bot-sdk@^11.0.0 \
-		@microsoft/teams.api@2.0.7 \
-		@microsoft/teams.apps@2.0.7 \
-		@opentelemetry/api@^1.9.1 \
-		@opentelemetry/api-logs@^0.214.0 \
-		@opentelemetry/exporter-logs-otlp-proto@^0.214.0 \
-		@opentelemetry/exporter-metrics-otlp-proto@^0.214.0 \
-		@opentelemetry/exporter-trace-otlp-proto@^0.214.0 \
-		@opentelemetry/resources@^2.6.1 \
-		@opentelemetry/sdk-logs@^0.214.0 \
-		@opentelemetry/sdk-metrics@^2.6.1 \
-		@opentelemetry/sdk-node@^0.214.0 \
-		@opentelemetry/sdk-trace-base@^2.6.1 \
-		@opentelemetry/semantic-conventions@^1.40.0 \
-		@tloncorp/tlon-skill@0.3.5 \
-		@twurple/api@^8.1.3 \
-		@twurple/auth@^8.1.3 \
-		@twurple/chat@^8.1.3 \
-		@urbit/aura@^3.0.0 \
-		acpx@0.5.3 \
-		jwks-rsa@^4.0.1 \
-		openshell@0.1.0 \
-		zca-js@2.1.2
+		@tencent-connect/openclaw-qqbot@1.7.1
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
