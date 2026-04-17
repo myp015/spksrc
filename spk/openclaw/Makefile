@@ -1,6 +1,11 @@
 SPK_NAME = openclaw
-SPK_VERS ?= 2026.4.15
-# Override with SPK_VERS=<version> to pin a specific release
+# Always resolve latest stable upstream tag (vX.Y.Z...) at build time.
+# If resolution fails, stop immediately (workflow should fail fast).
+LATEST_OPENCLAW_VERS := $(shell git ls-remote --tags --refs https://github.com/openclaw/openclaw.git 'v*' | awk -F/ '{print $$3}' | grep -E '^v[0-9]+(\.[0-9]+)*$$' | sed 's/^v//' | sort -V | tail -1)
+ifeq ($(strip $(LATEST_OPENCLAW_VERS)),)
+$(error Failed to resolve latest stable openclaw version from upstream tags)
+endif
+SPK_VERS := $(LATEST_OPENCLAW_VERS)
 SPK_REV = 1
 SPK_ICON = src/openclaw.png
 
@@ -15,7 +20,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Update to v2026.4.15."
+CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -63,8 +68,8 @@ openclaw_prepare_bundle:
 		cd $(WORK_DIR) && \
 		curl -fsSL -o node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz && \
 		tar -xJf node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz -C $(WORK_DIR)/build-node-runtime --strip-components=1
-	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@2026.4.15 --silent
-	@tar -xzf $(WORK_DIR)/openclaw-2026.4.15.tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
+	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(SPK_VERS) --silent
+	@tar -xzf $(WORK_DIR)/openclaw-$(SPK_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
