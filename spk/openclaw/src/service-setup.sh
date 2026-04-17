@@ -951,6 +951,46 @@ for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId))
 }
 cfg.agents.list = agentsList;
 
+// Enforce per-channel fixed routing bindings (prevents cross-channel session bleed).
+cfg.bindings = Array.isArray(cfg.bindings) ? cfg.bindings : [];
+const upsertRouteBinding = (channelId, agentId) => {
+  if (!channelId || !agentId) return;
+  const idx = cfg.bindings.findIndex((b) => {
+    if (!b || typeof b !== "object") return false;
+    const type = typeof b.type === "string" ? b.type.trim().toLowerCase() : "route";
+    const matchChannel = b.match && typeof b.match === "object" && typeof b.match.channel === "string"
+      ? b.match.channel.trim().toLowerCase()
+      : "";
+    const hasAccountScope = Boolean(b.match && typeof b.match === "object" && b.match.accountId);
+    return type === "route" && matchChannel === channelId && !hasAccountScope;
+  });
+  if (idx >= 0) {
+    const existing = cfg.bindings[idx] || {};
+    if (existing.agentId !== agentId) {
+      existing.agentId = agentId;
+      changed = true;
+    }
+    if (!existing.match || typeof existing.match !== "object") {
+      existing.match = { channel: channelId };
+      changed = true;
+    }
+    if (existing.type !== "route") {
+      existing.type = "route";
+      changed = true;
+    }
+    cfg.bindings[idx] = existing;
+    return;
+  }
+  cfg.bindings.push({ type: "route", match: { channel: channelId }, agentId });
+  changed = true;
+};
+for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
+  const ch = cfg.channels[channelId];
+  if (!ch || typeof ch !== "object") continue;
+  const agentId = (typeof ch.agentId === "string" ? ch.agentId.trim() : "") || defaultAgentId;
+  upsertRouteBinding(channelId, agentId);
+}
+
 const legacyAliases = {
   feishu: ["feishu", "feishu-openclaw-plugin"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],
