@@ -1,7 +1,7 @@
 CONFIGURATION_TITLE: "OpenClaw 安装参数"
 
-WORKSPACE_DIR_DESCRIPTION: "OpenClaw 工作目录（默认 /volume1/docker/openclaw，将同步到 openclaw.json 的 agents.defaults.workspace 与 memory.qmd.paths[0].path）"
-WORKSPACE_DIR_LABEL: "工作目录"
+WORKSPACE_DIR_DESCRIPTION: "OpenClaw 用户文件夹（默认 /volume1/docker/openclaw。将同步到 agents.defaults.workspace；实际运行状态与配置位于该目录下的 .openclaw/）"
+WORKSPACE_DIR_LABEL: "用户文件夹"
 
 MODEL_ID_DESCRIPTION: "默认模型 ID（同步到 models.providers.default.models[0].id/name 与 agents.defaults.model.primary/imageModel.primary）"
 MODEL_ID_LABEL: "MODEL_ID"
@@ -37,4 +37,4 @@ WECOM_SECRET_DESCRIPTION: "企业微信 Secret（留空则不启用 wecom 插件
 WECOM_SECRET_LABEL: "WECOM_SECRET"
 
 INSTALLATION_NOTES_TITLE: "<b>说明</b><br/>"
-INSTALLATION_NOTES_TEXT1: "首次安装时填写上述参数；安装器会将值写入 /volume1/docker/openclaw/openclaw.json（若检测到旧版 /var/packages/openclaw/var/openclaw.json 会自动迁移）。"
+INSTALLATION_NOTES_TEXT1: "首次安装时填写上述参数；安装器会将值写入 <用户文件夹>/.openclaw/openclaw.json（若检测到旧版 /var/packages/openclaw/var/openclaw.json 或 <用户文件夹>/openclaw.json 会自动迁移）。"

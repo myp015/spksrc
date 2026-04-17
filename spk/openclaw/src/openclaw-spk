@@ -2,8 +2,10 @@
 set -eu
 
 BASE_DEFAULT="/volume1/docker/openclaw"
-BASE_CFG="${BASE_DEFAULT}/openclaw.json"
+BASE_STATE_DIR="${BASE_DEFAULT}/.openclaw"
+BASE_CFG="${BASE_STATE_DIR}/openclaw.json"
 LEGACY_CFG="/var/packages/openclaw/var/openclaw.json"
+LEGACY_WORKSPACE_CFG="${BASE_DEFAULT}/openclaw.json"
 APP_NODE="/volume1/@appstore/openclaw/bin/node"
 APP_ENTRY="/volume1/@appstore/openclaw/app/openclaw/dist/index.js"
 
@@ -55,11 +57,17 @@ PY
   fi
 fi
 
+WORKDIR="${OPENCLAW_STATE_DIR:-$WORKSPACE_DIR/.openclaw}"
 if [ -z "${CONFIG_PATH:-}" ]; then
-  CONFIG_PATH="$WORKSPACE_DIR/openclaw.json"
+  CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
 
-WORKDIR="${OPENCLAW_STATE_DIR:-$WORKSPACE_DIR/.openclaw}"
+# Migrate legacy workspace/openclaw.json into workspace/.openclaw/openclaw.json once.
+if [ ! -f "$CONFIG_PATH" ] && [ -f "$LEGACY_WORKSPACE_CFG" ]; then
+  mkdir -p "$(dirname "$CONFIG_PATH")"
+  cp -f "$LEGACY_WORKSPACE_CFG" "$CONFIG_PATH"
+fi
+
 if [ ! -f "$CONFIG_PATH" ] && [ -f "$BASE_CFG" ]; then
   mkdir -p "$(dirname "$CONFIG_PATH")"
   cp -f "$BASE_CFG" "$CONFIG_PATH"
@@ -79,7 +87,8 @@ show_help() {
 openclaw - OpenClaw Synology SPK wrapper
 
 What it does:
-- Auto-locates SPK config/workspace (default: /volume1/docker/openclaw)
+- Auto-locates SPK user folder (default: /volume1/docker/openclaw)
+- Runtime state/config default to /volume1/docker/openclaw/.openclaw
 - Respects explicit path overrides (--config /path or OPENCLAW_CONFIG_PATH)
 - Exports OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR / HOME
 - Forwards args to OpenClaw CLI entry inside SPK
