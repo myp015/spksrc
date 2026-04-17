@@ -502,6 +502,7 @@ if (dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
   // Disable pairing gate by default: credentials are enough to communicate.
   cfg.channels.dingtalk.dmPolicy = "open";
   cfg.channels.dingtalk.groupPolicy = "open";
+  cfg.channels.dingtalk.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.dingtalk);
 }
 
@@ -511,10 +512,9 @@ if (qqbotAppId && qqbotClientSecret && selectedPluginIds.qqbot) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
-  // Keep QQ config minimal for strict schema compatibility on bundled builds.
-  delete cfg.channels.qqbot.dmPolicy;
-  delete cfg.channels.qqbot.groupPolicy;
-  delete cfg.channels.qqbot.allowFrom;
+  cfg.channels.qqbot.dmPolicy = "open";
+  cfg.channels.qqbot.groupPolicy = "open";
+  cfg.channels.qqbot.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.qqbot);
 }
 
@@ -758,6 +758,13 @@ if (cfg.channels.dingtalk && typeof cfg.channels.dingtalk === "object") {
     }
   }
   normalizePolicy(d, "open", "open");
+  const allowFrom = Array.isArray(d.allowFrom)
+    ? d.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
+    : [];
+  if (d.dmPolicy === "open" && !allowFrom.includes("*")) {
+    d.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
+    changed = true;
+  }
 }
 
 // Normalize WeCom config to schema-compatible values.
@@ -817,6 +824,13 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
     }
   }
   normalizePolicy(q, "open", "open");
+  const allowFrom = Array.isArray(q.allowFrom)
+    ? q.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
+    : [];
+  if (q.dmPolicy === "open" && !allowFrom.includes("*")) {
+    q.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
+    changed = true;
+  }
 }
 
 const legacyAliases = {
