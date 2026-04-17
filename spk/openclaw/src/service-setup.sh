@@ -960,6 +960,9 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
 export HOME="${OPENCLAW_WORKSPACE_DEFAULT}"
+# Keep restarts in-process under Synology service manager to avoid PID drift
+# (full-process respawn can make synopkg status misreport as stopped).
+export OPENCLAW_NO_RESPAWN=1
 
 SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
 SVC_BACKGROUND=yes
