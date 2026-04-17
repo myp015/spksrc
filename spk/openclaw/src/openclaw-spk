@@ -34,10 +34,10 @@ elif [ -f "$LEGACY_CFG" ]; then
   CONFIG_PATH="$LEGACY_CFG"
 fi
 
-WORKDIR="${OPENCLAW_STATE_DIR:-$BASE_DEFAULT}"
+WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$BASE_DEFAULT}"
 if [ -n "$CONFIG_PATH" ]; then
-  # Prefer explicit state/home when provided; otherwise derive from config.workspace.
-  if [ -z "${OPENCLAW_STATE_DIR:-}" ]; then
+  # Prefer explicit workspace when provided; otherwise derive from config.workspace.
+  if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
     W=$(python3 - "$CONFIG_PATH" <<'PY'
 import json,sys
 p=sys.argv[1]
@@ -50,20 +50,22 @@ except Exception:
 PY
 )
     if [ -n "$W" ]; then
-      WORKDIR="$W"
+      WORKSPACE_DIR="$W"
     fi
   fi
 fi
 
 if [ -z "${CONFIG_PATH:-}" ]; then
-  CONFIG_PATH="$WORKDIR/openclaw.json"
+  CONFIG_PATH="$WORKSPACE_DIR/openclaw.json"
 fi
 
+WORKDIR="${OPENCLAW_STATE_DIR:-$WORKSPACE_DIR/.openclaw}"
 if [ ! -f "$CONFIG_PATH" ] && [ -f "$BASE_CFG" ]; then
   mkdir -p "$(dirname "$CONFIG_PATH")"
   cp -f "$BASE_CFG" "$CONFIG_PATH"
 fi
 
+mkdir -p "$WORKDIR"
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
 HOME="${OPENCLAW_HOME:-$WORKDIR}"
@@ -114,9 +116,11 @@ case "$1" in
       case "${2:-}" in
         gateway|config|plugins|models|doctor|channels|status|logs|memory|sessions|tools|commands|help)
           OPENCLAW_CONFIG_PATH="$1"
-          OPENCLAW_STATE_DIR="$(dirname "$1")"
+          OPENCLAW_WORKSPACE_DIR="$(dirname "$1")"
+          OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"
+          mkdir -p "$OPENCLAW_STATE_DIR"
           HOME="$OPENCLAW_STATE_DIR"
-          export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
+          export OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_STATE_DIR HOME
           shift 1
           ;;
       esac
