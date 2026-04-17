@@ -867,6 +867,39 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
   }
 }
 
+// Ensure agents.list contains on-disk agent dirs so doctor doesn't flag
+// newly created per-channel agent dirs as stale/orphaned.
+cfg.agents = cfg.agents && typeof cfg.agents === "object" ? cfg.agents : {};
+let agentsList = cfg.agents.list;
+if (Array.isArray(agentsList)) {
+  const next = {};
+  for (const id of agentsList) {
+    if (typeof id === "string" && id.trim()) next[id.trim()] = {};
+  }
+  agentsList = next;
+  changed = true;
+}
+if (!agentsList || typeof agentsList !== "object") {
+  agentsList = {};
+  changed = true;
+}
+try {
+  const agentsRoot = path.join(stateDir, "agents");
+  if (fs.existsSync(agentsRoot)) {
+    const diskAgentIds = fs.readdirSync(agentsRoot, { withFileTypes: true })
+      .filter((ent) => ent.isDirectory())
+      .map((ent) => ent.name)
+      .filter((id) => typeof id === "string" && id.trim());
+    for (const agentId of diskAgentIds) {
+      if (!(agentId in agentsList)) {
+        agentsList[agentId] = {};
+        changed = true;
+      }
+    }
+  }
+} catch {}
+cfg.agents.list = agentsList;
+
 const legacyAliases = {
   feishu: ["feishu", "feishu-openclaw-plugin"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],
