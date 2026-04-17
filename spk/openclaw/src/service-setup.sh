@@ -115,8 +115,14 @@ ensure_openclaw_in_path() {
     local target_cli="/var/packages/openclaw/target/bin/openclaw"
     local link_cli="/usr/local/bin/openclaw"
 
-    mkdir -p /usr/local/bin
-    [ -x "${target_cli}" ] && ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null || true
+    mkdir -p /usr/local/bin 2>/dev/null || true
+
+    if [ -x "${target_cli}" ]; then
+        if ! ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null; then
+            echo "[openclaw] WARN: cannot create ${link_cli} (permission denied). Run as root:" 1>&2
+            echo "[openclaw]       ln -sfn ${target_cli} ${link_cli}" 1>&2
+        fi
+    fi
 
     # Drop deprecated compatibility command.
     rm -f /usr/local/bin/openclaw-spk 2>/dev/null || true
