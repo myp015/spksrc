@@ -57,7 +57,11 @@ PY
   fi
 fi
 
-WORKDIR="${OPENCLAW_STATE_DIR:-$WORKSPACE_DIR/.openclaw}"
+case "$WORKSPACE_DIR" in
+  */.openclaw) WORKDIR_DEFAULT="$WORKSPACE_DIR" ;;
+  *) WORKDIR_DEFAULT="$WORKSPACE_DIR/.openclaw" ;;
+esac
+WORKDIR="${OPENCLAW_STATE_DIR:-$WORKDIR_DEFAULT}"
 if [ -z "${CONFIG_PATH:-}" ]; then
   CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
@@ -76,7 +80,11 @@ fi
 mkdir -p "$WORKDIR"
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
-HOME="${OPENCLAW_HOME:-$WORKSPACE_DIR}"
+case "$WORKSPACE_DIR" in
+  */.openclaw) HOME_DEFAULT="$(dirname "$WORKSPACE_DIR")" ;;
+  *) HOME_DEFAULT="$WORKSPACE_DIR" ;;
+esac
+HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
 
 # No automatic user switching here. If needed, run manually as sc-openclaw:
@@ -126,9 +134,12 @@ case "$1" in
         gateway|config|plugins|models|doctor|channels|status|logs|memory|sessions|tools|commands|help)
           OPENCLAW_CONFIG_PATH="$1"
           OPENCLAW_WORKSPACE_DIR="$(dirname "$1")"
-          OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"
+          case "$OPENCLAW_WORKSPACE_DIR" in
+            */.openclaw) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR"; HOME_DIR="$(dirname "$OPENCLAW_WORKSPACE_DIR")" ;;
+            *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"; HOME_DIR="$OPENCLAW_WORKSPACE_DIR" ;;
+          esac
           mkdir -p "$OPENCLAW_STATE_DIR"
-          HOME="$OPENCLAW_WORKSPACE_DIR"
+          HOME="$HOME_DIR"
           export OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_STATE_DIR HOME
           shift 1
           ;;

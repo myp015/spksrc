@@ -10,6 +10,22 @@ OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 
+resolve_state_dir_from_workspace() {
+    local ws="$1"
+    case "${ws}" in
+        */.openclaw) echo "${ws}" ;;
+        *) echo "${ws}/.openclaw" ;;
+    esac
+}
+
+resolve_home_dir_from_workspace() {
+    local ws="$1"
+    case "${ws}" in
+        */.openclaw) dirname "${ws}" ;;
+        *) echo "${ws}" ;;
+    esac
+}
+
 sync_skills_to_workspace() {
     OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_STATE_DIR}/skills/_bundled"
     mkdir -p "${OPENCLAW_BUNDLED_SKILLS_DIR}"
@@ -422,7 +438,8 @@ const selectedPluginIds = {
   qqbot: pickPluginId(["qqbot", "openclaw-qqbot"])
 };
 
-const workspace = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw";
+const workspaceHome = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw";
+const workspace = workspaceHome.endsWith("/.openclaw") ? workspaceHome : `${workspaceHome}/.openclaw`;
 const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5";
 const baseUrl = trim(process.env.WIZARD_BASE_URL) || "http://127.0.0.1:8317/v1";
 const apiKey = trim(process.env.WIZARD_API_KEY) || "sk-V5zPkG6MJrIpxgmDw";
@@ -545,7 +562,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         if [ -z "${OPENCLAW_WORKSPACE}" ]; then
             OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
         fi
-        OPENCLAW_STATE_DIR="${OPENCLAW_WORKSPACE}/.openclaw"
+        OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
         OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
@@ -610,7 +627,7 @@ EOF
     fi
 
     OPENCLAW_WORKSPACE="${selected_workspace}"
-    OPENCLAW_STATE_DIR="${OPENCLAW_WORKSPACE}/.openclaw"
+    OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
     mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
@@ -623,7 +640,7 @@ EOF
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-    export HOME="${OPENCLAW_WORKSPACE}"
+    export HOME="$(resolve_home_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
 
     sync_bundled_channel_plugins_to_extensions
     harden_extension_permissions
