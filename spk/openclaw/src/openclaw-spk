@@ -8,7 +8,7 @@ APP_NODE="/volume1/@appstore/openclaw/bin/node"
 APP_ENTRY="/volume1/@appstore/openclaw/app/openclaw/dist/index.js"
 
 if [ ! -x "$APP_NODE" ] || [ ! -f "$APP_ENTRY" ]; then
-  echo "❌ openclaw-spk: OpenClaw SPK not found under /volume1/@appstore/openclaw" >&2
+  echo "❌ openclaw: OpenClaw SPK not found under /volume1/@appstore/openclaw" >&2
   exit 1
 fi
 
@@ -16,7 +16,7 @@ ORIGINAL_ARGS="$*"
 CLI_CONFIG_PATH=""
 if [ "${1:-}" = "--config" ]; then
   if [ $# -lt 2 ]; then
-    echo "❌ openclaw-spk: --config requires a file path" >&2
+    echo "❌ openclaw: --config requires a file path" >&2
     exit 1
   fi
   CLI_CONFIG_PATH="$2"
@@ -74,7 +74,7 @@ export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
 
 show_help() {
   cat <<'EOF'
-openclaw-spk - OpenClaw Synology SPK wrapper
+openclaw - OpenClaw Synology SPK wrapper
 
 What it does:
 - Auto-locates SPK config/workspace (default: /volume1/docker/openclaw)
@@ -83,18 +83,18 @@ What it does:
 - Forwards args to OpenClaw CLI entry inside SPK
 
 Usage:
-  openclaw-spk [--config /path/to/openclaw.json] <command> [args...]
+  openclaw [--config /path/to/openclaw.json] <command> [args...]
 
 Common examples:
-  openclaw-spk gateway status
-  openclaw-spk gateway restart
-  openclaw-spk config get
-  openclaw-spk plugins install @tencent-connect/openclaw-qqbot@latest
-  openclaw-spk models list
+  openclaw gateway status
+  openclaw gateway restart
+  openclaw config get
+  openclaw plugins install @tencent-connect/openclaw-qqbot@latest
+  openclaw models list
 
 Helper commands:
-  openclaw-spk env      # print resolved paths
-  openclaw-spk token    # print gateway auth token from current config
+  openclaw env      # print resolved paths
+  openclaw token    # print gateway auth token from current config
 
 Note:
 - SPK template default token is 123456 unless changed in openclaw.json.

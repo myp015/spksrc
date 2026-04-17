@@ -111,22 +111,16 @@ validate_or_rollback_config() {
     fi
 }
 
-ensure_openclaw_spk_in_path() {
+ensure_openclaw_in_path() {
     local target_cli="/var/packages/openclaw/target/bin/openclaw"
-    local target_spk="/var/packages/openclaw/target/bin/openclaw-spk"
     local link_cli="/usr/local/bin/openclaw"
-    local link_spk="/usr/local/bin/openclaw-spk"
 
     mkdir -p /usr/local/bin
+    [ -x "${target_cli}" ] && ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null || true
 
-    if [ -x "${target_cli}" ]; then
-        ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null || true
-    elif [ -x "${target_spk}" ]; then
-        # Fallback: always expose `openclaw` command even if target/bin/openclaw is absent.
-        ln -sfn "${target_spk}" "${link_cli}" 2>/dev/null || true
-    fi
-
-    [ -x "${target_spk}" ] && ln -sfn "${target_spk}" "${link_spk}" 2>/dev/null || true
+    # Drop deprecated compatibility command.
+    rm -f /usr/local/bin/openclaw-spk 2>/dev/null || true
+    rm -f /var/packages/openclaw/target/bin/openclaw-spk 2>/dev/null || true
 }
 
 sync_provider_models_from_upstream() {
@@ -179,7 +173,7 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
       const res = await fetch(baseUrl.replace(/\/$/, "") + "/models", {
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          "User-Agent": "openclaw-spk-model-sync/1.0"
+          "User-Agent": "openclaw-model-sync/1.0"
         }
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -330,7 +324,7 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 }
 
 service_postinst() {
-    ensure_openclaw_spk_in_path
+    ensure_openclaw_in_path
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
         mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
@@ -865,7 +859,7 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
 if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 ' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" || true
 
-    ensure_openclaw_spk_in_path
+    ensure_openclaw_in_path
     sync_provider_models_from_upstream
     sync_skills_to_workspace
     validate_or_rollback_config

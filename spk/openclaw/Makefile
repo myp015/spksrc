@@ -23,7 +23,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings. 5. Default memory backend to builtin in SPK template and auto-fallback to builtin when qmd binary is unavailable. 6. Tighten runtime config permission to 600. 7. Provide /usr/local/bin/openclaw alias (keep openclaw-spk for compatibility). 8. Keep SPK_VERS clean and use numeric SPK_REV as build identity for DSM/SPK format compatibility."
+CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings. 5. Default memory backend to builtin in SPK template and auto-fallback to builtin when qmd binary is unavailable. 6. Tighten runtime config permission to 600. 7. Use openclaw as the only packaged CLI wrapper command (drop openclaw-spk compatibility wrapper). 8. Keep SPK_VERS clean and use numeric SPK_REV as build identity for DSM/SPK format compatibility."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -93,9 +93,7 @@ openclaw_copy_target:
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json
 	@install -d -m 755 $(STAGING_DIR)/app
 	@cp -rf src/app/* $(STAGING_DIR)/app/
-	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw-spk
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
-	@chmod 755 $(STAGING_DIR)/bin/openclaw-spk
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
 
