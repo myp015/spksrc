@@ -76,7 +76,7 @@ fi
 mkdir -p "$WORKDIR"
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
-HOME="${OPENCLAW_HOME:-$WORKDIR}"
+HOME="${OPENCLAW_HOME:-$WORKSPACE_DIR}"
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
 
 # No automatic user switching here. If needed, run manually as sc-openclaw:
@@ -128,7 +128,7 @@ case "$1" in
           OPENCLAW_WORKSPACE_DIR="$(dirname "$1")"
           OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"
           mkdir -p "$OPENCLAW_STATE_DIR"
-          HOME="$OPENCLAW_STATE_DIR"
+          HOME="$OPENCLAW_WORKSPACE_DIR"
           export OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_STATE_DIR HOME
           shift 1
           ;;

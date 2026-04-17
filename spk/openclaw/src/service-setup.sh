@@ -41,22 +41,7 @@ sync_skills_to_workspace() {
 
 sync_bundled_channel_plugins_to_extensions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
-    # Legacy broken path from older SPK revisions: <workspace>/.openclaw/.openclaw/extensions
-    local legacy_ext_dir="${OPENCLAW_WORKSPACE}/.openclaw/.openclaw/extensions"
     mkdir -p "${ext_dir}"
-
-    # Migrate legacy nested extension location to unified stateDir/extensions.
-    if [ -d "${legacy_ext_dir}" ]; then
-        find "${legacy_ext_dir}" -mindepth 1 -maxdepth 1 -type d | while read -r legacy_plugin_dir; do
-            plugin_name="$(basename "${legacy_plugin_dir}")"
-            [ "${plugin_name}" = "node_modules" ] && continue
-            rm -rf "${ext_dir}/${plugin_name}"
-            cp -a "${legacy_plugin_dir}" "${ext_dir}/${plugin_name}"
-        done
-        # Legacy location cleanup to avoid nested .openclaw paths.
-        rm -rf "${OPENCLAW_WORKSPACE}/.openclaw/.openclaw/extensions" 2>/dev/null || true
-        rmdir "${OPENCLAW_WORKSPACE}/.openclaw/.openclaw" 2>/dev/null || true
-    fi
 
     # Let extensions resolve bundled runtime deps from app/node_modules.
     rm -f "${ext_dir}/node_modules"
@@ -638,7 +623,7 @@ EOF
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-    export HOME="${OPENCLAW_STATE_DIR}"
+    export HOME="${OPENCLAW_WORKSPACE}"
 
     sync_bundled_channel_plugins_to_extensions
     harden_extension_permissions
@@ -920,7 +905,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 # Default exports before prestart recalculates runtime paths.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
-export HOME="${OPENCLAW_STATE_DIR_BASE}"
+export HOME="${OPENCLAW_WORKSPACE_DEFAULT}"
 
 SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
 SVC_BACKGROUND=yes
