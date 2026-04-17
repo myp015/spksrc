@@ -111,7 +111,7 @@
     ]
   },
   "memory": {
-    "backend": "qmd",
+    "backend": "builtin",
     "citations": "auto",
     "qmd": {
       "includeDefaultMemory": true,

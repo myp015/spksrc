@@ -20,7 +20,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings."
+CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize Feishu allowFrom for open policy and migrate legacy ~/.openclaw/extensions into state/extensions to reduce state-split warnings. 5. Default memory backend to builtin in SPK template (no qmd binary required)."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
