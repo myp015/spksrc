@@ -1,6 +1,6 @@
 SPK_NAME = openclaw
-SPK_VERS = 2026.4.14
-SPK_REV = 45
+SPK_VERS = 2026.4.15
+SPK_REV = 1
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -14,7 +14,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = myp015
 DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "1. Auto-create /usr/local/bin/openclaw-spk symlink to /var/packages/openclaw/target/bin/openclaw-spk on install/prestart for direct PATH usage. 2. Keep openclaw-spk HOME default bound to workspace/state dir (or explicit OPENCLAW_HOME), with compatibility-mode channel normalization and plugin pin auto-repair. 3. Keep lightweight JSON parse + last-known-good snapshot restore guard (no heavy prestart doctor run)."
+CHANGELOG = "1. Update to v2026.4.15."
 
 HOMEPAGE = https://github.com/openclaw/openclaw
 LICENSE = MIT
@@ -62,8 +62,8 @@ openclaw_prepare_bundle:
 		cd $(WORK_DIR) && \
 		curl -fsSL -o node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz && \
 		tar -xJf node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz -C $(WORK_DIR)/build-node-runtime --strip-components=1
-	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@2026.4.14 --silent
-	@tar -xzf $(WORK_DIR)/openclaw-2026.4.14.tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
+	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@2026.4.15 --silent
+	@tar -xzf $(WORK_DIR)/openclaw-2026.4.15.tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
