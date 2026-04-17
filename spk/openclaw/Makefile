@@ -70,13 +70,12 @@ openclaw_prepare_bundle:
 		tar -xJf node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz -C $(WORK_DIR)/build-node-runtime --strip-components=1
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(SPK_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(SPK_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
 		@soimy/dingtalk@3.5.3 \
 		@sunnoy/wecom@3.0.0 \
 		@tencent-connect/openclaw-qqbot@1.7.1
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
