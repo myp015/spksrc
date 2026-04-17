@@ -85,6 +85,10 @@ case "$WORKSPACE_DIR" in
   *) HOME_DEFAULT="$WORKSPACE_DIR" ;;
 esac
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
+# Safety guard: never run with HOME ending in .openclaw (prevents nested .openclaw/.openclaw paths).
+case "$HOME" in
+  */.openclaw) HOME="$(dirname "$HOME")" ;;
+esac
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
 
 # No automatic user switching here. If needed, run manually as sc-openclaw:
@@ -140,6 +144,9 @@ case "$1" in
           esac
           mkdir -p "$OPENCLAW_STATE_DIR"
           HOME="$HOME_DIR"
+          case "$HOME" in
+            */.openclaw) HOME="$(dirname "$HOME")" ;;
+          esac
           export OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_STATE_DIR HOME
           shift 1
           ;;

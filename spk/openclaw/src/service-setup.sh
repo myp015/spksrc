@@ -638,9 +638,17 @@ EOF
         cp -f "${selected_source_config}" "${OPENCLAW_CONFIG_FILE}"
     fi
 
+    local resolved_home_dir
+    resolved_home_dir="$(resolve_home_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
+    # Safety guard: never let HOME end at .../.openclaw, otherwise components that
+    # derive ~/.openclaw paths will create nested .openclaw/.openclaw trees.
+    case "${resolved_home_dir}" in
+        */.openclaw) resolved_home_dir="$(dirname "${resolved_home_dir}")" ;;
+    esac
+
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-    export HOME="$(resolve_home_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
+    export HOME="${resolved_home_dir}"
 
     sync_bundled_channel_plugins_to_extensions
     harden_extension_permissions
