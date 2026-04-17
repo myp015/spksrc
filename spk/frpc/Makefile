@@ -1,5 +1,5 @@
 SPK_NAME = frpc
-SPK_VERS = 0.68.1
+SPK_VERS ?= $(shell curl -s https://api.github.com/repos/fatedier/frp/releases/latest | grep -o '"tag_name": "v[^"]*' | cut -d'"' -f4 | sed 's/v//')
 SPK_REV = 1
 SPK_ICON = src/frpc.png
 
@@ -12,7 +12,7 @@ UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 MAINTAINER = myp015
 DESCRIPTION = frp client for exposing local services to the Internet through a remote frp server.
 DISPLAY_NAME = frpc
-CHANGELOG = "1. Update frpc to 0.68.1."
+CHANGELOG = "1. Auto-fetch latest version from GitHub (override with SPK_VERS=<version>)."
 
 HOMEPAGE = https://github.com/fatedier/frp
 LICENSE = Apache-2.0

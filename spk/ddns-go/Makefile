@@ -1,6 +1,6 @@
 SPK_NAME = ddns-go
-SPK_VERS = 6.15.0
-SPK_REV = 3
+SPK_VERS ?= $(shell curl -s https://api.github.com/repos/jeessy2/ddns-go/releases/latest | grep -o '"tag_name": "v[^"]*' | cut -d'"' -f4 | sed 's/v//')
+SPK_REV = 1
 SPK_ICON = src/ddns-go.png
 
 DEPENDS = cross/ddns-go
@@ -12,7 +12,7 @@ UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 MAINTAINER = GrandDuke1106
 DESCRIPTION = Automatically obtain your public IPv4 or IPv6 address and resolve it to the corresponding domain name service. Supported domain service providers are: Aliyun, Aliyun ESA, Tencent, Dnspod, Cloudflare, Huawei, Callback, Baidu, Porkbun, GoDaddy, Namecheap, NameSilo, Name.com, Dynadot, DNSLA, Nowcn, Eranet, Gcore, IBM NS1 Connect.
 DISPLAY_NAME = ddns-go
-CHANGELOG = "1. Update to 6.15.0."
+CHANGELOG = "1. Auto-fetch latest version from GitHub (override with SPK_VERS=<version>)."
 
 HOMEPAGE = https://github.com/jeessy2/ddns-go
 LICENSE = MIT
