@@ -1,5 +1,6 @@
 SPK_NAME = frpc
-SPK_VERS ?= $(shell curl -s https://api.github.com/repos/fatedier/frp/releases/latest | grep -o '"tag_name": "v[^"]*' | cut -d'"' -f4 | sed 's/v//')
+SPK_VERS ?= 0.68.1
+# Override with SPK_VERS= to auto-fetch latest
 SPK_REV = 1
 SPK_ICON = src/frpc.png
 

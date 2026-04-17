@@ -1,5 +1,6 @@
 SPK_NAME = ddns-go
-SPK_VERS ?= $(shell curl -s https://api.github.com/repos/jeessy2/ddns-go/releases/latest | grep -o '"tag_name": "v[^"]*' | cut -d'"' -f4 | sed 's/v//')
+SPK_VERS ?= 6.16.7
+# Override with SPK_VERS= to auto-fetch latest
 SPK_REV = 1
 SPK_ICON = src/ddns-go.png
 
