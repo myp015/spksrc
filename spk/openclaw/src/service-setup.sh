@@ -489,7 +489,6 @@ const feishuAppId = trim(process.env.WIZARD_FEISHU_APP_ID);
 const feishuAppSecret = trim(process.env.WIZARD_FEISHU_APP_SECRET);
 if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   cfg.channels.feishu = cfg.channels.feishu || {};
-  if (!trim(cfg.channels.feishu.agentId)) cfg.channels.feishu.agentId = "feishu-default";
   // Feishu schema expects credentials under accounts.<id>, not top-level appId/appSecret.
   const defaultAccountId = trim(cfg.channels.feishu.defaultAccount) || "default";
   cfg.channels.feishu.defaultAccount = defaultAccountId;
@@ -511,7 +510,6 @@ const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
 const dingtalkClientSecret = trim(process.env.WIZARD_DINGTALK_CLIENT_SECRET);
 if (dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
-  if (!trim(cfg.channels.dingtalk.agentId)) cfg.channels.dingtalk.agentId = "dingtalk-default";
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
   // Disable pairing gate by default: credentials are enough to communicate.
@@ -525,7 +523,6 @@ const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
 const qqbotClientSecret = trim(process.env.WIZARD_QQBOT_CLIENT_SECRET);
 if (qqbotAppId && qqbotClientSecret && selectedPluginIds.qqbot) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
-  if (!trim(cfg.channels.qqbot.agentId)) cfg.channels.qqbot.agentId = "qqbot-default";
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
   cfg.channels.qqbot.dmPolicy = "open";
@@ -538,7 +535,6 @@ const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
 const wecomSecret = trim(process.env.WIZARD_WECOM_SECRET);
 if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
   cfg.channels.wecom = cfg.channels.wecom || {};
-  if (!trim(cfg.channels.wecom.agentId)) cfg.channels.wecom.agentId = "wecom-default";
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
   // Disable pairing gate by default: credentials are enough to communicate.
@@ -753,7 +749,7 @@ if (cfg.channels.feishu && typeof cfg.channels.feishu === "object") {
     f.accounts[defaultAccountId].appSecret = migratedAppSecret;
     changed = true;
   }
-  for (const k of ["clientId", "clientSecret", "appId", "appSecret"]) {
+  for (const k of ["clientId", "clientSecret", "appId", "appSecret", "agentId"]) {
     if (Object.prototype.hasOwnProperty.call(f, k)) {
       delete f[k];
       changed = true;
@@ -783,7 +779,7 @@ if (cfg.channels.dingtalk && typeof cfg.channels.dingtalk === "object") {
     d.clientSecret = norm(d.appSecret);
     changed = true;
   }
-  for (const k of ["appId", "appSecret"]) {
+  for (const k of ["appId", "appSecret", "agentId"]) {
     if (Object.prototype.hasOwnProperty.call(d, k)) {
       delete d[k];
       changed = true;
@@ -811,7 +807,7 @@ if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
     w.secret = norm(w.clientSecret);
     changed = true;
   }
-  for (const k of ["clientId", "clientSecret", "appId", "appSecret"]) {
+  for (const k of ["clientId", "clientSecret", "appId", "appSecret", "agentId"]) {
     if (Object.prototype.hasOwnProperty.call(w, k)) {
       delete w[k];
       changed = true;
@@ -867,7 +863,7 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
     q.clientSecret = norm(q.appSecret);
     changed = true;
   }
-  for (const k of ["clientId", "appSecret"]) {
+  for (const k of ["clientId", "appSecret", "agentId"]) {
     if (Object.prototype.hasOwnProperty.call(q, k)) {
       delete q[k];
       changed = true;
@@ -936,15 +932,9 @@ const channelDefaultAgentId = {
 for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
   const ch = cfg.channels[channelId];
   if (ch && typeof ch === "object") {
-    const current = typeof ch.agentId === "string" ? ch.agentId.trim() : "";
-    if (!current) {
-      ch.agentId = defaultAgentId;
-      changed = true;
-    }
-    const resolved = (typeof ch.agentId === "string" ? ch.agentId.trim() : "") || defaultAgentId;
-    if (resolved && !knownAgentIds.has(resolved)) {
-      knownAgentIds.add(resolved);
-      agentsList.push({ id: resolved, heartbeat: {} });
+    if (defaultAgentId && !knownAgentIds.has(defaultAgentId)) {
+      knownAgentIds.add(defaultAgentId);
+      agentsList.push({ id: defaultAgentId, heartbeat: {} });
       changed = true;
     }
   }
@@ -987,8 +977,7 @@ const upsertRouteBinding = (channelId, agentId) => {
 for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
   const ch = cfg.channels[channelId];
   if (!ch || typeof ch !== "object") continue;
-  const agentId = (typeof ch.agentId === "string" ? ch.agentId.trim() : "") || defaultAgentId;
-  upsertRouteBinding(channelId, agentId);
+  upsertRouteBinding(channelId, defaultAgentId);
 }
 
 const legacyAliases = {
