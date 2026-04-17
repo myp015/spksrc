@@ -489,6 +489,7 @@ const feishuAppId = trim(process.env.WIZARD_FEISHU_APP_ID);
 const feishuAppSecret = trim(process.env.WIZARD_FEISHU_APP_SECRET);
 if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   cfg.channels.feishu = cfg.channels.feishu || {};
+  if (!trim(cfg.channels.feishu.agentId)) cfg.channels.feishu.agentId = "feishu-default";
   // Feishu schema expects credentials under accounts.<id>, not top-level appId/appSecret.
   const defaultAccountId = trim(cfg.channels.feishu.defaultAccount) || "default";
   cfg.channels.feishu.defaultAccount = defaultAccountId;
@@ -510,6 +511,7 @@ const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
 const dingtalkClientSecret = trim(process.env.WIZARD_DINGTALK_CLIENT_SECRET);
 if (dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
+  if (!trim(cfg.channels.dingtalk.agentId)) cfg.channels.dingtalk.agentId = "dingtalk-default";
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
   // Disable pairing gate by default: credentials are enough to communicate.
@@ -523,6 +525,7 @@ const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
 const qqbotClientSecret = trim(process.env.WIZARD_QQBOT_CLIENT_SECRET);
 if (qqbotAppId && qqbotClientSecret && selectedPluginIds.qqbot) {
   cfg.channels.qqbot = cfg.channels.qqbot || {};
+  if (!trim(cfg.channels.qqbot.agentId)) cfg.channels.qqbot.agentId = "qqbot-default";
   cfg.channels.qqbot.appId = qqbotAppId;
   cfg.channels.qqbot.clientSecret = qqbotClientSecret;
   cfg.channels.qqbot.dmPolicy = "open";
@@ -535,6 +538,7 @@ const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
 const wecomSecret = trim(process.env.WIZARD_WECOM_SECRET);
 if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
   cfg.channels.wecom = cfg.channels.wecom || {};
+  if (!trim(cfg.channels.wecom.agentId)) cfg.channels.wecom.agentId = "wecom-default";
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
   // Disable pairing gate by default: credentials are enough to communicate.
@@ -922,6 +926,29 @@ try {
     }
   }
 } catch {}
+
+const channelDefaultAgentId = {
+  feishu: "feishu-default",
+  dingtalk: "dingtalk-default",
+  wecom: "wecom-default",
+  qqbot: "qqbot-default"
+};
+for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
+  const ch = cfg.channels[channelId];
+  if (ch && typeof ch === "object") {
+    const current = typeof ch.agentId === "string" ? ch.agentId.trim() : "";
+    if (!current) {
+      ch.agentId = defaultAgentId;
+      changed = true;
+    }
+    const resolved = (typeof ch.agentId === "string" ? ch.agentId.trim() : "") || defaultAgentId;
+    if (resolved && !knownAgentIds.has(resolved)) {
+      knownAgentIds.add(resolved);
+      agentsList.push({ id: resolved, heartbeat: {} });
+      changed = true;
+    }
+  }
+}
 cfg.agents.list = agentsList;
 
 const legacyAliases = {
