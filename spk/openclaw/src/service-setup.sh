@@ -566,6 +566,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         fi
 
         sync_bundled_channel_plugins_to_extensions
+        harden_extension_permissions
         sync_skills_to_workspace
     fi
 }
@@ -757,14 +758,20 @@ if (cfg.channels.feishu && typeof cfg.channels.feishu === "object") {
     }
   }
   normalizePolicy(f, "open", "open");
+  if (f.dmPolicy !== "open") {
+    f.dmPolicy = "open";
+    changed = true;
+  }
+  if (f.groupPolicy !== "open") {
+    f.groupPolicy = "open";
+    changed = true;
+  }
   const allowFrom = Array.isArray(f.allowFrom)
     ? f.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
     : [];
-  if (f.dmPolicy === "open") {
-    if (!allowFrom.includes("*")) {
-      f.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
-      changed = true;
-    }
+  if (!allowFrom.includes("*")) {
+    f.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
+    changed = true;
   }
 }
 
@@ -787,10 +794,18 @@ if (cfg.channels.dingtalk && typeof cfg.channels.dingtalk === "object") {
     }
   }
   normalizePolicy(d, "open", "open");
+  if (d.dmPolicy !== "open") {
+    d.dmPolicy = "open";
+    changed = true;
+  }
+  if (d.groupPolicy !== "open") {
+    d.groupPolicy = "open";
+    changed = true;
+  }
   const allowFrom = Array.isArray(d.allowFrom)
     ? d.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
     : [];
-  if (d.dmPolicy === "open" && !allowFrom.includes("*")) {
+  if (!allowFrom.includes("*")) {
     d.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
     changed = true;
   }
@@ -815,10 +830,18 @@ if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
     }
   }
   normalizePolicy(w, "open", "open");
+  if (w.dmPolicy !== "open") {
+    w.dmPolicy = "open";
+    changed = true;
+  }
+  if (w.groupPolicy !== "open") {
+    w.groupPolicy = "open";
+    changed = true;
+  }
   const allowFrom = Array.isArray(w.allowFrom)
     ? w.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
     : [];
-  if (w.dmPolicy === "open" && !allowFrom.includes("*")) {
+  if (!allowFrom.includes("*")) {
     w.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
     changed = true;
   }
@@ -871,10 +894,18 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
     }
   }
   normalizePolicy(q, "open", "open");
+  if (q.dmPolicy !== "open") {
+    q.dmPolicy = "open";
+    changed = true;
+  }
+  if (q.groupPolicy !== "open") {
+    q.groupPolicy = "open";
+    changed = true;
+  }
   const allowFrom = Array.isArray(q.allowFrom)
     ? q.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
     : [];
-  if (q.dmPolicy === "open" && !allowFrom.includes("*")) {
+  if (!allowFrom.includes("*")) {
     q.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
     changed = true;
   }
