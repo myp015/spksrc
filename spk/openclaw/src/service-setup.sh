@@ -350,7 +350,7 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 
 service_postinst() {
     ensure_openclaw_in_path
-    if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
+    if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
         mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
         if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
