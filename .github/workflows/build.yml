@@ -339,10 +339,38 @@ jobs:
           BUILD_UNSUPPORTED_FILE: /github/workspace/build_unsupported.txt
           BUILD_SUCCESS_FILE: /github/workspace/build_success.txt
 
-      - name: Upload artifacts
+      - name: Commit built SPK files to repository
         if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: Packages for ${{ matrix.arch }}
-          path: packages/*.spk
-          if-no-files-found: ignore
+        shell: bash
+        run: |
+          set -e
+          shopt -s nullglob
+          files=(packages/*.spk)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No SPK files to commit for ${{ matrix.arch }}"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "releases/${{ matrix.arch }}"
+          cp -f packages/*.spk "releases/${{ matrix.arch }}/"
+          git add "releases/${{ matrix.arch }}"/*.spk
+          if git diff --cached --quiet; then
+            echo "No new SPK changes to commit"
+            exit 0
+          fi
+
+          for i in 1 2 3; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            if git commit -m "ci: add built SPK files for ${{ matrix.arch }}"; then
+              if git push origin HEAD:"${GITHUB_REF_NAME}"; then
+                echo "Pushed SPK commit for ${{ matrix.arch }}"
+                exit 0
+              fi
+            fi
+            sleep 2
+          done
+
+          echo "Failed to push SPK commit for ${{ matrix.arch }} after retries"
+          exit 1

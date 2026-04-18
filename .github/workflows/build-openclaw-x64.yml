@@ -38,9 +38,18 @@ jobs:
           entrypoint: /bin/bash
           args: -lc "set -e; cd /github/workspace/spk/openclaw && make arch-x64-7.2"
 
-      - name: Upload SPK artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: openclaw-x64-7.2
-          path: packages/openclaw_x64-7.2_*.spk
-          if-no-files-found: error
+      - name: Commit built SPK to repository
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p releases/openclaw
+          cp -f packages/openclaw_x64-7.2_*.spk releases/openclaw/
+          git add releases/openclaw/*.spk
+          if git diff --cached --quiet; then
+            echo "No new SPK changes to commit"
+            exit 0
+          fi
+          git commit -m "ci: add openclaw x64-7.2 SPK artifact"
+          git push
