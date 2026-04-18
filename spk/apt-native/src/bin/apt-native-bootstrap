@@ -7,25 +7,102 @@ BIN="$RUNTIME/usr/bin"
 LIB="$RUNTIME/usr/lib/x86_64-linux-gnu"
 LIB2="$RUNTIME/lib/x86_64-linux-gnu"
 
+# Experimental Docker backend image (used when native runtime is not installed yet).
+APT_IMAGE="debian:bookworm-slim"
+
 usage() {
   cat <<USAGE
 Usage:
-  apt-native-bootstrap                # bootstrap runtime (experimental)
-  apt-native-bootstrap --exec <cmd>   # run apt/apt-get/dpkg in runtime
+  apt-native-bootstrap                          # initialize apt-native state files
+  apt-native-bootstrap --exec <apt|apt-get|dpkg> [args...]
 
-WARNING: This is experimental and may damage DSM compatibility.
+Behavior:
+  1) If native runtime exists under /usr/local/apt-native/runtime, execute it directly.
+  2) Otherwise, if Docker exists, use Debian container as execution backend with host root mounted at /host.
+
+WARNING:
+  This is experimental and can modify DSM system files.
 USAGE
+}
+
+run_via_native_runtime() {
+  cmd="$1"; shift
+  [ -x "$BIN/$cmd" ] || return 1
+  export LD_LIBRARY_PATH="$LIB:$LIB2:${LD_LIBRARY_PATH}"
+  exec "$BIN/$cmd" "$@"
+}
+
+ensure_host_apt_layout() {
+  mkdir -p /etc/apt/sources.list.d
+  mkdir -p /var/lib/apt/lists/partial
+  mkdir -p /var/cache/apt/archives/partial
+  mkdir -p /var/lib/dpkg
+  [ -f /var/lib/dpkg/status ] || touch /var/lib/dpkg/status
+
+  # Create default sources only when sources.list is missing/empty.
+  if [ ! -s /etc/apt/sources.list ]; then
+    cat > /etc/apt/sources.list <<'SRC'
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+SRC
+  fi
+}
+
+run_via_docker_backend() {
+  cmd="$1"; shift
+  command -v docker >/dev/null 2>&1 || {
+    echo "[apt-native] docker backend unavailable and native runtime not found." >&2
+    echo "[apt-native] install Docker (Container Manager) or provide native runtime under $RUNTIME" >&2
+    exit 1
+  }
+
+  ensure_host_apt_layout
+
+  case "$cmd" in
+    apt|apt-get)
+      exec docker run --rm -i \
+        -v /:/host \
+        --network host \
+        "$APT_IMAGE" \
+        /bin/bash -lc '
+set -e
+cmd="$1"; shift
+if [ "$cmd" = "apt" ]; then
+  tool="apt"
+else
+  tool="apt-get"
+fi
+export DEBIAN_FRONTEND=noninteractive
+exec "$tool" \
+  -o Dir::Etc=/host/etc/apt \
+  -o Dir::Etc::sourcelist=/host/etc/apt/sources.list \
+  -o Dir::Etc::sourceparts=/host/etc/apt/sources.list.d \
+  -o Dir::State=/host/var/lib/apt \
+  -o Dir::Cache=/host/var/cache/apt \
+  -o DPkg::options::=--root=/host \
+  "$@"
+' -- "$cmd" "$@"
+      ;;
+    dpkg)
+      exec docker run --rm -i \
+        -v /:/host \
+        --network host \
+        "$APT_IMAGE" \
+        /usr/bin/dpkg --root=/host "$@"
+      ;;
+    *)
+      echo "[apt-native] unsupported command: $cmd" >&2
+      exit 2
+      ;;
+  esac
 }
 
 if [ "$1" = "--exec" ]; then
   shift
   cmd="$1"; shift || true
-  [ -x "$BIN/$cmd" ] || {
-    echo "[apt-native] runtime not initialized. run: sudo apt-native-bootstrap" >&2
-    exit 1
-  }
-  export LD_LIBRARY_PATH="$LIB:$LIB2:${LD_LIBRARY_PATH}"
-  exec "$BIN/$cmd" "$@"
+  [ -n "$cmd" ] || { usage; exit 2; }
+  run_via_native_runtime "$cmd" "$@" || run_via_docker_backend "$cmd" "$@"
 fi
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
@@ -39,12 +116,13 @@ if [ "$(id -u)" != "0" ]; then
 fi
 
 mkdir -p "$BASE" "$RUNTIME"
+ensure_host_apt_layout
 cat > "$BASE/README.txt" <<TXT
 APT Native experimental runtime
-- This package currently provides command wrappers and bootstrap scaffolding.
-- Full system-layer apt dependency bootstrap is intentionally not automatic.
-- Manual validation is required before enabling in production.
+- Stage-2: host-level apt state dirs are initialized.
+- Preferred path: native runtime under $RUNTIME.
+- Fallback path: Docker backend ($APT_IMAGE) with host root mounted at /host.
 TXT
 
-echo "[apt-native] bootstrap scaffolding created at $BASE"
-echo "[apt-native] next step: place apt/dpkg runtime under $RUNTIME and rerun apt commands"
+echo "[apt-native] bootstrap complete"
+echo "[apt-native] now try: apt update"
