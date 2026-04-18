@@ -5,10 +5,9 @@
         "desc": "{{{WORKSPACE_DIR_DESCRIPTION}}}",
         "subitems": [{
             "key": "wizard_workspace_dir",
-            "defaultValue": "/volume1/docker/openclaw",
             "desc": "{{{WORKSPACE_DIR_LABEL}}}",
             "validator": {
-              "allowBlank": false
+              "allowBlank": true
             }
           }
         ]
@@ -17,10 +16,9 @@
         "desc": "{{{MODEL_ID_DESCRIPTION}}}",
         "subitems": [{
             "key": "wizard_model_id",
-            "defaultValue": "Pro/MiniMaxAI/MiniMax-M2.5",
             "desc": "{{{MODEL_ID_LABEL}}}",
             "validator": {
-              "allowBlank": false
+              "allowBlank": true
             }
           }
         ]
@@ -29,10 +27,9 @@
         "desc": "{{{BASE_URL_DESCRIPTION}}}",
         "subitems": [{
             "key": "wizard_base_url",
-            "defaultValue": "http://127.0.0.1:8317/v1",
             "desc": "{{{BASE_URL_LABEL}}}",
             "validator": {
-              "allowBlank": false
+              "allowBlank": true
             }
           }
         ]
@@ -41,10 +38,9 @@
         "desc": "{{{API_KEY_DESCRIPTION}}}",
         "subitems": [{
             "key": "wizard_api_key",
-            "defaultValue": "sk-V5zPkG6MJrIpxgmDw",
             "desc": "{{{API_KEY_LABEL}}}",
             "validator": {
-              "allowBlank": false
+              "allowBlank": true
             }
           }
         ]

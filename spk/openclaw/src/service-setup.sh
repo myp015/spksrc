@@ -364,10 +364,17 @@ service_postinst() {
         fi
 
         # Wizard defaults
-        export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw}"
-        export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
-        export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
-        export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
+        if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
+            export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir}"
+            export WIZARD_MODEL_ID="${wizard_model_id}"
+            export WIZARD_BASE_URL="${wizard_base_url}"
+            export WIZARD_API_KEY="${wizard_api_key}"
+        else
+            export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw}"
+            export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
+            export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
+            export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
+        fi
 
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
         export WIZARD_FEISHU_APP_SECRET="${wizard_feishu_app_secret}"
@@ -427,37 +434,43 @@ const selectedPluginIds = {
   qqbot: pickPluginId(["qqbot", "openclaw-qqbot"])
 };
 
-const workspaceHome = trim(process.env.WIZARD_WORKSPACE_DIR) || "/volume1/docker/openclaw";
-const workspace = workspaceHome.endsWith("/.openclaw") ? workspaceHome : `${workspaceHome}/.openclaw`;
-const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5";
-const baseUrl = trim(process.env.WIZARD_BASE_URL) || "http://127.0.0.1:8317/v1";
-const apiKey = trim(process.env.WIZARD_API_KEY) || "sk-V5zPkG6MJrIpxgmDw";
+const workspaceInput = trim(process.env.WIZARD_WORKSPACE_DIR);
+const modelIdInput = trim(process.env.WIZARD_MODEL_ID);
+const baseUrlInput = trim(process.env.WIZARD_BASE_URL);
+const apiKeyInput = trim(process.env.WIZARD_API_KEY);
+const workspace = workspaceInput ? (workspaceInput.endsWith("/.openclaw") ? workspaceInput : `${workspaceInput}/.openclaw`) : "";
 
 cfg.models = cfg.models || {};
 cfg.models.providers = cfg.models.providers || {};
 cfg.models.providers.default = cfg.models.providers.default || {};
 cfg.models.providers.default.models = cfg.models.providers.default.models || [];
 if (!cfg.models.providers.default.models.length) cfg.models.providers.default.models.push({});
-cfg.models.providers.default.models[0].id = modelId;
-cfg.models.providers.default.models[0].name = modelId;
-cfg.models.providers.default.baseUrl = baseUrl;
-cfg.models.providers.default.apiKey = apiKey;
+if (modelIdInput) {
+  cfg.models.providers.default.models[0].id = modelIdInput;
+  cfg.models.providers.default.models[0].name = modelIdInput;
+}
+if (baseUrlInput) cfg.models.providers.default.baseUrl = baseUrlInput;
+if (apiKeyInput) cfg.models.providers.default.apiKey = apiKeyInput;
 
 cfg.agents = cfg.agents || {};
 cfg.agents.defaults = cfg.agents.defaults || {};
-cfg.agents.defaults.workspace = workspace;
+if (workspace) cfg.agents.defaults.workspace = workspace;
 cfg.agents.defaults.model = cfg.agents.defaults.model || {};
 cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};
-cfg.agents.defaults.model.primary = `default/${modelId}`;
-cfg.agents.defaults.imageModel.primary = `default/${modelId}`;
+if (modelIdInput) {
+  cfg.agents.defaults.model.primary = `default/${modelIdInput}`;
+  cfg.agents.defaults.imageModel.primary = `default/${modelIdInput}`;
+}
 
 cfg.memory = cfg.memory || {};
 cfg.memory.qmd = cfg.memory.qmd || {};
 cfg.memory.qmd.paths = Array.isArray(cfg.memory.qmd.paths) ? cfg.memory.qmd.paths : [];
-if (!cfg.memory.qmd.paths.length) {
-  cfg.memory.qmd.paths.push({ path: workspace, name: "workspace", pattern: "**/*.md" });
-} else {
-  cfg.memory.qmd.paths[0].path = workspace;
+if (workspace) {
+  if (!cfg.memory.qmd.paths.length) {
+    cfg.memory.qmd.paths.push({ path: workspace, name: "workspace", pattern: "**/*.md" });
+  } else {
+    cfg.memory.qmd.paths[0].path = workspace;
+  }
 }
 
 cfg.channels = cfg.channels || {};
