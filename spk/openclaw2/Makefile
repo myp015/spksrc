@@ -57,8 +57,8 @@ include ../../mk/spksrc.spk.mk
 .PHONY: openclaw_prepare_bundle
 openclaw_prepare_bundle:
 	@$(MSG) Prepare Node.js runtime and OpenClaw npm bundle
-	@rm -rf $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle
-	@install -d -m 755 $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle
+	@rm -rf $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle $(WORK_DIR)/bun-runtime
+	@install -d -m 755 $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle $(WORK_DIR)/bun-runtime
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz
 	@tar -xJf $(WORK_DIR)/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz -C $(WORK_DIR)/node-runtime --strip-components=1
@@ -79,6 +79,9 @@ openclaw_prepare_bundle:
 		@sunnoy/wecom@3.0.0 \
 		@tencent-connect/openclaw-qqbot@1.7.1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
+	@cd $(WORK_DIR) && \
+		curl -fsSL -o bun-linux-$(NODE_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(NODE_DIST_ARCH).zip
+	@cd $(WORK_DIR)/bun-runtime && bsdtar -xf $(WORK_DIR)/bun-linux-$(NODE_DIST_ARCH).zip --strip-components=1
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
@@ -89,6 +92,8 @@ openclaw_copy_target:
 	@install -d -m 755 $(STAGING_DIR)/fn-port
 	@install -d -m 755 $(STAGING_DIR)/var
 	@cp -f $(WORK_DIR)/node-runtime/bin/node $(STAGING_DIR)/bin/node
+	@cp -f $(WORK_DIR)/bun-runtime/bun $(STAGING_DIR)/bin/bun
+	@chmod 755 $(STAGING_DIR)/bin/bun
 	@cp -rf $(WORK_DIR)/openclaw-bundle/* $(STAGING_DIR)/app/openclaw/
 	@install -d -m 755 $(STAGING_DIR)/app/openclaw/config
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json
