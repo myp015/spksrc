@@ -179,14 +179,37 @@ gpgv apt dpkg"
   echo "[apt-native] runtime bootstrap done"
 }
 
+find_runtime_loader() {
+  for p in \
+    "$RUNTIME/lib64/ld-linux-x86-64.so.2" \
+    "$RUNTIME/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2" \
+    "$RUNTIME/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+  do
+    [ -x "$p" ] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+
+exec_runtime_bin() {
+  bin_path="$1"; shift
+  loader="$(find_runtime_loader || true)"
+  libpath="$LIB:$LIB2"
+
+  if [ -n "$loader" ]; then
+    exec "$loader" --library-path "$libpath" "$bin_path" "$@"
+  fi
+
+  export LD_LIBRARY_PATH="$libpath:${LD_LIBRARY_PATH}"
+  exec "$bin_path" "$@"
+}
+
 exec_with_runtime() {
   cmd="$1"; shift
-  export LD_LIBRARY_PATH="$LIB:$LIB2:${LD_LIBRARY_PATH}"
   export PATH="$BIN:${PATH}"
 
   case "$cmd" in
     apt|apt-get)
-      exec "$BIN/$cmd" \
+      exec_runtime_bin "$BIN/$cmd" \
         -o Dir::Etc=/etc/apt \
         -o Dir::Etc::sourcelist=/etc/apt/sources.list \
         -o Dir::Etc::sourceparts=/etc/apt/sources.list.d \
@@ -195,7 +218,7 @@ exec_with_runtime() {
         "$@"
       ;;
     dpkg)
-      exec "$BIN/dpkg" "$@"
+      exec_runtime_bin "$BIN/dpkg" "$@"
       ;;
     *)
       echo "[apt-native] unsupported command: $cmd" >&2
