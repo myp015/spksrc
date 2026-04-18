@@ -7,7 +7,6 @@ OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
 OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
-OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_STATE_DIR_BASE}/channel-agent-mode"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 
@@ -122,23 +121,6 @@ ensure_session_store_dir() {
     mkdir -p "${sessions_dir}" 2>/dev/null || true
     chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
 }
-
-migrate_channel_legacy_state_to_agents() {
-    # Create canonical per-channel agent state dirs only.
-    # Full-new-install policy: do NOT migrate legacy data and do NOT create compatibility symlinks.
-    mkdir -p \
-        "${OPENCLAW_STATE_DIR}/agents/feishu-default" \
-        "${OPENCLAW_STATE_DIR}/agents/dingtalk-default" \
-        "${OPENCLAW_STATE_DIR}/agents/wecom-default" \
-        "${OPENCLAW_STATE_DIR}/agents/qqbot-default" \
-        "${OPENCLAW_STATE_DIR}/agents/feishu-default/feishu" \
-        "${OPENCLAW_STATE_DIR}/agents/dingtalk-default/dingtalk" \
-        "${OPENCLAW_STATE_DIR}/agents/wecom-default/wecom" \
-        "${OPENCLAW_STATE_DIR}/agents/wecom-default/wecomConfig" \
-        "${OPENCLAW_STATE_DIR}/agents/qqbot-default/qqbot" \
-        2>/dev/null || true
-}
-
 
 ensure_openclaw_in_path() {
     local target_cli="/var/packages/openclaw/target/bin/openclaw"
@@ -387,8 +369,6 @@ service_postinst() {
         export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
         export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
 
-        export WIZARD_CHANNEL_AGENT_MODE="${wizard_channel_agent_mode:-main}"
-
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
         export WIZARD_FEISHU_APP_SECRET="${wizard_feishu_app_secret}"
         export WIZARD_DINGTALK_CLIENT_ID="${wizard_dingtalk_client_id}"
@@ -578,12 +558,9 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         fi
         OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
         OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
-        OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_STATE_DIR}/channel-agent-mode"
 
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
         ensure_session_store_dir
-        migrate_channel_legacy_state_to_agents
-        printf "%s\n" "${WIZARD_CHANNEL_AGENT_MODE}" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
@@ -646,15 +623,9 @@ EOF
     OPENCLAW_WORKSPACE="${selected_workspace}"
     OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
-    OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_STATE_DIR}/channel-agent-mode"
 
     mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
     ensure_session_store_dir
-    migrate_channel_legacy_state_to_agents
-
-    if [ ! -f "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" ]; then
-        printf "%s\n" "main" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
-    fi
 
     # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
@@ -685,8 +656,6 @@ const path = require("path");
 const cfgPath = process.argv[1];
 const appDir = process.argv[2];
 const stateDir = process.argv[3];
-const channelAgentModeFile = process.argv[4];
-const trim = (v) => (typeof v === "string" ? v.trim() : "");
 
 function safeReadJson(fp) {
   try { return JSON.parse(fs.readFileSync(fp, "utf8")); } catch { return null; }
@@ -955,26 +924,12 @@ try {
   }
 } catch {}
 
-let routeModeRaw = "";
-try {
-  routeModeRaw = trim(fs.readFileSync(channelAgentModeFile, "utf8")).toLowerCase();
-} catch {}
-if (!routeModeRaw) routeModeRaw = "main";
-const channelAgentRouteMode = routeModeRaw === "isolated" ? "isolated" : "main";
-
-const channelDefaultAgentId = channelAgentRouteMode === "main"
-  ? {
-      feishu: "main",
-      dingtalk: "main",
-      wecom: "main",
-      qqbot: "main"
-    }
-  : {
-      feishu: "feishu-default",
-      dingtalk: "dingtalk-default",
-      wecom: "wecom-default",
-      qqbot: "qqbot-default"
-    };
+const channelDefaultAgentId = {
+  feishu: "main",
+  dingtalk: "main",
+  wecom: "main",
+  qqbot: "main"
+};
 for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
   const ch = cfg.channels[channelId];
   if (ch && typeof ch === "object") {
@@ -1078,7 +1033,7 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
 }
 
 if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" || true
+' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" || true
 
     ensure_openclaw_in_path
     sync_provider_models_from_upstream

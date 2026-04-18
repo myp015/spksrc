@@ -49,21 +49,6 @@
           }
         ]
       },{
-        "type": "combobox",
-        "desc": "{{{CHANNEL_AGENT_MODE_DESCRIPTION}}}",
-        "subitems": [{
-            "key": "wizard_channel_agent_mode",
-            "desc": "{{{CHANNEL_AGENT_MODE_LABEL}}}",
-            "defaultValue": "main",
-            "editable": false,
-            "mode": "local",
-            "store": ["main", "isolated"],
-            "validator": {
-              "allowBlank": false
-            }
-          }
-        ]
-      },{
         "type": "textfield",
         "desc": "{{{FEISHU_APP_ID_DESCRIPTION}}}",
         "subitems": [{
