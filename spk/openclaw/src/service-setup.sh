@@ -4,11 +4,10 @@ OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
 OPENCLAW_WORKSPACE_DEFAULT="/volume1/docker/openclaw"
 OPENCLAW_STATE_DIR_BASE="${OPENCLAW_WORKSPACE_DEFAULT}/.openclaw"
 OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
-OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/channel-agent-mode"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
 OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
-OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}"
+OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_STATE_DIR_BASE}/channel-agent-mode"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 
@@ -125,7 +124,8 @@ ensure_session_store_dir() {
 }
 
 migrate_channel_legacy_state_to_agents() {
-    # Create canonical per-channel agent state dirs.
+    # Create canonical per-channel agent state dirs only.
+    # Full-new-install policy: do NOT migrate legacy data and do NOT create compatibility symlinks.
     mkdir -p \
         "${OPENCLAW_STATE_DIR}/agents/feishu-default" \
         "${OPENCLAW_STATE_DIR}/agents/dingtalk-default" \
@@ -137,33 +137,6 @@ migrate_channel_legacy_state_to_agents() {
         "${OPENCLAW_STATE_DIR}/agents/wecom-default/wecomConfig" \
         "${OPENCLAW_STATE_DIR}/agents/qqbot-default/qqbot" \
         2>/dev/null || true
-
-    # WeCom config path migration:
-    # Canonical path: ~/.openclaw/agents/wecom-default/wecomConfig
-    # Keep legacy path as compatibility symlink after migration.
-    local legacy_wecom_cfg="${OPENCLAW_STATE_DIR}/wecomConfig"
-    local target_wecom_cfg="${OPENCLAW_STATE_DIR}/agents/wecom-default/wecomConfig"
-
-    if [ -L "${legacy_wecom_cfg}" ]; then
-        :
-    elif [ -d "${legacy_wecom_cfg}" ]; then
-        if [ -d "${target_wecom_cfg}" ]; then
-            cp -a "${legacy_wecom_cfg}/." "${target_wecom_cfg}/" 2>/dev/null || true
-            rm -rf "${legacy_wecom_cfg}" 2>/dev/null || true
-        else
-            mv "${legacy_wecom_cfg}" "${target_wecom_cfg}" 2>/dev/null || true
-        fi
-    elif [ -f "${legacy_wecom_cfg}" ]; then
-        if [ ! -e "${target_wecom_cfg}" ]; then
-            mv "${legacy_wecom_cfg}" "${target_wecom_cfg}" 2>/dev/null || true
-        else
-            rm -f "${legacy_wecom_cfg}" 2>/dev/null || true
-        fi
-    fi
-
-    if [ ! -e "${legacy_wecom_cfg}" ] && [ ! -L "${legacy_wecom_cfg}" ]; then
-        ln -s "agents/wecom-default/wecomConfig" "${legacy_wecom_cfg}" 2>/dev/null || true
-    fi
 }
 
 
@@ -416,9 +389,6 @@ service_postinst() {
 
         export WIZARD_CHANNEL_AGENT_MODE="${wizard_channel_agent_mode:-main}"
 
-        mkdir -p "${OPENCLAW_STATE_DIR_BASE}" 2>/dev/null || true
-        printf "%s\n" "${WIZARD_CHANNEL_AGENT_MODE}" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}" 2>/dev/null || true
-
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
         export WIZARD_FEISHU_APP_SECRET="${wizard_feishu_app_secret}"
         export WIZARD_DINGTALK_CLIENT_ID="${wizard_dingtalk_client_id}"
@@ -613,6 +583,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
         ensure_session_store_dir
         migrate_channel_legacy_state_to_agents
+        printf "%s\n" "${WIZARD_CHANNEL_AGENT_MODE}" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
@@ -682,11 +653,7 @@ EOF
     migrate_channel_legacy_state_to_agents
 
     if [ ! -f "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" ]; then
-        if [ -f "${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}" ]; then
-            cp -f "${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}" "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
-        else
-            printf "%s\n" "main" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
-        fi
+        printf "%s\n" "main" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
     fi
 
     # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
@@ -769,10 +736,6 @@ cfg.channels = cfg.channels || {};
 
 let changed = false;
 
-if (cfg.meta && typeof cfg.meta === "object" && Object.prototype.hasOwnProperty.call(cfg.meta, "spkChannelAgentMode")) {
-  delete cfg.meta.spkChannelAgentMode;
-  changed = true;
-}
 
 const normalizePolicy = (obj, dmDefault = "open", groupDefault = "open") => {
   const norm = (v) => typeof v === "string" ? v.trim().toLowerCase() : "";
