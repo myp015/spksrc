@@ -81,7 +81,8 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o bun-linux-$(NODE_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(NODE_DIST_ARCH).zip
-	@cd $(WORK_DIR)/bun-runtime && bsdtar -xf $(WORK_DIR)/bun-linux-$(NODE_DIST_ARCH).zip --strip-components=1
+	@cd $(WORK_DIR)/bun-runtime && unzip -q $(WORK_DIR)/bun-linux-$(NODE_DIST_ARCH).zip
+	@cd $(WORK_DIR)/bun-runtime && mv bun-linux-$(NODE_DIST_ARCH)/bun bun && rm -rf bun-linux-$(NODE_DIST_ARCH)
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
