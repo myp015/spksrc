@@ -1085,7 +1085,17 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     validate_or_rollback_config
 
     # fn-port monitor runtime dirs (ported from trim.openclaw)
-    mkdir -p "${SYNOPKG_PKGVAR}/data/home/.openclaw" "${SYNOPKG_PKGVAR}/data/runtime" "${SYNOPKG_PKGVAR}/data/workspace" "${SYNOPKG_PKGVAR}/data/monitor" 2>/dev/null || true
+    local fn_home_dir="${SYNOPKG_PKGVAR}/data/home"
+    local fn_cfg_dir="${fn_home_dir}/.openclaw"
+    local fn_cfg_file="${fn_cfg_dir}/openclaw.json"
+    mkdir -p "${fn_cfg_dir}" "${SYNOPKG_PKGVAR}/data/runtime" "${SYNOPKG_PKGVAR}/data/workspace" "${SYNOPKG_PKGVAR}/data/monitor" 2>/dev/null || true
+
+    # Keep fn-panel system-mode config path in sync with SPK runtime config.
+    if [ -f "${OPENCLAW_CONFIG_FILE}" ] && [ ! -f "${fn_cfg_file}" ]; then
+        cp -f "${OPENCLAW_CONFIG_FILE}" "${fn_cfg_file}" 2>/dev/null || true
+    elif [ ! -f "${OPENCLAW_CONFIG_FILE}" ] && [ -f "${fn_cfg_file}" ]; then
+        cp -f "${fn_cfg_file}" "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+    fi
 }
 
 # Default exports before prestart recalculates runtime paths.
@@ -1102,7 +1112,7 @@ FN_SOUL_MD_SRC="${SYNOPKG_PKGDEST}/fn-port/prompts/SOUL.md"
 FN_SOCKET_PATH="${SYNOPKG_PKGDEST}/trim.openclaw.sock"
 
 if [ -f "${FN_MONITOR_ENTRY}" ]; then
-    SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
+    SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=1 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
     SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
 else
     SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
