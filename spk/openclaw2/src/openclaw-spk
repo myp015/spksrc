@@ -1,0 +1,184 @@
+#!/bin/sh
+set -eu
+
+BASE_DEFAULT="/volume1/docker/openclaw"
+BASE_STATE_DIR="${BASE_DEFAULT}/.openclaw"
+BASE_CFG="${BASE_STATE_DIR}/openclaw.json"
+LEGACY_CFG="/var/packages/openclaw/var/openclaw.json"
+LEGACY_WORKSPACE_CFG="${BASE_DEFAULT}/openclaw.json"
+APP_NODE="/volume1/@appstore/openclaw/bin/node"
+APP_ENTRY="/volume1/@appstore/openclaw/app/openclaw/dist/index.js"
+
+if [ ! -x "$APP_NODE" ] || [ ! -f "$APP_ENTRY" ]; then
+  echo "❌ openclaw: OpenClaw SPK not found under /volume1/@appstore/openclaw" >&2
+  exit 1
+fi
+
+ORIGINAL_ARGS="$*"
+CLI_CONFIG_PATH=""
+if [ "${1:-}" = "--config" ]; then
+  if [ $# -lt 2 ]; then
+    echo "❌ openclaw: --config requires a file path" >&2
+    exit 1
+  fi
+  CLI_CONFIG_PATH="$2"
+  shift 2
+fi
+
+CONFIG_PATH=""
+if [ -n "${CLI_CONFIG_PATH:-}" ]; then
+  CONFIG_PATH="$CLI_CONFIG_PATH"
+elif [ -n "${OPENCLAW_CONFIG_PATH:-}" ]; then
+  CONFIG_PATH="$OPENCLAW_CONFIG_PATH"
+elif [ -f "$BASE_CFG" ]; then
+  CONFIG_PATH="$BASE_CFG"
+elif [ -f "$LEGACY_CFG" ]; then
+  CONFIG_PATH="$LEGACY_CFG"
+fi
+
+WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$BASE_DEFAULT}"
+if [ -n "$CONFIG_PATH" ]; then
+  # Prefer explicit workspace when provided; otherwise derive from config.workspace.
+  if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+    W=$(python3 - "$CONFIG_PATH" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+    c=json.load(open(p,'r',encoding='utf-8'))
+    w=((c.get('agents') or {}).get('defaults') or {}).get('workspace')
+    print((w or '').strip())
+except Exception:
+    print('')
+PY
+)
+    if [ -n "$W" ]; then
+      WORKSPACE_DIR="$W"
+    fi
+  fi
+fi
+
+case "$WORKSPACE_DIR" in
+  */.openclaw) WORKDIR_DEFAULT="$WORKSPACE_DIR" ;;
+  *) WORKDIR_DEFAULT="$WORKSPACE_DIR/.openclaw" ;;
+esac
+WORKDIR="${OPENCLAW_STATE_DIR:-$WORKDIR_DEFAULT}"
+if [ -z "${CONFIG_PATH:-}" ]; then
+  CONFIG_PATH="$WORKDIR/openclaw.json"
+fi
+
+# Migrate legacy workspace/openclaw.json into workspace/.openclaw/openclaw.json once.
+if [ ! -f "$CONFIG_PATH" ] && [ -f "$LEGACY_WORKSPACE_CFG" ]; then
+  mkdir -p "$(dirname "$CONFIG_PATH")"
+  cp -f "$LEGACY_WORKSPACE_CFG" "$CONFIG_PATH"
+fi
+
+if [ ! -f "$CONFIG_PATH" ] && [ -f "$BASE_CFG" ]; then
+  mkdir -p "$(dirname "$CONFIG_PATH")"
+  cp -f "$BASE_CFG" "$CONFIG_PATH"
+fi
+
+mkdir -p "$WORKDIR"
+OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
+OPENCLAW_STATE_DIR="$WORKDIR"
+case "$WORKSPACE_DIR" in
+  */.openclaw) HOME_DEFAULT="$(dirname "$WORKSPACE_DIR")" ;;
+  *) HOME_DEFAULT="$WORKSPACE_DIR" ;;
+esac
+HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
+# Safety guard: never run with HOME ending in .openclaw (prevents nested .openclaw/.openclaw paths).
+case "$HOME" in
+  */.openclaw) HOME="$(dirname "$HOME")" ;;
+esac
+export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR HOME
+
+# No automatic user switching here. If needed, run manually as sc-openclaw:
+#   su -s /bin/sh sc-openclaw
+
+show_help() {
+  cat <<'EOF'
+openclaw - OpenClaw Synology SPK wrapper
+
+What it does:
+- Auto-locates SPK user folder (default: /volume1/docker/openclaw)
+- Runtime state/config default to /volume1/docker/openclaw/.openclaw
+- Respects explicit path overrides (--config /path or OPENCLAW_CONFIG_PATH)
+- Exports OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR / HOME
+- Forwards args to OpenClaw CLI entry inside SPK
+
+Usage:
+  openclaw [--config /path/to/openclaw.json] <command> [args...]
+
+Common examples:
+  openclaw gateway status
+  openclaw gateway restart
+  openclaw config get
+  openclaw plugins install @tencent-connect/openclaw-qqbot@latest
+  openclaw models list
+
+Helper commands:
+  openclaw env      # print resolved paths
+  openclaw token    # print gateway auth token from current config
+
+Note:
+- SPK template default token is 123456 unless changed in openclaw.json.
+EOF
+}
+
+if [ $# -eq 0 ]; then
+  show_help
+  exit 0
+fi
+
+# Backward compatibility: older wrappers may have forwarded --config path as first bare arg.
+# If first arg is a readable *.json file and second token looks like a CLI command, treat it as config path.
+case "$1" in
+  /*.json|*.json)
+    if [ -f "$1" ]; then
+      case "${2:-}" in
+        gateway|config|plugins|models|doctor|channels|status|logs|memory|sessions|tools|commands|help)
+          OPENCLAW_CONFIG_PATH="$1"
+          OPENCLAW_WORKSPACE_DIR="$(dirname "$1")"
+          case "$OPENCLAW_WORKSPACE_DIR" in
+            */.openclaw) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR"; HOME_DIR="$(dirname "$OPENCLAW_WORKSPACE_DIR")" ;;
+            *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"; HOME_DIR="$OPENCLAW_WORKSPACE_DIR" ;;
+          esac
+          mkdir -p "$OPENCLAW_STATE_DIR"
+          HOME="$HOME_DIR"
+          case "$HOME" in
+            */.openclaw) HOME="$(dirname "$HOME")" ;;
+          esac
+          export OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_STATE_DIR HOME
+          shift 1
+          ;;
+      esac
+    fi
+    ;;
+esac
+
+case "$1" in
+  --help|-h|help)
+    show_help
+    exit 0
+    ;;
+  env)
+    echo "OPENCLAW_CONFIG_PATH=$OPENCLAW_CONFIG_PATH"
+    echo "OPENCLAW_STATE_DIR=$OPENCLAW_STATE_DIR"
+    echo "HOME=$HOME"
+    exit 0
+    ;;
+  token)
+    python3 - "$OPENCLAW_CONFIG_PATH" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+    c=json.load(open(p,'r',encoding='utf-8'))
+    t=((c.get('gateway') or {}).get('auth') or {}).get('token')
+    print(t if t else '')
+except Exception:
+    print('')
+PY
+    exit 0
+    ;;
+esac
+
+exec "$APP_NODE" "$APP_ENTRY" "$@"
