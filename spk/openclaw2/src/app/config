@@ -1,14 +1,14 @@
 {
     ".url": {
-        "com.synocommunity.packages.openclaw": {
-            "title": "OpenClaw",
-            "desc": "OpenClaw Gateway Control UI",
-            "icon": "images/openclaw-{0}.png",
+        "com.synocommunity.packages.openclaw2": {
+            "title": "OpenClaw2",
+            "desc": "OpenClaw2 设置面板", 
+            "icon": "images/openclaw-{0}.png", 
             "type": "url",
             "protocol": "http",
             "port": "18789",
-            "url": "/",
-            "allUsers": true,
+            "url": "/", 
+            "allUsers": true, 
             "grantPrivilege": "local"
         }
     }

@@ -32,7 +32,6 @@ LICENSE = MIT
 STARTABLE = yes
 SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
-WIZARDS_TEMPLATES_DIR = src/wizard_templates
 
 DSM_UI_DIR = app
 SERVICE_PORT = 18789

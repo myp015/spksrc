@@ -1105,5 +1105,5 @@ else
     SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
     SVC_CWD="${OPENCLAW_APP_DIR}"
 fi
-SVC_BACKGROUND=yes
-SVC_WRITE_PID=yes
+SVC_BACKGROUND=no
+SVC_WRITE_PID=no
