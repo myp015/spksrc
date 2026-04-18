@@ -7,9 +7,6 @@ BIN="$RUNTIME/usr/bin"
 LIB="$RUNTIME/usr/lib/x86_64-linux-gnu"
 LIB2="$RUNTIME/lib/x86_64-linux-gnu"
 
-# Experimental Docker backend image (used when native runtime is not installed yet).
-APT_IMAGE="debian:bookworm-slim"
-
 usage() {
   cat <<USAGE
 Usage:
@@ -17,8 +14,9 @@ Usage:
   apt-native-bootstrap --exec <apt|apt-get|dpkg> [args...]
 
 Behavior:
-  1) If native runtime exists under /usr/local/apt-native/runtime, execute it directly.
-  2) Otherwise, if Docker exists, use Debian container as execution backend with host root mounted at /host.
+  - Physical host only (no Docker backend).
+  - Requires native runtime binaries under:
+      $RUNTIME
 
 WARNING:
   This is experimental and can modify DSM system files.
@@ -49,60 +47,16 @@ SRC
   fi
 }
 
-run_via_docker_backend() {
-  cmd="$1"; shift
-  command -v docker >/dev/null 2>&1 || {
-    echo "[apt-native] docker backend unavailable and native runtime not found." >&2
-    echo "[apt-native] install Docker (Container Manager) or provide native runtime under $RUNTIME" >&2
-    exit 1
-  }
-
-  ensure_host_apt_layout
-
-  case "$cmd" in
-    apt|apt-get)
-      exec docker run --rm -i \
-        -v /:/host \
-        --network host \
-        "$APT_IMAGE" \
-        /bin/bash -lc '
-set -e
-cmd="$1"; shift
-if [ "$cmd" = "apt" ]; then
-  tool="apt"
-else
-  tool="apt-get"
-fi
-export DEBIAN_FRONTEND=noninteractive
-exec "$tool" \
-  -o Dir::Etc=/host/etc/apt \
-  -o Dir::Etc::sourcelist=/host/etc/apt/sources.list \
-  -o Dir::Etc::sourceparts=/host/etc/apt/sources.list.d \
-  -o Dir::State=/host/var/lib/apt \
-  -o Dir::Cache=/host/var/cache/apt \
-  -o DPkg::options::=--root=/host \
-  "$@"
-' -- "$cmd" "$@"
-      ;;
-    dpkg)
-      exec docker run --rm -i \
-        -v /:/host \
-        --network host \
-        "$APT_IMAGE" \
-        /usr/bin/dpkg --root=/host "$@"
-      ;;
-    *)
-      echo "[apt-native] unsupported command: $cmd" >&2
-      exit 2
-      ;;
-  esac
-}
-
 if [ "$1" = "--exec" ]; then
   shift
   cmd="$1"; shift || true
   [ -n "$cmd" ] || { usage; exit 2; }
-  run_via_native_runtime "$cmd" "$@" || run_via_docker_backend "$cmd" "$@"
+  run_via_native_runtime "$cmd" "$@" || {
+    echo "[apt-native] runtime not initialized." >&2
+    echo "[apt-native] place native apt/dpkg runtime under: $RUNTIME" >&2
+    echo "[apt-native] then rerun command: apt update" >&2
+    exit 1
+  }
 fi
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
@@ -119,10 +73,12 @@ mkdir -p "$BASE" "$RUNTIME"
 ensure_host_apt_layout
 cat > "$BASE/README.txt" <<TXT
 APT Native experimental runtime
-- Stage-2: host-level apt state dirs are initialized.
-- Preferred path: native runtime under $RUNTIME.
-- Fallback path: Docker backend ($APT_IMAGE) with host root mounted at /host.
+- Physical host mode only (no Docker backend).
+- Host apt state dirs are initialized.
+- Provide native apt/dpkg runtime binaries under:
+  $RUNTIME
 TXT
 
 echo "[apt-native] bootstrap complete"
-echo "[apt-native] now try: apt update"
+echo "[apt-native] host apt directories initialized"
+echo "[apt-native] runtime path: $RUNTIME"
