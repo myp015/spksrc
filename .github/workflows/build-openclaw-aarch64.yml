@@ -32,14 +32,17 @@ jobs:
           entrypoint: /bin/bash
           args: -lc "set -e; cd /github/workspace/spk/openclaw && make arch-aarch64-7.2"
 
-      - name: Commit built SPK to repository
+      - name: Commit built SPK to repository (Git LFS)
         shell: bash
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git lfs install
+          git lfs track "releases/**/*.spk"
           mkdir -p releases/openclaw
           cp -f packages/openclaw_aarch64-7.2_*.spk releases/openclaw/
+          git add .gitattributes
           git add releases/openclaw/*.spk
           if git diff --cached --quiet; then
             echo "No new SPK changes to commit"

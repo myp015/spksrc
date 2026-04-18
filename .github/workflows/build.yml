@@ -339,7 +339,7 @@ jobs:
           BUILD_UNSUPPORTED_FILE: /github/workspace/build_unsupported.txt
           BUILD_SUCCESS_FILE: /github/workspace/build_success.txt
 
-      - name: Commit built SPK files to repository
+      - name: Commit built SPK files to repository (Git LFS)
         if: always()
         shell: bash
         run: |
@@ -353,8 +353,11 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git lfs install
+          git lfs track "releases/**/*.spk"
           mkdir -p "releases/${{ matrix.arch }}"
           cp -f packages/*.spk "releases/${{ matrix.arch }}/"
+          git add .gitattributes
           git add "releases/${{ matrix.arch }}"/*.spk
           if git diff --cached --quiet; then
             echo "No new SPK changes to commit"
