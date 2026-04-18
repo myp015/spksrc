@@ -55,14 +55,9 @@
             "key": "wizard_channel_agent_mode",
             "desc": "{{{CHANNEL_AGENT_MODE_LABEL}}}",
             "defaultValue": "main",
-            "displayField": "label",
-            "valueField": "value",
             "editable": false,
             "mode": "local",
-            "store": [
-              { "label": "main（所有渠道共用 main）", "value": "main" },
-              { "label": "isolated（每个渠道独立 agent）", "value": "isolated" }
-            ],
+            "store": ["main", "isolated"],
             "validator": {
               "allowBlank": false
             }

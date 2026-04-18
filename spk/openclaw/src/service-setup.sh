@@ -4,9 +4,11 @@ OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
 OPENCLAW_WORKSPACE_DEFAULT="/volume1/docker/openclaw"
 OPENCLAW_STATE_DIR_BASE="${OPENCLAW_WORKSPACE_DEFAULT}/.openclaw"
 OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
+OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/channel-agent-mode"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
 OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
+OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 
@@ -388,6 +390,9 @@ service_postinst() {
 
         export WIZARD_CHANNEL_AGENT_MODE="${wizard_channel_agent_mode:-main}"
 
+        mkdir -p "${OPENCLAW_STATE_DIR_BASE}" 2>/dev/null || true
+        printf "%s\n" "${WIZARD_CHANNEL_AGENT_MODE}" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}" 2>/dev/null || true
+
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
         export WIZARD_FEISHU_APP_SECRET="${wizard_feishu_app_secret}"
         export WIZARD_DINGTALK_CLIENT_ID="${wizard_dingtalk_client_id}"
@@ -451,8 +456,6 @@ const workspace = workspaceHome.endsWith("/.openclaw") ? workspaceHome : `${work
 const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5";
 const baseUrl = trim(process.env.WIZARD_BASE_URL) || "http://127.0.0.1:8317/v1";
 const apiKey = trim(process.env.WIZARD_API_KEY) || "sk-V5zPkG6MJrIpxgmDw";
-const routeModeRaw = trim(process.env.WIZARD_CHANNEL_AGENT_MODE).toLowerCase();
-const channelAgentRouteMode = routeModeRaw === "isolated" ? "isolated" : "main";
 
 cfg.models = cfg.models || {};
 cfg.models.providers = cfg.models.providers || {};
@@ -471,9 +474,6 @@ cfg.agents.defaults.model = cfg.agents.defaults.model || {};
 cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};
 cfg.agents.defaults.model.primary = `default/${modelId}`;
 cfg.agents.defaults.imageModel.primary = `default/${modelId}`;
-
-cfg.meta = cfg.meta && typeof cfg.meta === "object" ? cfg.meta : {};
-cfg.meta.spkChannelAgentMode = channelAgentRouteMode;
 
 cfg.memory = cfg.memory || {};
 cfg.memory.qmd = cfg.memory.qmd || {};
@@ -582,6 +582,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         fi
         OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
         OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
+        OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_STATE_DIR}/channel-agent-mode"
 
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
         ensure_session_store_dir
@@ -648,10 +649,19 @@ EOF
     OPENCLAW_WORKSPACE="${selected_workspace}"
     OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
+    OPENCLAW_CHANNEL_AGENT_MODE_FILE="${OPENCLAW_STATE_DIR}/channel-agent-mode"
 
     mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
     ensure_session_store_dir
     migrate_channel_legacy_state_to_agents
+
+    if [ ! -f "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" ]; then
+        if [ -f "${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}" ]; then
+            cp -f "${OPENCLAW_CHANNEL_AGENT_MODE_FILE_BASE}" "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
+        else
+            printf "%s\n" "main" > "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" 2>/dev/null || true
+        fi
+    fi
 
     # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
@@ -682,6 +692,8 @@ const path = require("path");
 const cfgPath = process.argv[1];
 const appDir = process.argv[2];
 const stateDir = process.argv[3];
+const channelAgentModeFile = process.argv[4];
+const trim = (v) => (typeof v === "string" ? v.trim() : "");
 
 function safeReadJson(fp) {
   try { return JSON.parse(fs.readFileSync(fp, "utf8")); } catch { return null; }
@@ -730,6 +742,11 @@ cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
 cfg.channels = cfg.channels || {};
 
 let changed = false;
+
+if (cfg.meta && typeof cfg.meta === "object" && Object.prototype.hasOwnProperty.call(cfg.meta, "spkChannelAgentMode")) {
+  delete cfg.meta.spkChannelAgentMode;
+  changed = true;
+}
 
 const normalizePolicy = (obj, dmDefault = "open", groupDefault = "open") => {
   const norm = (v) => typeof v === "string" ? v.trim().toLowerCase() : "";
@@ -949,9 +966,11 @@ try {
   }
 } catch {}
 
-const routeModeRaw = cfg.meta && typeof cfg.meta === "object" && typeof cfg.meta.spkChannelAgentMode === "string"
-  ? cfg.meta.spkChannelAgentMode.trim().toLowerCase()
-  : "main";
+let routeModeRaw = "";
+try {
+  routeModeRaw = trim(fs.readFileSync(channelAgentModeFile, "utf8")).toLowerCase();
+} catch {}
+if (!routeModeRaw) routeModeRaw = "main";
 const channelAgentRouteMode = routeModeRaw === "isolated" ? "isolated" : "main";
 
 const channelDefaultAgentId = channelAgentRouteMode === "main"
@@ -1070,7 +1089,7 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
 }
 
 if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" || true
+' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" "${OPENCLAW_CHANNEL_AGENT_MODE_FILE}" || true
 
     ensure_openclaw_in_path
     sync_provider_models_from_upstream
