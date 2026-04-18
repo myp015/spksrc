@@ -8,7 +8,8 @@ LIB="$RUNTIME/usr/lib/x86_64-linux-gnu"
 LIB2="$RUNTIME/lib/x86_64-linux-gnu"
 TMP="$BASE/tmp"
 
-DEBIAN_MIRROR="http://deb.debian.org/debian"
+DEBIAN_MIRROR="${APT_NATIVE_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian}"
+DEBIAN_SECURITY_MIRROR="${APT_NATIVE_SECURITY_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian-security}"
 DEBIAN_SUITE="bookworm"
 DEBIAN_COMPONENT="main"
 DEBIAN_ARCH="amd64"
@@ -41,10 +42,10 @@ ensure_host_apt_layout() {
   [ -f /var/lib/dpkg/status ] || touch /var/lib/dpkg/status
 
   if [ ! -s /etc/apt/sources.list ]; then
-    cat > /etc/apt/sources.list <<'SRC'
-deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+    cat > /etc/apt/sources.list <<SRC
+deb ${DEBIAN_MIRROR} bookworm main contrib non-free non-free-firmware
+deb ${DEBIAN_MIRROR} bookworm-updates main contrib non-free non-free-firmware
+deb ${DEBIAN_SECURITY_MIRROR} bookworm-security main contrib non-free non-free-firmware
 SRC
   fi
 }
@@ -80,8 +81,33 @@ extract_deb_data() {
     (cd "$work_dir" && ar x "$deb_file" >/dev/null)
   elif command -v bsdtar >/dev/null 2>&1; then
     (cd "$work_dir" && bsdtar -xf "$deb_file")
+  elif command -v busybox >/dev/null 2>&1 && busybox ar --help >/dev/null 2>&1; then
+    (cd "$work_dir" && busybox ar x "$deb_file" >/dev/null)
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$deb_file" "$work_dir" <<'PY'
+import os,sys
+src,out = sys.argv[1], sys.argv[2]
+with open(src,'rb') as f:
+    if f.read(8) != b'!<arch>\n':
+        raise SystemExit('invalid ar archive')
+    while True:
+        h=f.read(60)
+        if not h:
+            break
+        if len(h)<60:
+            raise SystemExit('truncated ar header')
+        name=h[:16].decode('utf-8','ignore').strip()
+        size=int(h[48:58].decode('ascii','ignore').strip() or '0')
+        data=f.read(size)
+        if size%2==1:
+            f.read(1)
+        name=name.rstrip('/')
+        if name in ('data.tar.xz','data.tar.gz','data.tar.zst','data.tar'):
+            with open(os.path.join(out,name),'wb') as w:
+                w.write(data)
+PY
   else
-    echo "[apt-native] missing extractor: neither 'ar' nor 'bsdtar' found" >&2
+    echo "[apt-native] missing extractor: need one of ar / bsdtar / busybox ar / python3" >&2
     return 1
   fi
 
@@ -92,8 +118,10 @@ extract_deb_data() {
   elif [ -f "$work_dir/data.tar.zst" ]; then
     if command -v unzstd >/dev/null 2>&1; then
       unzstd -c "$work_dir/data.tar.zst" | tar -xf - -C "$out_dir"
+    elif command -v zstd >/dev/null 2>&1; then
+      zstd -dc "$work_dir/data.tar.zst" | tar -xf - -C "$out_dir"
     else
-      echo "[apt-native] data.tar.zst found but 'unzstd' is missing" >&2
+      echo "[apt-native] data.tar.zst found but zstd/unzstd is missing" >&2
       return 1
     fi
   elif [ -f "$work_dir/data.tar" ]; then
