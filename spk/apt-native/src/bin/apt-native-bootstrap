@@ -1,0 +1,50 @@
+#!/bin/sh
+set -e
+
+BASE="/usr/local/apt-native"
+RUNTIME="$BASE/runtime"
+BIN="$RUNTIME/usr/bin"
+LIB="$RUNTIME/usr/lib/x86_64-linux-gnu"
+LIB2="$RUNTIME/lib/x86_64-linux-gnu"
+
+usage() {
+  cat <<USAGE
+Usage:
+  apt-native-bootstrap                # bootstrap runtime (experimental)
+  apt-native-bootstrap --exec <cmd>   # run apt/apt-get/dpkg in runtime
+
+WARNING: This is experimental and may damage DSM compatibility.
+USAGE
+}
+
+if [ "$1" = "--exec" ]; then
+  shift
+  cmd="$1"; shift || true
+  [ -x "$BIN/$cmd" ] || {
+    echo "[apt-native] runtime not initialized. run: sudo apt-native-bootstrap" >&2
+    exit 1
+  }
+  export LD_LIBRARY_PATH="$LIB:$LIB2:${LD_LIBRARY_PATH}"
+  exec "$BIN/$cmd" "$@"
+fi
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ "$(id -u)" != "0" ]; then
+  echo "[apt-native] bootstrap requires root" >&2
+  exit 1
+fi
+
+mkdir -p "$BASE" "$RUNTIME"
+cat > "$BASE/README.txt" <<TXT
+APT Native experimental runtime
+- This package currently provides command wrappers and bootstrap scaffolding.
+- Full system-layer apt dependency bootstrap is intentionally not automatic.
+- Manual validation is required before enabling in production.
+TXT
+
+echo "[apt-native] bootstrap scaffolding created at $BASE"
+echo "[apt-native] next step: place apt/dpkg runtime under $RUNTIME and rerun apt commands"
