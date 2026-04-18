@@ -52,7 +52,11 @@ SRC
 get_pkg_filename() {
   pkg="$1"
   index_url="$DEBIAN_MIRROR/dists/$DEBIAN_SUITE/$DEBIAN_COMPONENT/binary-$DEBIAN_ARCH/Packages.gz"
-  curl -fsSL "$index_url" | gzip -dc | awk -v p="$pkg" '
+  index_gz="$TMP/Packages.gz"
+
+  mkdir -p "$TMP"
+  curl -fsSL "$index_url" -o "$index_gz"
+  gzip -dc "$index_gz" | awk -v p="$pkg" '
     BEGIN { RS=""; FS="\n" }
     $1 == "Package: " p {
       for (i = 1; i <= NF; i++) {
@@ -71,12 +75,27 @@ extract_deb_data() {
   work_dir="$3"
 
   mkdir -p "$work_dir"
-  (cd "$work_dir" && ar x "$deb_file" >/dev/null)
+
+  if command -v ar >/dev/null 2>&1; then
+    (cd "$work_dir" && ar x "$deb_file" >/dev/null)
+  elif command -v bsdtar >/dev/null 2>&1; then
+    (cd "$work_dir" && bsdtar -xf "$deb_file")
+  else
+    echo "[apt-native] missing extractor: neither 'ar' nor 'bsdtar' found" >&2
+    return 1
+  fi
 
   if [ -f "$work_dir/data.tar.xz" ]; then
     tar -xJf "$work_dir/data.tar.xz" -C "$out_dir"
   elif [ -f "$work_dir/data.tar.gz" ]; then
     tar -xzf "$work_dir/data.tar.gz" -C "$out_dir"
+  elif [ -f "$work_dir/data.tar.zst" ]; then
+    if command -v unzstd >/dev/null 2>&1; then
+      unzstd -c "$work_dir/data.tar.zst" | tar -xf - -C "$out_dir"
+    else
+      echo "[apt-native] data.tar.zst found but 'unzstd' is missing" >&2
+      return 1
+    fi
   elif [ -f "$work_dir/data.tar" ]; then
     tar -xf "$work_dir/data.tar" -C "$out_dir"
   else
