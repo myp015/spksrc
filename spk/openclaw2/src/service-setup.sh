@@ -9,6 +9,8 @@ OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
+LOG_FILE="${SYNOPKG_PKGVAR}/openclaw2.log"
+PID_FILE="${SYNOPKG_PKGVAR}/openclaw2.pid"
 
 resolve_state_dir_from_workspace() {
     local ws="$1"
@@ -1092,6 +1094,11 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     local fn_cfg_dir="${fn_home_dir}/.openclaw"
     local fn_cfg_file="${fn_cfg_dir}/openclaw.json"
     mkdir -p "${fn_cfg_dir}" "${SYNOPKG_PKGVAR}/data/runtime" "${SYNOPKG_PKGVAR}/data/workspace" "${SYNOPKG_PKGVAR}/data/monitor" 2>/dev/null || true
+
+    # Ensure service user can write panel/runtime data.
+    if [ -n "${EFF_USER}" ]; then
+        chown -R "${EFF_USER}:${EFF_USER}" "${SYNOPKG_PKGVAR}/data" 2>/dev/null || true
+    fi
 
     # Keep fn-panel system-mode config path in sync with SPK runtime config.
     if [ -f "${OPENCLAW_CONFIG_FILE}" ] && [ ! -f "${fn_cfg_file}" ]; then
