@@ -122,6 +122,59 @@ ensure_session_store_dir() {
     chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
 }
 
+migrate_channel_state_path() {
+    local legacy_rel="$1"
+    local target_rel="$2"
+    local src="${OPENCLAW_STATE_DIR}/${legacy_rel}"
+    local dst="${OPENCLAW_STATE_DIR}/${target_rel}"
+
+    [ -n "${legacy_rel}" ] || return 0
+    [ -n "${target_rel}" ] || return 0
+    [ -e "${src}" ] || [ -L "${src}" ] || return 0
+
+    # Already migrated (symlink or redirected), keep as-is.
+    [ -L "${src}" ] && return 0
+
+    mkdir -p "$(dirname "${dst}")" 2>/dev/null || true
+
+    if [ -d "${src}" ]; then
+        if [ -d "${dst}" ]; then
+            cp -a "${src}/." "${dst}/" 2>/dev/null || true
+            rm -rf "${src}" 2>/dev/null || true
+        elif [ -e "${dst}" ]; then
+            mv "${src}" "${src}.migrate-conflict" 2>/dev/null || true
+        else
+            mv "${src}" "${dst}" 2>/dev/null || true
+        fi
+    else
+        if [ -e "${dst}" ]; then
+            mv "${src}" "${src}.migrate-conflict" 2>/dev/null || true
+        else
+            mv "${src}" "${dst}" 2>/dev/null || true
+        fi
+    fi
+
+    # Compatibility shim for plugins that may still reference legacy path.
+    if [ ! -e "${src}" ] && [ ! -L "${src}" ]; then
+        ln -s "${target_rel}" "${src}" 2>/dev/null || true
+    fi
+}
+
+migrate_channel_legacy_state_to_agents() {
+    # Canonical per-channel agent state dirs.
+    migrate_channel_state_path "feishu-default" "agents/feishu-default"
+    migrate_channel_state_path "dingtalk-default" "agents/dingtalk-default"
+    migrate_channel_state_path "wecom-default" "agents/wecom-default"
+    migrate_channel_state_path "qqbot-default" "agents/qqbot-default"
+
+    # Additional channel-specific legacy state/config dirs.
+    migrate_channel_state_path "feishu" "agents/feishu-default/feishu"
+    migrate_channel_state_path "dingtalk" "agents/dingtalk-default/dingtalk"
+    migrate_channel_state_path "wecom" "agents/wecom-default/wecom"
+    migrate_channel_state_path "wecomConfig" "agents/wecom-default/wecomConfig"
+    migrate_channel_state_path "qqbot" "agents/qqbot-default/qqbot"
+}
+
 
 ensure_openclaw_in_path() {
     local target_cli="/var/packages/openclaw/target/bin/openclaw"
@@ -561,6 +614,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
         ensure_session_store_dir
+        migrate_channel_legacy_state_to_agents
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
@@ -626,6 +680,7 @@ EOF
 
     mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
     ensure_session_store_dir
+    migrate_channel_legacy_state_to_agents
 
     # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
