@@ -90,6 +90,9 @@
   },
   "tools": {
     "profile": "full",
+    "elevated": {
+      "enabled": true
+    },
     "sessions": {
       "visibility": "all"
     },
