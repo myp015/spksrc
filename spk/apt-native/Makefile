@@ -10,7 +10,7 @@ REQUIRED_MIN_DSM = 7.2
 MAINTAINER = ainas
 MAINTAINER_URL = https://ainas.taobao.com
 DESCRIPTION = Experimental system-layer apt bootstrap for DSM x64. HIGH RISK, FOR TESTING ONLY.
-DISPLAY_NAME = APT Native (Experimental)
+DISPLAY_NAME = APT Native Experimental
 CHANGELOG = "Initial experimental release."
 
 HOMEPAGE = https://ainas.taobao.com
