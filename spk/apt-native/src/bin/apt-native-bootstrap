@@ -31,7 +31,8 @@ USAGE
 }
 
 runtime_ready() {
-  [ -x "$BIN/apt" ] && [ -x "$BIN/apt-get" ] && [ -x "$BIN/dpkg" ]
+  [ -x "$BIN/apt" ] && [ -x "$BIN/apt-get" ] && [ -x "$BIN/dpkg" ] && \
+  [ -f "$LIB/libxxhash.so.0" ]
 }
 
 ensure_host_apt_layout() {
@@ -166,7 +167,7 @@ bootstrap_runtime() {
 
   # Minimal runtime set for apt/apt-get/dpkg on x64.
   PKGS="\
-libc6 libgcc-s1 libstdc++6 zlib1g libbz2-1.0 liblzma5 liblz4-1 libzstd1 \
+libc6 libgcc-s1 libstdc++6 zlib1g libbz2-1.0 liblzma5 liblz4-1 libzstd1 libxxhash0 \
 libgpg-error0 libgcrypt20 libsystemd0 libudev1 libseccomp2 libapt-pkg6.0 \
 gpgv apt dpkg"
 
