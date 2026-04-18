@@ -1083,6 +1083,9 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     sync_provider_models_from_upstream
     sync_skills_to_workspace
     validate_or_rollback_config
+
+    # fn-port monitor runtime dirs (ported from trim.openclaw)
+    mkdir -p "${SYNOPKG_PKGVAR}/data/home/.openclaw" "${SYNOPKG_PKGVAR}/data/runtime" "${SYNOPKG_PKGVAR}/data/workspace" "${SYNOPKG_PKGVAR}/data/monitor" 2>/dev/null || true
 }
 
 # Default exports before prestart recalculates runtime paths.
@@ -1099,7 +1102,7 @@ FN_SOUL_MD_SRC="${SYNOPKG_PKGDEST}/fn-port/prompts/SOUL.md"
 FN_SOCKET_PATH="${SYNOPKG_PKGDEST}/trim.openclaw.sock"
 
 if [ -f "${FN_MONITOR_ENTRY}" ]; then
-    SERVICE_COMMAND="env OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
+    SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
     SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
 else
     SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
