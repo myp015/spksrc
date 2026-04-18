@@ -49,11 +49,23 @@
           }
         ]
       },{
-        "type": "multiselect",
-        "desc": "{{{CHANNEL_AGENT_ISOLATED_DESCRIPTION}}}",
+        "type": "combobox",
+        "desc": "{{{CHANNEL_AGENT_MODE_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_channel_agent_isolated",
-            "desc": "{{{CHANNEL_AGENT_ISOLATED_LABEL}}}"
+            "key": "wizard_channel_agent_mode",
+            "desc": "{{{CHANNEL_AGENT_MODE_LABEL}}}",
+            "defaultValue": "main",
+            "displayField": "label",
+            "valueField": "value",
+            "editable": false,
+            "mode": "local",
+            "store": [
+              { "label": "main（所有渠道共用 main）", "value": "main" },
+              { "label": "isolated（每个渠道独立 agent）", "value": "isolated" }
+            ],
+            "validator": {
+              "allowBlank": false
+            }
           }
         ]
       },{
