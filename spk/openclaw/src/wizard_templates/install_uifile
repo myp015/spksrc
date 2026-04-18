@@ -53,7 +53,7 @@
         "desc": "{{{CHANNEL_AGENT_MODE_DESCRIPTION}}}",
         "subitems": [{
             "key": "wizard_channel_agent_mode",
-            "defaultValue": "isolated",
+            "defaultValue": "main",
             "desc": "{{{CHANNEL_AGENT_MODE_LABEL}}}",
             "validator": {
               "allowBlank": false

@@ -385,7 +385,7 @@ service_postinst() {
         export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
         export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
         export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
-        export WIZARD_CHANNEL_AGENT_MODE="${wizard_channel_agent_mode:-isolated}"
+        export WIZARD_CHANNEL_AGENT_MODE="${wizard_channel_agent_mode:-main}"
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
         export WIZARD_FEISHU_APP_SECRET="${wizard_feishu_app_secret}"
         export WIZARD_DINGTALK_CLIENT_ID="${wizard_dingtalk_client_id}"
@@ -450,7 +450,7 @@ const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5
 const baseUrl = trim(process.env.WIZARD_BASE_URL) || "http://127.0.0.1:8317/v1";
 const apiKey = trim(process.env.WIZARD_API_KEY) || "sk-V5zPkG6MJrIpxgmDw";
 const routeModeRaw = trim(process.env.WIZARD_CHANNEL_AGENT_MODE).toLowerCase();
-const channelAgentRouteMode = routeModeRaw === "main" ? "main" : "isolated";
+const channelAgentRouteMode = routeModeRaw === "isolated" ? "isolated" : "main";
 
 cfg.models = cfg.models || {};
 cfg.models.providers = cfg.models.providers || {};
@@ -949,8 +949,8 @@ try {
 
 const routeModeRaw = cfg.meta && typeof cfg.meta === "object" && typeof cfg.meta.spkChannelAgentMode === "string"
   ? cfg.meta.spkChannelAgentMode.trim().toLowerCase()
-  : "isolated";
-const channelAgentRouteMode = routeModeRaw === "main" ? "main" : "isolated";
+  : "main";
+const channelAgentRouteMode = routeModeRaw === "isolated" ? "isolated" : "main";
 
 const channelDefaultAgentId = channelAgentRouteMode === "main"
   ? {
