@@ -49,15 +49,11 @@
           }
         ]
       },{
-        "type": "textfield",
-        "desc": "{{{CHANNEL_AGENT_MODE_DESCRIPTION}}}",
+        "type": "multiselect",
+        "desc": "{{{CHANNEL_AGENT_ISOLATED_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_channel_agent_mode",
-            "defaultValue": "main",
-            "desc": "{{{CHANNEL_AGENT_MODE_LABEL}}}",
-            "validator": {
-              "allowBlank": false
-            }
+            "key": "wizard_channel_agent_isolated",
+            "desc": "{{{CHANNEL_AGENT_ISOLATED_LABEL}}}"
           }
         ]
       },{

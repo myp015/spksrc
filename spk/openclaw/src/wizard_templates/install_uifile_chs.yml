@@ -12,8 +12,8 @@ BASE_URL_LABEL: "BASE_URL"
 API_KEY_DESCRIPTION: "模型接口 API_KEY（同步到 models.providers.default.apiKey）"
 API_KEY_LABEL: "API_KEY"
 
-CHANNEL_AGENT_MODE_DESCRIPTION: "渠道路由模式：isolated=每个渠道独立 agent；main=所有渠道共用 main agent。可填 isolated 或 main（默认 main）"
-CHANNEL_AGENT_MODE_LABEL: "CHANNEL_AGENT_MODE"
+CHANNEL_AGENT_ISOLATED_DESCRIPTION: "渠道路由模式（默认所有渠道共用 main agent）"
+CHANNEL_AGENT_ISOLATED_LABEL: "启用每个渠道独立 agent（勾选=isolated，未勾选=main）"
 
 FEISHU_APP_ID_DESCRIPTION: "飞书应用 App ID（留空则不启用 feishu 插件）"
 FEISHU_APP_ID_LABEL: "FEISHU_APP_ID"

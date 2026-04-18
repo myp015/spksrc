@@ -385,7 +385,17 @@ service_postinst() {
         export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
         export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
         export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
-        export WIZARD_CHANNEL_AGENT_MODE="${wizard_channel_agent_mode:-main}"
+
+        local wizard_route_mode="${wizard_channel_agent_mode}"
+        if [ -z "${wizard_route_mode}" ]; then
+            if [ "${wizard_channel_agent_isolated}" = "true" ]; then
+                wizard_route_mode="isolated"
+            else
+                wizard_route_mode="main"
+            fi
+        fi
+        export WIZARD_CHANNEL_AGENT_MODE="${wizard_route_mode}"
+
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
         export WIZARD_FEISHU_APP_SECRET="${wizard_feishu_app_secret}"
         export WIZARD_DINGTALK_CLIENT_ID="${wizard_dingtalk_client_id}"
