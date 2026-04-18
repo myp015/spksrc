@@ -91,7 +91,14 @@
   "tools": {
     "profile": "full",
     "elevated": {
-      "enabled": true
+      "enabled": true,
+      "allowFrom": {
+        "webchat": true,
+        "feishu": true,
+        "dingtalk": true,
+        "qqbot": true,
+        "wecom": true
+      }
     },
     "sessions": {
       "visibility": "all"
