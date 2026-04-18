@@ -25,7 +25,7 @@ DESCRIPTION = OpenClaw gateway packaged for Synology (native mode, no Docker).
 DISPLAY_NAME = OpenClaw
 CHANGELOG = "1. Build-time auto-resolve latest stable upstream OpenClaw tag; fail fast if fetch fails. 2. Follow upstream bundled-plugin runtime dependency postinstall at build time. 3. Keep extra preinstall plugins for Feishu/DingTalk/WeCom/QQBot. 4. Normalize channel allowFrom for open dmPolicy (Feishu/DingTalk/QQBot/WeCom). 5. Default memory backend to builtin in SPK template and auto-fallback to builtin when qmd binary is unavailable. 6. Tighten runtime config permission to 600. 7. Use openclaw as the only packaged CLI wrapper command (drop openclaw-spk compatibility wrapper). 8. Keep SPK_VERS clean and use numeric SPK_REV as build identity for DSM/SPK format compatibility. 9. Auto-create/fix ~/.openclaw/agents/main/sessions to avoid session-store CRITICAL warnings. 10. Wizard path means user folder; runtime state/config/workspace default to <用户文件夹>/.openclaw. 11. Add strict HOME guard so fresh installs do not create nested .openclaw/.openclaw files. 12. Auto-sync on-disk agent directories into agents.list to avoid fresh-install orphan-agent doctor warnings. 13. Force in-process restart mode under SPK (OPENCLAW_NO_RESPAWN=1) to keep synopkg status stable. 14. Disable WeCom dynamic agent creation by default in SPK to reduce config churn and multi-channel instability. 15. Enforce explicit per-channel route bindings to dedicated agent IDs to prevent cross-channel context bleed."
 
-HOMEPAGE = https://item.taobao.com
+HOMEPAGE = https://ainas.taobao.com
 LICENSE = MIT
 
 STARTABLE = yes
