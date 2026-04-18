@@ -2,14 +2,18 @@
     ".url": {
         "com.synocommunity.packages.openclaw2": {
             "title": "OpenClaw2",
-            "desc": "OpenClaw2 设置面板", 
-            "icon": "images/openclaw-{0}.png", 
-            "type": "url",
+            "desc": "OpenClaw2 设置面板",
+            "icon": "images/openclaw-{0}.png",
+            "type": "iframe",
             "protocol": "http",
             "port": "18789",
-            "url": "/", 
-            "allUsers": true, 
-            "grantPrivilege": "local"
+            "url": "/",
+            "allUsers": true,
+            "grantPrivilege": "local",
+            "control": {
+                "accessPerm": "readonly",
+                "fullUrlPerm": "readonly"
+            }
         }
     }
 }
