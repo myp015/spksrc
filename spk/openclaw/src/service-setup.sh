@@ -88,8 +88,8 @@ harden_extension_permissions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
     [ -d "${ext_dir}" ] || return 0
 
-    # OpenClaw plugin discovery expects trusted plugin directories. Keep bundled plugin copies root-owned.
-    chown -R root:root "${ext_dir}" 2>/dev/null || true
+    # Ownership policy: keep extensions owner consistent with workspace (.openclaw).
+    # Do not force root ownership here.
 
     # OpenClaw blocks plugins under writable paths. Normalize perms conservatively.
     find "${ext_dir}" -type d -exec chmod 755 {} \; 2>/dev/null || true
