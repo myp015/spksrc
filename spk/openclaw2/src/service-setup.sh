@@ -1084,6 +1084,9 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     sync_skills_to_workspace
     validate_or_rollback_config
 
+    # Clear stale pid marker before a fresh start.
+    [ -n "${PID_FILE}" ] && rm -f "${PID_FILE}" 2>/dev/null || true
+
     # fn-port monitor runtime dirs (ported from trim.openclaw)
     local fn_home_dir="${SYNOPKG_PKGVAR}/data/home"
     local fn_cfg_dir="${fn_home_dir}/.openclaw"
@@ -1118,5 +1121,5 @@ else
     SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
     SVC_CWD="${OPENCLAW_APP_DIR}"
 fi
-SVC_BACKGROUND=no
-SVC_WRITE_PID=no
+SVC_BACKGROUND=
+SVC_WRITE_PID=
