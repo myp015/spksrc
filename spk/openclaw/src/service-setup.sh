@@ -122,57 +122,20 @@ ensure_session_store_dir() {
     chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
 }
 
-migrate_channel_state_path() {
-    local legacy_rel="$1"
-    local target_rel="$2"
-    local src="${OPENCLAW_STATE_DIR}/${legacy_rel}"
-    local dst="${OPENCLAW_STATE_DIR}/${target_rel}"
-
-    [ -n "${legacy_rel}" ] || return 0
-    [ -n "${target_rel}" ] || return 0
-    [ -e "${src}" ] || [ -L "${src}" ] || return 0
-
-    # Already migrated (symlink or redirected), keep as-is.
-    [ -L "${src}" ] && return 0
-
-    mkdir -p "$(dirname "${dst}")" 2>/dev/null || true
-
-    if [ -d "${src}" ]; then
-        if [ -d "${dst}" ]; then
-            cp -a "${src}/." "${dst}/" 2>/dev/null || true
-            rm -rf "${src}" 2>/dev/null || true
-        elif [ -e "${dst}" ]; then
-            mv "${src}" "${src}.migrate-conflict" 2>/dev/null || true
-        else
-            mv "${src}" "${dst}" 2>/dev/null || true
-        fi
-    else
-        if [ -e "${dst}" ]; then
-            mv "${src}" "${src}.migrate-conflict" 2>/dev/null || true
-        else
-            mv "${src}" "${dst}" 2>/dev/null || true
-        fi
-    fi
-
-    # Compatibility shim for plugins that may still reference legacy path.
-    if [ ! -e "${src}" ] && [ ! -L "${src}" ]; then
-        ln -s "${target_rel}" "${src}" 2>/dev/null || true
-    fi
-}
-
 migrate_channel_legacy_state_to_agents() {
-    # Canonical per-channel agent state dirs.
-    migrate_channel_state_path "feishu-default" "agents/feishu-default"
-    migrate_channel_state_path "dingtalk-default" "agents/dingtalk-default"
-    migrate_channel_state_path "wecom-default" "agents/wecom-default"
-    migrate_channel_state_path "qqbot-default" "agents/qqbot-default"
-
-    # Additional channel-specific legacy state/config dirs.
-    migrate_channel_state_path "feishu" "agents/feishu-default/feishu"
-    migrate_channel_state_path "dingtalk" "agents/dingtalk-default/dingtalk"
-    migrate_channel_state_path "wecom" "agents/wecom-default/wecom"
-    migrate_channel_state_path "wecomConfig" "agents/wecom-default/wecomConfig"
-    migrate_channel_state_path "qqbot" "agents/qqbot-default/qqbot"
+    # Create canonical per-channel agent state dirs only.
+    # Intentionally do NOT move/symlink legacy paths here.
+    mkdir -p \
+        "${OPENCLAW_STATE_DIR}/agents/feishu-default" \
+        "${OPENCLAW_STATE_DIR}/agents/dingtalk-default" \
+        "${OPENCLAW_STATE_DIR}/agents/wecom-default" \
+        "${OPENCLAW_STATE_DIR}/agents/qqbot-default" \
+        "${OPENCLAW_STATE_DIR}/agents/feishu-default/feishu" \
+        "${OPENCLAW_STATE_DIR}/agents/dingtalk-default/dingtalk" \
+        "${OPENCLAW_STATE_DIR}/agents/wecom-default/wecom" \
+        "${OPENCLAW_STATE_DIR}/agents/wecom-default/wecomConfig" \
+        "${OPENCLAW_STATE_DIR}/agents/qqbot-default/qqbot" \
+        2>/dev/null || true
 }
 
 
