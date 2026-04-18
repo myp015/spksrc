@@ -93,11 +93,11 @@
     "elevated": {
       "enabled": true,
       "allowFrom": {
-        "webchat": true,
-        "feishu": true,
-        "dingtalk": true,
-        "qqbot": true,
-        "wecom": true
+        "webchat": ["*"],
+        "feishu": ["*"],
+        "dingtalk": ["*"],
+        "qqbot": ["*"],
+        "wecom": ["*"]
       }
     },
     "sessions": {
