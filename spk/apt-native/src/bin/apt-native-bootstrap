@@ -6,16 +6,22 @@ RUNTIME="$BASE/runtime"
 BIN="$RUNTIME/usr/bin"
 LIB="$RUNTIME/usr/lib/x86_64-linux-gnu"
 LIB2="$RUNTIME/lib/x86_64-linux-gnu"
+TMP="$BASE/tmp"
+
+DEBIAN_MIRROR="http://deb.debian.org/debian"
+DEBIAN_SUITE="bookworm"
+DEBIAN_COMPONENT="main"
+DEBIAN_ARCH="amd64"
 
 usage() {
   cat <<USAGE
 Usage:
-  apt-native-bootstrap                          # initialize apt-native state files
+  apt-native-bootstrap                          # bootstrap native apt runtime + host apt dirs
   apt-native-bootstrap --exec <apt|apt-get|dpkg> [args...]
 
 Behavior:
-  - Physical host only (no Docker backend).
-  - Requires native runtime binaries under:
+  - Physical host mode only (no Docker backend).
+  - Auto-installs a minimal Debian apt/dpkg runtime under:
       $RUNTIME
 
 WARNING:
@@ -23,11 +29,8 @@ WARNING:
 USAGE
 }
 
-run_via_native_runtime() {
-  cmd="$1"; shift
-  [ -x "$BIN/$cmd" ] || return 1
-  export LD_LIBRARY_PATH="$LIB:$LIB2:${LD_LIBRARY_PATH}"
-  exec "$BIN/$cmd" "$@"
+runtime_ready() {
+  [ -x "$BIN/apt" ] && [ -x "$BIN/apt-get" ] && [ -x "$BIN/dpkg" ]
 }
 
 ensure_host_apt_layout() {
@@ -37,7 +40,6 @@ ensure_host_apt_layout() {
   mkdir -p /var/lib/dpkg
   [ -f /var/lib/dpkg/status ] || touch /var/lib/dpkg/status
 
-  # Create default sources only when sources.list is missing/empty.
   if [ ! -s /etc/apt/sources.list ]; then
     cat > /etc/apt/sources.list <<'SRC'
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
@@ -47,16 +49,119 @@ SRC
   fi
 }
 
+get_pkg_filename() {
+  pkg="$1"
+  index_url="$DEBIAN_MIRROR/dists/$DEBIAN_SUITE/$DEBIAN_COMPONENT/binary-$DEBIAN_ARCH/Packages.gz"
+  curl -fsSL "$index_url" | gzip -dc | awk -v p="$pkg" '
+    BEGIN { RS=""; FS="\n" }
+    $1 == "Package: " p {
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^Filename: /) {
+          print substr($i, 11);
+          exit;
+        }
+      }
+    }
+  '
+}
+
+extract_deb_data() {
+  deb_file="$1"
+  out_dir="$2"
+  work_dir="$3"
+
+  mkdir -p "$work_dir"
+  (cd "$work_dir" && ar x "$deb_file" >/dev/null)
+
+  if [ -f "$work_dir/data.tar.xz" ]; then
+    tar -xJf "$work_dir/data.tar.xz" -C "$out_dir"
+  elif [ -f "$work_dir/data.tar.gz" ]; then
+    tar -xzf "$work_dir/data.tar.gz" -C "$out_dir"
+  elif [ -f "$work_dir/data.tar" ]; then
+    tar -xf "$work_dir/data.tar" -C "$out_dir"
+  else
+    echo "[apt-native] unsupported deb payload format: $deb_file" >&2
+    return 1
+  fi
+}
+
+install_runtime_pkg() {
+  pkg="$1"
+  filename="$(get_pkg_filename "$pkg")"
+  if [ -z "$filename" ]; then
+    echo "[apt-native] package not found in index: $pkg" >&2
+    return 1
+  fi
+
+  deb_url="$DEBIAN_MIRROR/$filename"
+  deb_path="$TMP/${pkg}.deb"
+  work_dir="$TMP/extract-$pkg"
+
+  rm -rf "$work_dir"
+  mkdir -p "$TMP" "$RUNTIME"
+  echo "[apt-native] fetching $pkg"
+  curl -fL "$deb_url" -o "$deb_path"
+  extract_deb_data "$deb_path" "$RUNTIME" "$work_dir"
+}
+
+bootstrap_runtime() {
+  if runtime_ready; then
+    return 0
+  fi
+
+  if [ "$(id -u)" != "0" ]; then
+    echo "[apt-native] runtime missing and bootstrap requires root" >&2
+    exit 1
+  fi
+
+  mkdir -p "$BASE" "$RUNTIME" "$TMP"
+  ensure_host_apt_layout
+
+  # Minimal runtime set for apt/apt-get/dpkg on x64.
+  PKGS="\
+libc6 libgcc-s1 libstdc++6 zlib1g libbz2-1.0 liblzma5 liblz4-1 libzstd1 \
+libgpg-error0 libgcrypt20 libsystemd0 libudev1 libseccomp2 libapt-pkg6.0 \
+gpgv apt dpkg"
+
+  for p in $PKGS; do
+    install_runtime_pkg "$p"
+  done
+
+  rm -rf "$TMP"
+  echo "[apt-native] runtime bootstrap done"
+}
+
+exec_with_runtime() {
+  cmd="$1"; shift
+  export LD_LIBRARY_PATH="$LIB:$LIB2:${LD_LIBRARY_PATH}"
+  export PATH="$BIN:${PATH}"
+
+  case "$cmd" in
+    apt|apt-get)
+      exec "$BIN/$cmd" \
+        -o Dir::Etc=/etc/apt \
+        -o Dir::Etc::sourcelist=/etc/apt/sources.list \
+        -o Dir::Etc::sourceparts=/etc/apt/sources.list.d \
+        -o Dir::State=/var/lib/apt \
+        -o Dir::Cache=/var/cache/apt \
+        "$@"
+      ;;
+    dpkg)
+      exec "$BIN/dpkg" "$@"
+      ;;
+    *)
+      echo "[apt-native] unsupported command: $cmd" >&2
+      exit 2
+      ;;
+  esac
+}
+
 if [ "$1" = "--exec" ]; then
   shift
   cmd="$1"; shift || true
   [ -n "$cmd" ] || { usage; exit 2; }
-  run_via_native_runtime "$cmd" "$@" || {
-    echo "[apt-native] runtime not initialized." >&2
-    echo "[apt-native] place native apt/dpkg runtime under: $RUNTIME" >&2
-    echo "[apt-native] then rerun command: apt update" >&2
-    exit 1
-  }
+  bootstrap_runtime
+  exec_with_runtime "$cmd" "$@"
 fi
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
@@ -71,14 +176,14 @@ fi
 
 mkdir -p "$BASE" "$RUNTIME"
 ensure_host_apt_layout
+bootstrap_runtime
+
 cat > "$BASE/README.txt" <<TXT
 APT Native experimental runtime
 - Physical host mode only (no Docker backend).
-- Host apt state dirs are initialized.
-- Provide native apt/dpkg runtime binaries under:
+- Native runtime installed under:
   $RUNTIME
 TXT
 
 echo "[apt-native] bootstrap complete"
-echo "[apt-native] host apt directories initialized"
-echo "[apt-native] runtime path: $RUNTIME"
+echo "[apt-native] now try: apt update"
