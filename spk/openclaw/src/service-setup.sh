@@ -125,8 +125,7 @@ ensure_session_store_dir() {
 }
 
 migrate_channel_legacy_state_to_agents() {
-    # Create canonical per-channel agent state dirs only.
-    # Intentionally do NOT move/symlink legacy paths here.
+    # Create canonical per-channel agent state dirs.
     mkdir -p \
         "${OPENCLAW_STATE_DIR}/agents/feishu-default" \
         "${OPENCLAW_STATE_DIR}/agents/dingtalk-default" \
@@ -138,6 +137,33 @@ migrate_channel_legacy_state_to_agents() {
         "${OPENCLAW_STATE_DIR}/agents/wecom-default/wecomConfig" \
         "${OPENCLAW_STATE_DIR}/agents/qqbot-default/qqbot" \
         2>/dev/null || true
+
+    # WeCom config path migration:
+    # Canonical path: ~/.openclaw/agents/wecom-default/wecomConfig
+    # Keep legacy path as compatibility symlink after migration.
+    local legacy_wecom_cfg="${OPENCLAW_STATE_DIR}/wecomConfig"
+    local target_wecom_cfg="${OPENCLAW_STATE_DIR}/agents/wecom-default/wecomConfig"
+
+    if [ -L "${legacy_wecom_cfg}" ]; then
+        :
+    elif [ -d "${legacy_wecom_cfg}" ]; then
+        if [ -d "${target_wecom_cfg}" ]; then
+            cp -a "${legacy_wecom_cfg}/." "${target_wecom_cfg}/" 2>/dev/null || true
+            rm -rf "${legacy_wecom_cfg}" 2>/dev/null || true
+        else
+            mv "${legacy_wecom_cfg}" "${target_wecom_cfg}" 2>/dev/null || true
+        fi
+    elif [ -f "${legacy_wecom_cfg}" ]; then
+        if [ ! -e "${target_wecom_cfg}" ]; then
+            mv "${legacy_wecom_cfg}" "${target_wecom_cfg}" 2>/dev/null || true
+        else
+            rm -f "${legacy_wecom_cfg}" 2>/dev/null || true
+        fi
+    fi
+
+    if [ ! -e "${legacy_wecom_cfg}" ] && [ ! -L "${legacy_wecom_cfg}" ]; then
+        ln -s "agents/wecom-default/wecomConfig" "${legacy_wecom_cfg}" 2>/dev/null || true
+    fi
 }
 
 
