@@ -385,6 +385,7 @@ service_postinst() {
         export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
         export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
         export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
+        export WIZARD_CHANNEL_AGENT_MODE="${wizard_channel_agent_mode:-isolated}"
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
         export WIZARD_FEISHU_APP_SECRET="${wizard_feishu_app_secret}"
         export WIZARD_DINGTALK_CLIENT_ID="${wizard_dingtalk_client_id}"
@@ -448,6 +449,8 @@ const workspace = workspaceHome.endsWith("/.openclaw") ? workspaceHome : `${work
 const modelId = trim(process.env.WIZARD_MODEL_ID) || "Pro/MiniMaxAI/MiniMax-M2.5";
 const baseUrl = trim(process.env.WIZARD_BASE_URL) || "http://127.0.0.1:8317/v1";
 const apiKey = trim(process.env.WIZARD_API_KEY) || "sk-V5zPkG6MJrIpxgmDw";
+const routeModeRaw = trim(process.env.WIZARD_CHANNEL_AGENT_MODE).toLowerCase();
+const channelAgentRouteMode = routeModeRaw === "main" ? "main" : "isolated";
 
 cfg.models = cfg.models || {};
 cfg.models.providers = cfg.models.providers || {};
@@ -466,6 +469,9 @@ cfg.agents.defaults.model = cfg.agents.defaults.model || {};
 cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};
 cfg.agents.defaults.model.primary = `default/${modelId}`;
 cfg.agents.defaults.imageModel.primary = `default/${modelId}`;
+
+cfg.meta = cfg.meta && typeof cfg.meta === "object" ? cfg.meta : {};
+cfg.meta.spkChannelAgentMode = channelAgentRouteMode;
 
 cfg.memory = cfg.memory || {};
 cfg.memory.qmd = cfg.memory.qmd || {};
@@ -941,12 +947,24 @@ try {
   }
 } catch {}
 
-const channelDefaultAgentId = {
-  feishu: "feishu-default",
-  dingtalk: "dingtalk-default",
-  wecom: "wecom-default",
-  qqbot: "qqbot-default"
-};
+const routeModeRaw = cfg.meta && typeof cfg.meta === "object" && typeof cfg.meta.spkChannelAgentMode === "string"
+  ? cfg.meta.spkChannelAgentMode.trim().toLowerCase()
+  : "isolated";
+const channelAgentRouteMode = routeModeRaw === "main" ? "main" : "isolated";
+
+const channelDefaultAgentId = channelAgentRouteMode === "main"
+  ? {
+      feishu: "main",
+      dingtalk: "main",
+      wecom: "main",
+      qqbot: "main"
+    }
+  : {
+      feishu: "feishu-default",
+      dingtalk: "dingtalk-default",
+      wecom: "wecom-default",
+      qqbot: "qqbot-default"
+    };
 for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
   const ch = cfg.channels[channelId];
   if (ch && typeof ch === "object") {
