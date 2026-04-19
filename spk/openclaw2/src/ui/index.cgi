@@ -140,6 +140,9 @@ cat <<'HTML'
       <button class="tab active" data-tab="status">概览</button>
       <button class="tab" data-tab="models">模型配置</button>
       <button class="tab" data-tab="channels">消息渠道</button>
+      <button class="tab" data-tab="plugins">插件管理</button>
+      <button class="tab" data-tab="install">安装 / 控制</button>
+      <button class="tab" data-tab="process_governor">进程治理</button>
       <button class="tab" data-tab="logs">运行日志</button>
     </div>
     <div class="panel">
@@ -167,7 +170,7 @@ cat <<'HTML'
     function setTabs(tab) {
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
-      document.getElementById('saveBtn').style.display = (tab === 'models' || tab === 'channels') ? '' : 'none';
+      document.getElementById('saveBtn').style.display = (tab === 'models' || tab === 'channels' || tab === 'plugins' || tab === 'install') ? '' : 'none';
     }
     async function api(action, method='GET', payload=null) {
       const resp = await fetch(API_BASE + encodeURIComponent(action), {
@@ -207,17 +210,28 @@ cat <<'HTML'
           return;
         }
         content.innerHTML = '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
-        setMsg('JSON 已加载，可编辑后保存', 'ok');
+        if (tab === 'plugins') {
+          setMsg('插件列表已加载；可编辑 JSON 后保存，或先点刷新后查看状态', 'ok');
+        } else if (tab === 'install') {
+          setMsg('安装/控制信息已加载；可编辑 JSON 后保存提交动作', 'ok');
+        } else if (tab === 'process_governor') {
+          setMsg('进程治理信息已加载', 'ok');
+        } else {
+          setMsg('JSON 已加载，可编辑后保存', 'ok');
+        }
       } catch (e) {
         setMsg('加载失败：' + (e.message || e), 'err');
       }
     }
     async function saveCurrent() {
-      if (!(currentTab === 'models' || currentTab === 'channels')) return;
+      if (!(currentTab === 'models' || currentTab === 'channels' || currentTab === 'plugins' || currentTab === 'install')) return;
       try {
         const raw = document.getElementById('editor').value;
         const payload = JSON.parse(raw);
-        const action = currentTab === 'models' ? 'models_save' : 'channels_save';
+        let action = 'models_save';
+        if (currentTab === 'channels') action = 'channels_save';
+        else if (currentTab === 'plugins') action = 'plugin_install';
+        else if (currentTab === 'install') action = 'install_run';
         const data = await api(action, 'POST', payload);
         document.getElementById('editor').value = JSON.stringify(data, null, 2);
         setMsg('保存成功', 'ok');
