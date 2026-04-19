@@ -7,7 +7,7 @@
       "type": "iframe",
       "protocol": "https",
       "port": "5001",
-      "url": "/webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/app/trim-openclaw/",
+      "url": "/webman/3rdparty/openclaw2/index.cgi",
       "allUsers": true,
       "grantPrivilege": "all",
       "advanceGrantPrivilege": true
