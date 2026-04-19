@@ -35,13 +35,83 @@ if [ "$native_api" = "1" ]; then
             ;;
         models)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/models/config" || printf '{"error":"models unavailable"}'
+            python3 - <<'PY' "${APP_VAR_DIR}/data/home/.openclaw/openclaw.json"
+import json, os, sys
+cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
+except Exception:
+    cfg = {}
+providers_map = ((cfg.get('models') or {}).get('providers') or {})
+providers = []
+for pid, p in providers_map.items():
+    if not isinstance(p, dict):
+        continue
+    item = {
+        'id': pid,
+        'displayName': p.get('displayName') or pid,
+        'api': p.get('api') or 'openai-completions',
+        'baseUrl': p.get('baseUrl') or '',
+        'models': []
+    }
+    for m in (p.get('models') or []):
+        if isinstance(m, dict):
+            mid = m.get('modelId') or m.get('id') or ''
+            if mid:
+                item['models'].append({'id': mid, 'modelId': mid})
+    providers.append(item)
+workspace_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw')
+print(json.dumps({'configuredProviders': providers, 'workspaceDir': workspace_dir, 'configPath': cfg_path, 'configExists': bool(cfg)}, ensure_ascii=False))
+PY
             exit 0
             ;;
         models_save)
             body=$(read_body)
+            workspace=$(python3 - <<'PY' "$body"
+import json,sys
+raw=sys.argv[1] if len(sys.argv)>1 else '{}'
+try:
+    p=json.loads(raw)
+    print((p.get('workspaceDir') or '').strip())
+except Exception:
+    print('')
+PY
+)
+            if [ -n "$workspace" ]; then
+                python3 - <<'PY' "$workspace" "${APP_VAR_DIR}/data/home/.openclaw/openclaw.json"
+import json, os, sys
+workspace = sys.argv[1]
+cfg_path = sys.argv[2]
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
+except Exception:
+    cfg = {}
+cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
+qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
+paths = qmd.setdefault('paths', [])
+if not paths:
+    paths.append({'path': workspace, 'name': 'workspace', 'pattern': '**/*.md'})
+else:
+    if isinstance(paths[0], dict):
+        paths[0]['path'] = workspace
+os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+with open(cfg_path, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+    f.write('\n')
+PY
+            fi
+            providers_only=$(python3 - <<'PY' "$body"
+import json,sys
+raw=sys.argv[1] if len(sys.argv)>1 else '{}'
+try:
+    p=json.loads(raw)
+    print(json.dumps({'providers': p.get('providers') or []}, ensure_ascii=False))
+except Exception:
+    print('{"providers":[]}')
+PY
+)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            printf '%s' "$body" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/models/config" || printf '{"error":"models save failed"}'
+            printf '%s' "$providers_only" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/models/config/fast" || printf '{"error":"models save failed"}'
             exit 0
             ;;
         models_discover)
@@ -122,7 +192,26 @@ PY
             ;;
         channels)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/channels/config" || printf '{"error":"channels unavailable"}'
+            python3 - <<'PY' "${APP_VAR_DIR}/data/home/.openclaw/openclaw.json"
+import json, os, sys
+cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
+except Exception:
+    cfg = {}
+ch = cfg.get('channels') or {}
+out = {
+  'configPath': cfg_path,
+  'configExists': bool(cfg),
+  'configuredChannelIds': list(ch.keys()),
+  'feishu': ch.get('feishu') or {},
+  'wecom': ch.get('wecom') or {},
+  'dingtalk': ch.get('dingtalk') or {},
+  'qqbot': ch.get('qqbot') or {},
+  'weixin': ch.get('weixin') or {}
+}
+print(json.dumps(out, ensure_ascii=False))
+PY
             exit 0
             ;;
         channels_save)
@@ -133,7 +222,7 @@ PY
             ;;
         plugins)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/channels/plugins" || printf '{"error":"plugins unavailable"}'
+            curl -fsS --max-time 3 "${PANEL_URL}/app/trim-openclaw/api/channels/plugins" || printf '{"plugins":[],"source":"fallback","stale":true,"refreshing":false,"error":"plugins unavailable"}'
             exit 0
             ;;
         plugins_refresh)
@@ -319,9 +408,15 @@ cat <<'HTML'
         }
         if (tab === 'models') {
           const providers = data.configuredProviders || [];
+          const workspaceDir = data.workspaceDir || '/volume1/docker/openclaw';
           window.__modelsData = data;
           const options = ['<option value="custom-openai">自定义 OpenAI 兼容</option>'].concat(Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>')).join('');
           content.innerHTML = ''
+            + '<div class="card" style="margin-bottom:12px;">'
+            + '  <h3>用户目录</h3>'
+            + '  <div class="field"><label>Workspace</label><input id="workspace_dir" value="' + esc(workspaceDir) + '" placeholder="/volume1/docker/openclaw"></div>'
+            + '  <div style="display:flex;gap:8px;"><button class="btn primary" onclick="saveWorkspaceQuick()">保存目录</button></div>'
+            + '</div>'
             + '<div style="margin-bottom:12px;"><button class="btn primary" onclick="openModelDialog()">添加模型服务器</button></div>'
             + '<div class="list">'
             + providers.map((p, idx) => {
@@ -391,6 +486,8 @@ cat <<'HTML'
           const feishu = data.feishu || {};
           const wecom = data.wecom || {};
           const dingtalk = data.dingtalk || {};
+          const qqbot = data.qqbot || {};
+          const weixin = data.weixin || {};
           content.innerHTML = ''
             + '<div class="cards">'
             + '  <div class="card">'
@@ -410,6 +507,19 @@ cat <<'HTML'
             + '    <div class="field"><label>Client ID</label><input id="dingtalk_clientId" value="' + esc(dingtalk.clientId || '') + '"></div>'
             + '    <div class="field"><label>Client Secret（留空表示不改）</label><input id="dingtalk_clientSecret" type="password" value=""></div>'
             + '    <button class="btn primary" onclick="saveDingtalkQuick()">保存钉钉配置</button>'
+            + '  </div>'
+            + '  <div class="card">'
+            + '    <h3>QQ Bot</h3>'
+            + '    <div class="field"><label>App ID</label><input id="qqbot_appId" value="' + esc(qqbot.appId || '') + '"></div>'
+            + '    <div class="field"><label>Client Secret（留空表示不改）</label><input id="qqbot_clientSecret" type="password" value=""></div>'
+            + '    <button class="btn primary" onclick="saveQQBotQuick()">保存 QQ 配置</button>'
+            + '  </div>'
+            + '  <div class="card">'
+            + '    <h3>微信（Weixin）</h3>'
+            + '    <div style="font-size:12px;color:#667085;margin-bottom:8px;">参考 trim 方式：先安装微信插件，再扫码登录。</div>'
+            + '    <div style="display:flex;gap:8px;flex-wrap:wrap;">'
+            + '      <button class="btn" onclick="installPlugin(\'weixin\')">安装微信插件</button>'
+            + '    </div>'
             + '  </div>'
             + '</div>'
             + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
@@ -598,6 +708,23 @@ cat <<'HTML'
         document.getElementById('editor').value = JSON.stringify(saved, null, 2);
         setMsg('模型服务器已删除', 'ok');
       } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
+    }
+    async function saveWorkspaceQuick() {
+      try {
+        const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/docker/openclaw';
+        const data = window.__modelsData || {};
+        const payload = { providers: (data.configuredProviders || []), workspaceDir };
+        await api('models_save', 'POST', payload);
+        setMsg('用户目录保存成功：' + workspaceDir, 'ok');
+      } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
+    }
+    async function saveQQBotQuick() {
+      try {
+        const payload = { qqbot: { appId: document.getElementById('qqbot_appId').value, clientSecret: document.getElementById('qqbot_clientSecret').value } };
+        const data = await api('channels_save', 'POST', payload);
+        document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        setMsg('QQ 配置保存成功', 'ok');
+      } catch (e) { setMsg('QQ 配置保存失败：' + (e.message || e), 'err'); }
     }
     async function saveFeishuQuick() {
       try {
