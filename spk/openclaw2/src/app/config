@@ -6,8 +6,8 @@
       "icon": "images/openclaw2-{0}.png",
       "type": "iframe",
       "protocol": "http",
-      "port": "5000",
-      "url": "/webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/app/trim-openclaw/", 
+      "port": "18700",
+      "url": "/app/trim-openclaw/", 
       "allUsers": true,
       "grantPrivilege": "all",
       "advanceGrantPrivilege": true
