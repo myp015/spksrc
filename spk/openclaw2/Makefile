@@ -34,12 +34,13 @@ SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
 NO_SERVICE_SHORTCUT = yes
 
-DSM_UI_DIR = ui
+DSM_UI_DIR = app
+DSM_UI_CONFIG = src/app/config
 SERVICE_PORT = 18700
 SERVICE_PORT_TITLE = OpenClaw2 Panel (HTTP)
-SERVICE_URL = /
+SERVICE_URL = /app/trim-openclaw/
 ADMIN_PORT = $(SERVICE_PORT)
-ADMIN_URL = /
+ADMIN_URL = /app/trim-openclaw/
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
@@ -104,6 +105,7 @@ openclaw_copy_target:
 	@install -d -m 755 $(STAGING_DIR)/ui
 	@cp -rf src/ui/* $(STAGING_DIR)/ui/
 	@chmod 755 $(STAGING_DIR)/ui/index.cgi
+	@rm -f $(STAGING_DIR)/ui/config $(STAGING_DIR)/ui/openclaw2.sc
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
