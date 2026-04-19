@@ -1121,7 +1121,14 @@ FN_STATIC_DIR="${SYNOPKG_PKGDEST}/fn-port/ui"
 FN_SOUL_MD_SRC="${SYNOPKG_PKGDEST}/fn-port/prompts/SOUL.md"
 FN_SOCKET_PATH="${SYNOPKG_PKGDEST}/trim.openclaw.sock"
 
-SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=1 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
-SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
+if [ -f "${FN_MONITOR_ENTRY}" ]; then
+    SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=1 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
+    SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
+else
+    # Fallback to core gateway when fn monitor entry is missing/corrupted,
+    # so DSM service can still start instead of immediate pid/status failure.
+    SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
+    SVC_CWD="${OPENCLAW_APP_DIR}"
+fi
 SVC_BACKGROUND=yes
 SVC_WRITE_PID=yes
