@@ -25,8 +25,7 @@ urldecode() {
 }
 
 get_param() {
-    # $1 key, $2 query/body
-    printf '%s' "$2" | tr '&' '\n' | awk -F= -v k="$1" '$1==k{print substr($0, index($0,"=")+1)}' | tail -n1
+    printf '%s' "$2" | tr '&' '\n' | awk -F= -v k="$1" '$1==k{print substr($0,index($0,"=")+1)}' | tail -n1
 }
 
 check_url() {
@@ -78,7 +77,6 @@ emit_proxy_response() {
     content_type=$(grep -i '^Content-Type:' "$resp_headers" | tail -n1 | cut -d':' -f2- | tr -d '\r' | sed 's/^ *//')
     [ -n "$content_type" ] || content_type='text/plain; charset=UTF-8'
 
-    # Rewrite front-end absolute paths to DSM proxy query paths.
     if printf '%s' "$content_type" | grep -Eiq 'text/|javascript|json|css'; then
         sed \
           -e "s#\(/app/trim-openclaw\)#${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw#g" \
@@ -121,9 +119,20 @@ if [ "$proxy_flag" = "1" ]; then
         *) proxy_path="/$proxy_path" ;;
     esac
 
-    target_url="${PANEL_URL}${proxy_path}"
+    # Critical fix:
+    # panel base path is /app/trim-openclaw, but backend API actually lives at /api/*.
+    # Map proxied /app/trim-openclaw/api/* -> backend /api/* to avoid HTML fallback.
+    case "$proxy_path" in
+        /app/trim-openclaw/api/*)
+            backend_path="/api/${proxy_path#/app/trim-openclaw/api/}"
+            ;;
+        *)
+            backend_path="$proxy_path"
+            ;;
+    esac
 
-    # Pass through non-control query params to backend
+    target_url="${PANEL_URL}${backend_path}"
+
     passthrough_q=$(printf '%s' "$QUERY" | tr '&' '\n' | grep -v '^proxy=' | grep -v '^path=' | paste -sd '&' -)
     [ -n "$passthrough_q" ] && target_url="${target_url}?${passthrough_q}"
 
@@ -132,7 +141,7 @@ if [ "$proxy_flag" = "1" ]; then
 fi
 
 GATEWAY_STATUS=$(check_url "${GATEWAY_URL}")
-PANEL_STATUS=$(check_url "${PANEL_URL}/")
+PANEL_STATUS=$(check_url "${PANEL_URL}/app/trim-openclaw/")
 [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
 TAIL_LOG=$(tail -n 80 "$LOG_FILE" 2>/dev/null | html_escape)
 
@@ -162,7 +171,7 @@ code { background:#f1f3f5; padding:2px 6px; border-radius:4px; }
   <p>
     面板状态：
     <span class="badge $( [ "$PANEL_STATUS" = "running" ] && echo ok || echo err )">$PANEL_STATUS</span>
-    （$PANEL_URL/）
+    （$PANEL_URL/app/trim-openclaw/）
   </p>
   <p>
     Gateway 状态：
