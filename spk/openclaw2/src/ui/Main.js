@@ -14,7 +14,7 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
         this.appInstance = cfg.appInstance;
 
         // Fallback ui launcher: open panel directly on 18700.
-        var monitorUrl = 'http://' + window.location.hostname + ':18700/app/trim-openclaw/';
+        var monitorUrl = '/webman/3rdparty/openclaw2/index.cgi';
 
         var config = Ext.apply({
             resizable: true,
