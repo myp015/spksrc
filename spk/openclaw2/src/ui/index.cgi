@@ -182,6 +182,7 @@ cat <<'HTML'
     .field { margin-bottom:10px; }
     .field label { display:block; font-size:12px; color:#667085; margin-bottom:4px; }
     .field input, .field select, .field textarea { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
+    .field select[multiple] { min-height: 160px; }
     .list { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
     .item { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
     .item-title { font-size:16px; font-weight:600; margin-bottom:6px; }
@@ -316,7 +317,8 @@ cat <<'HTML'
             + '    <div class="field"><label>API 类型</label><select id="dlg_api"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
             + '    <div class="field"><label>Base URL</label><input id="dlg_base_url"></div>'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password"></div>'
-            + '    <div class="field"><label>模型列表（每行一个 modelId）</label><textarea id="dlg_model_ids" style="min-height:140px;"></textarea></div>'
+            + '    <div class="field"><label>可选模型（按住 Ctrl / Command 可多选）</label><select id="dlg_model_select" multiple onchange="syncModelTextareaFromSelect()"></select></div>'
+            + '    <div class="field"><label>模型列表（每行一个 modelId，可手工补充）</label><textarea id="dlg_model_ids" style="min-height:140px;" oninput="syncModelSelectFromTextarea()"></textarea></div>'
             + '    <div style="display:flex;gap:8px;flex-wrap:wrap;">'
             + '      <button class="btn" onclick="discoverModelsForDialog()">刷新当前服务商模型</button>'
             + '    </div>'
@@ -456,11 +458,27 @@ cat <<'HTML'
       document.getElementById('dlg_api').value = preset.api || 'openai-completions';
       setMsg('已按服务商自动填充服务器地址与 API 类型', 'ok');
     }
+    function setModelSelectOptions(ids, selectedIds) {
+      const select = document.getElementById('dlg_model_select');
+      if (!select) return;
+      const all = Array.from(new Set((ids || []).concat(selectedIds || []))).filter(Boolean);
+      select.innerHTML = all.map(id => '<option value="' + esc(id) + '"' + ((selectedIds || []).includes(id) ? ' selected' : '') + '>' + esc(id) + '</option>').join('');
+    }
+    function syncModelTextareaFromSelect() {
+      const select = document.getElementById('dlg_model_select');
+      const ids = Array.from(select.selectedOptions).map(o => o.value);
+      document.getElementById('dlg_model_ids').value = ids.join('\n');
+    }
+    function syncModelSelectFromTextarea() {
+      const ids = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      setModelSelectOptions(ids, ids);
+    }
     function openModelDialog(index) {
       const data = window.__modelsData || {};
       const providers = data.configuredProviders || [];
       const editing = typeof index === 'number';
       const p = editing ? (providers[index] || {}) : {};
+      const currentIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
       document.getElementById('modelModalTitle').textContent = editing ? '编辑模型服务器' : '添加模型服务器';
       document.getElementById('dlg_provider_preset').value = p.id && PROVIDER_PRESETS[p.id] ? p.id : (p.id === 'custom-openai' ? 'custom-openai' : 'openai');
       document.getElementById('dlg_provider_id').value = p.id || '';
@@ -468,7 +486,8 @@ cat <<'HTML'
       document.getElementById('dlg_api').value = p.api || 'openai-completions';
       document.getElementById('dlg_base_url').value = p.baseUrl || '';
       document.getElementById('dlg_api_key').value = '';
-      document.getElementById('dlg_model_ids').value = (p.models || []).map(m => m.modelId || m.id).filter(Boolean).join('\n');
+      document.getElementById('dlg_model_ids').value = currentIds.join('\n');
+      setModelSelectOptions(currentIds, currentIds);
       document.getElementById('modelModalMask').style.display = 'flex';
       document.getElementById('modelModalMask').dataset.editIndex = editing ? String(index) : '';
     }
@@ -486,7 +505,10 @@ cat <<'HTML'
         };
         const data = await api('models_discover', 'POST', payload);
         const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
-        document.getElementById('dlg_model_ids').value = ids.join('\n');
+        const existing = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        const merged = Array.from(new Set(ids.concat(existing)));
+        document.getElementById('dlg_model_ids').value = merged.join('\n');
+        setModelSelectOptions(merged, existing.length ? existing : ids);
         if (ids.length > 0) setMsg('已刷新模型列表，共 ' + ids.length + ' 个', 'ok');
         else setMsg(data.error ? ('刷新失败：' + data.error) : '未发现模型', data.error ? 'err' : '');
       } catch (e) { setMsg('刷新模型失败：' + (e.message || e), 'err'); }
