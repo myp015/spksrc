@@ -20,6 +20,56 @@ SYNOCOMMUNITY.OpenClaw2.api = function(action, method, payload, onSuccess, onFai
     });
 };
 
+SYNOCOMMUNITY.OpenClaw2.pretty = function(data) {
+    return Ext.util.JSON.encode(data, true);
+};
+
+SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel = function(title, loadAction, saveAction, options) {
+    options = options || {};
+    var editor = new Ext.form.TextArea({
+        style: 'font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;',
+        value: '',
+        grow: false,
+        height: options.height || 560,
+        readOnly: !!options.readOnly
+    });
+    return new Ext.Panel({
+        title: title,
+        layout: 'fit',
+        tbar: [{
+            text: '刷新',
+            handler: function() {
+                SYNOCOMMUNITY.OpenClaw2.api(loadAction, 'GET', null, function(data) {
+                    editor.setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                });
+            }
+        }].concat(options.readOnly ? [] : [{
+            text: '保存',
+            handler: function() {
+                try {
+                    var payload = Ext.decode(editor.getValue());
+                    SYNOCOMMUNITY.OpenClaw2.api(saveAction, 'POST', payload, function(data) {
+                        Ext.Msg.alert('OpenClaw2', title + ' 已提交');
+                        editor.setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                    }, function(resp) {
+                        Ext.Msg.alert('OpenClaw2', '保存失败: HTTP ' + resp.status);
+                    });
+                } catch (e) {
+                    Ext.Msg.alert('OpenClaw2', 'JSON 格式错误: ' + e.message);
+                }
+            }
+        }]),
+        items: [editor],
+        listeners: {
+            activate: function() {
+                SYNOCOMMUNITY.OpenClaw2.api(loadAction, 'GET', null, function(data) {
+                    editor.setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                });
+            }
+        }
+    });
+};
+
 SYNOCOMMUNITY.OpenClaw2.AppInstance = Ext.extend(SYNO.SDS.AppInstance, {
     appWindowName: 'SYNOCOMMUNITY.OpenClaw2.AppWindow',
     constructor: function () {
@@ -59,131 +109,37 @@ SYNOCOMMUNITY.OpenClaw2.AppWindow = Ext.extend(SYNO.SDS.AppWindow, {
             }
         });
 
-        var modelsText = new Ext.form.TextArea({
-            style: 'font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;',
-            value: '',
-            grow: false,
-            height: 560
-        });
-        var modelsPanel = new Ext.Panel({
-            title: '模型配置',
-            layout: 'fit',
-            tbar: [{
-                text: '刷新',
-                handler: function() {
-                    SYNOCOMMUNITY.OpenClaw2.api('models', 'GET', null, function(data) {
-                        modelsText.setValue(Ext.util.JSON.encode(data, true));
-                    });
-                }
-            }, {
-                text: '保存',
-                handler: function() {
-                    try {
-                        var payload = Ext.decode(modelsText.getValue());
-                        SYNOCOMMUNITY.OpenClaw2.api('models_save', 'POST', payload, function(data) {
-                            Ext.Msg.alert('OpenClaw2', '模型配置已提交保存');
-                            modelsText.setValue(Ext.util.JSON.encode(data, true));
-                        }, function(resp) {
-                            Ext.Msg.alert('OpenClaw2', '保存失败: HTTP ' + resp.status);
-                        });
-                    } catch (e) {
-                        Ext.Msg.alert('OpenClaw2', 'JSON 格式错误: ' + e.message);
-                    }
-                }
-            }],
-            items: [modelsText],
-            listeners: {
-                activate: function() {
-                    SYNOCOMMUNITY.OpenClaw2.api('models', 'GET', null, function(data) {
-                        modelsText.setValue(Ext.util.JSON.encode(data, true));
-                    });
-                }
+        var modelsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('模型配置', 'models', 'models_save');
+        var channelsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('消息渠道', 'channels', 'channels_save');
+        var pluginsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('插件管理', 'plugins', 'plugin_install');
+        pluginsPanel.getTopToolbar().add({
+            text: '刷新插件状态',
+            handler: function() {
+                SYNOCOMMUNITY.OpenClaw2.api('plugins_refresh', 'POST', {}, function(data) {
+                    pluginsPanel.items.get(0).setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                });
             }
         });
 
-        var channelsText = new Ext.form.TextArea({
-            style: 'font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;',
-            value: '',
-            grow: false,
-            height: 560
-        });
-        var channelsPanel = new Ext.Panel({
-            title: '消息渠道',
-            layout: 'fit',
-            tbar: [{
-                text: '刷新',
-                handler: function() {
-                    SYNOCOMMUNITY.OpenClaw2.api('channels', 'GET', null, function(data) {
-                        channelsText.setValue(Ext.util.JSON.encode(data, true));
-                    });
-                }
-            }, {
-                text: '保存',
-                handler: function() {
-                    try {
-                        var payload = Ext.decode(channelsText.getValue());
-                        SYNOCOMMUNITY.OpenClaw2.api('channels_save', 'POST', payload, function(data) {
-                            Ext.Msg.alert('OpenClaw2', '消息渠道配置已提交保存');
-                            channelsText.setValue(Ext.util.JSON.encode(data, true));
-                        }, function(resp) {
-                            Ext.Msg.alert('OpenClaw2', '保存失败: HTTP ' + resp.status);
-                        });
-                    } catch (e) {
-                        Ext.Msg.alert('OpenClaw2', 'JSON 格式错误: ' + e.message);
-                    }
-                }
-            }],
-            items: [channelsText],
-            listeners: {
-                activate: function() {
-                    SYNOCOMMUNITY.OpenClaw2.api('channels', 'GET', null, function(data) {
-                        channelsText.setValue(Ext.util.JSON.encode(data, true));
-                    });
-                }
-            }
-        });
-
-        var logsText = new Ext.form.TextArea({
-            style: 'font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#111;color:#ddd;',
-            value: '',
-            grow: false,
-            readOnly: true,
-            height: 560
-        });
-        var logsPanel = new Ext.Panel({
-            title: '运行日志',
-            layout: 'fit',
-            tbar: [{
-                text: '刷新',
-                handler: function() {
-                    SYNOCOMMUNITY.OpenClaw2.api('logs', 'GET', null, function(data) {
-                        logsText.setValue(data.log || '');
-                    });
-                }
-            }],
-            items: [logsText],
-            listeners: {
-                activate: function() {
-                    SYNOCOMMUNITY.OpenClaw2.api('logs', 'GET', null, function(data) {
-                        logsText.setValue(data.log || '');
-                    });
-                }
-            }
-        });
+        var installPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('安装 / 控制', 'install', 'install_run');
+        var governorPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('进程治理', 'process_governor', null, { readOnly: true });
+        var logsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('运行日志', 'logs', null, { readOnly: true, height: 560 });
+        logsPanel.items.get(0).setStyle('background', '#111');
+        logsPanel.items.get(0).setStyle('color', '#ddd');
 
         var tabs = new Ext.TabPanel({
             activeTab: 0,
             deferredRender: false,
             border: false,
-            items: [overviewPanel, modelsPanel, channelsPanel, logsPanel]
+            items: [overviewPanel, modelsPanel, channelsPanel, pluginsPanel, installPanel, governorPanel, logsPanel]
         });
 
         config = Ext.apply({
             resizable: true,
             maximizable: true,
             minimizable: true,
-            width: 1180,
-            height: 820,
+            width: 1240,
+            height: 860,
             layout: 'fit',
             border: false,
             cls: 'synocommunity-openclaw2',

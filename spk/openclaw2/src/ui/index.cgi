@@ -55,6 +55,38 @@ if [ "$native_api" = "1" ]; then
             printf '%s' "$body" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/channels/config" || printf '{"error":"channels save failed"}'
             exit 0
             ;;
+        plugins)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/channels/plugins" || printf '{"error":"plugins unavailable"}'
+            exit 0
+            ;;
+        plugins_refresh)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{}' | curl -fsS --max-time 15 -X POST -H "Content-Type: application/json" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/channels/plugins/refresh" || printf '{"error":"plugins refresh failed"}'
+            exit 0
+            ;;
+        plugin_install)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '%s' "$body" | curl -fsS --max-time 60 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/channels/plugins/install" || printf '{"error":"plugin install failed"}'
+            exit 0
+            ;;
+        install)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/install" || printf '{"error":"install unavailable"}'
+            exit 0
+            ;;
+        install_run)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '%s' "$body" | curl -fsS --max-time 120 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/install" || printf '{"error":"install action failed"}'
+            exit 0
+            ;;
+        process_governor)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/process-governor" || printf '{"error":"process governor unavailable"}'
+            exit 0
+            ;;
         logs)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
