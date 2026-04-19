@@ -12179,10 +12179,40 @@ async function bootstrap() {
   app7.route(`${apiBase}/channels`, channels_default);
 
   // Compatibility endpoints for newer trim-openclaw UI bundles.
+  app7.get(`${apiBase}/install`, async (c) => {
+    const status = await getInstanceStatus(ensureDefaultInstance(), c);
+    return c.json({
+      installed: Boolean(status?.installed),
+      running: Boolean(status?.running),
+      status: status?.running ? "running" : status?.installed ? "installed" : "missing"
+    });
+  });
+  app7.get(`${apiBase}/install/status`, async (c) => {
+    const status = await getInstanceStatus(ensureDefaultInstance(), c);
+    return c.json({
+      installed: Boolean(status?.installed),
+      running: Boolean(status?.running),
+      status: status?.running ? "running" : status?.installed ? "installed" : "missing"
+    });
+  });
+  app7.get(`${apiBase}/gateway/status`, async (c) => {
+    const status = await getInstanceStatus(ensureDefaultInstance(), c);
+    return c.json({ running: Boolean(status?.running), installed: Boolean(status?.installed) });
+  });
+  app7.get(`${apiBase}/system/status`, async (c) => {
+    const status = await getInstanceStatus(ensureDefaultInstance(), c);
+    return c.json({ installed: Boolean(status?.installed), running: Boolean(status?.running) });
+  });
   app7.post(`${apiBase}/telemetry`, async (c) => {
     return c.body(null, 204);
   });
+  app7.get(`${apiBase}/telemetry`, async (c) => {
+    return c.body(null, 204);
+  });
   app7.get(`${apiBase}/process-governor`, (c) => {
+    return c.json({ governors: [] });
+  });
+  app7.post(`${apiBase}/process-governor`, (c) => {
     return c.json({ governors: [] });
   });
   app7.get(`${apiBase}/models/config/fast`, async (c) => {
@@ -12194,19 +12224,34 @@ async function bootstrap() {
   app7.post(`${apiBase}/channels/plugins/refresh`, async (c) => {
     return c.json({ refreshing: false, plugins: await getChannelPlugins(ensureDefaultInstance()) });
   });
+  app7.get(`${apiBase}/channels/plugins/refresh`, async (c) => {
+    return c.json({ refreshing: false, plugins: await getChannelPlugins(ensureDefaultInstance()) });
+  });
   app7.get(`${apiBase}/channels/weixin/status`, (c) => {
     return c.json({ connected: false, status: "idle" });
   });
   app7.post(`${apiBase}/channels/weixin/disconnect`, (c) => {
     return c.json({ ok: true });
   });
+  app7.get(`${apiBase}/channels/weixin/disconnect`, (c) => {
+    return c.json({ ok: true });
+  });
   app7.post(`${apiBase}/channels/qqbot/disconnect`, (c) => {
+    return c.json({ ok: true });
+  });
+  app7.get(`${apiBase}/channels/qqbot/disconnect`, (c) => {
     return c.json({ ok: true });
   });
   app7.post(`${apiBase}/channels/weixin/login/start`, (c) => {
     return c.json({ ok: true });
   });
+  app7.get(`${apiBase}/channels/weixin/login/start`, (c) => {
+    return c.json({ ok: true });
+  });
   app7.post(`${apiBase}/channels/weixin/login/wait`, (c) => {
+    return c.json({ ok: true });
+  });
+  app7.get(`${apiBase}/channels/weixin/login/wait`, (c) => {
     return c.json({ ok: true });
   });
   app7.get(`${apiBase}/cloud-config/bailian-banner`, (c) => {
