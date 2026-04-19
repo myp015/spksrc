@@ -36,6 +36,7 @@ NO_SERVICE_SHORTCUT = yes
 
 DSM_UI_DIR = app
 DSM_UI_CONFIG = src/app/config
+DSM_APP_NAME = SYNOCOMMUNITY.OpenClaw2.AppInstance
 SERVICE_PORT = 18700
 SERVICE_PORT_TITLE = OpenClaw2 Panel (HTTP)
 SERVICE_URL = /app/trim-openclaw/

@@ -1,16 +1,22 @@
 {
-  ".url": {
-    "com.synocommunity.packages.openclaw2": {
-      "title": "OpenClaw2",
-      "desc": "OpenClaw2 设置面板",
-      "icon": "images/openclaw2-{0}.png",
-      "type": "iframe",
-      "protocol": "https",
-      "port": "5001",
-      "url": "/webman/3rdparty/openclaw2/index.cgi", 
-      "allUsers": true,
-      "grantPrivilege": "all",
-      "advanceGrantPrivilege": true
+    "openclaw2.js": {
+        "SYNOCOMMUNITY.OpenClaw2.AppInstance": {
+            "type": "app",
+            "title": "OpenClaw2",
+            "version": "1.0.0",
+            "icon": "images/openclaw2-{0}.png",
+            "texts": "texts",
+            "allowMultiInstance": false,
+            "allUsers": true,
+            "appWindow": "SYNOCOMMUNITY.OpenClaw2.AppWindow",
+            "depend": ["SYNOCOMMUNITY.OpenClaw2.AppWindow"]
+        },
+        "SYNOCOMMUNITY.OpenClaw2.AppWindow": {
+            "type": "lib",
+            "title": "OpenClaw2",
+            "icon": "images/openclaw2-{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
     }
-  }
 }
