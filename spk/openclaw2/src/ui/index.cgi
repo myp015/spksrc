@@ -182,59 +182,7 @@ if [ "$proxy_flag" = "1" ]; then
     exit 0
 fi
 
-GATEWAY_STATUS=$(check_url "${GATEWAY_URL}")
-PANEL_STATUS=$(check_url "${PANEL_URL}/app/trim-openclaw/")
-[ -f "$LOG_FILE" ] || touch "$LOG_FILE"
-TAIL_LOG=$(tail -n 80 "$LOG_FILE" 2>/dev/null | html_escape)
-
-printf 'Content-type: text/html\r\n\r\n'
-cat <<HTML
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8" />
-<title>OpenClaw2 配置面板</title>
-<style>
-html, body { height: 100%; }
-body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; margin:0; background:#f5f6f7; }
-.wrapper { max-width:1100px; margin:20px auto; background:#fff; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:20px; }
-.badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; }
-.ok { background:#e8f7ee; color:#0a7a0a; }
-.err { background:#fdecec; color:#b42318; }
-.actions a { display:inline-block; margin-right:10px; padding:8px 12px; border-radius:6px; text-decoration:none; color:#fff; background:#1677ff; }
-pre { background:#fafafa; border:1px solid #d0d7de; border-radius:8px; padding:12px; overflow:auto; max-height:420px; }
-code { background:#f1f3f5; padding:2px 6px; border-radius:4px; }
-</style>
-</head>
-<body>
-<div class="wrapper">
-  <h2>OpenClaw2 配置面板</h2>
-  <p>主服务：面板（独立） | Gateway：独立运行状态可单独检查</p>
-  <p>
-    面板状态：
-    <span class="badge $( [ "$PANEL_STATUS" = "running" ] && echo ok || echo err )">$PANEL_STATUS</span>
-    （$PANEL_URL/app/trim-openclaw/）
-  </p>
-  <p>
-    Gateway 状态：
-    <span class="badge $( [ "$GATEWAY_STATUS" = "running" ] && echo ok || echo err )">$GATEWAY_STATUS</span>
-    （$GATEWAY_URL）
-  </p>
-
-  <div class="actions">
-    <a href="${SCRIPT_NAME_RAW}?proxy=1&path=/app/trim-openclaw/" target="_self">打开完整内嵌面板</a>
-    <a href="/" target="_blank" rel="noopener">打开 Gateway 页面</a>
-  </div>
-
-  <h3>运行信息</h3>
-  <ul>
-    <li>PID 文件：<code>${PID_FILE}</code></li>
-    <li>日志文件：<code>${LOG_FILE}</code></li>
-  </ul>
-
-  <h3>最近日志（openclaw2）</h3>
-  <pre>${TAIL_LOG}</pre>
-</div>
-</body>
-</html>
-HTML
+# Always enter panel directly from DSM entry to avoid nested backend shell.
+redirect_url="${SCRIPT_NAME_RAW}?proxy=1&path=/app/trim-openclaw/"
+printf 'Status: 302 Found\r\nLocation: %s\r\nCache-Control: no-store\r\n\r\n' "$redirect_url"
+exit 0
