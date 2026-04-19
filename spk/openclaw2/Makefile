@@ -34,6 +34,7 @@ SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
 
 DSM_UI_DIR = app
+DSM_UI_CONFIG = src/app/config
 SERVICE_PORT = 18789
 SERVICE_PORT_TITLE = OpenClaw Gateway (HTTP)
 SERVICE_URL = /
