@@ -575,6 +575,10 @@ cu = gw.setdefault('controlUi', {})
 cu['allowInsecureAuth'] = True
 cu['dangerouslyDisableDeviceAuth'] = True
 cu['allowedOrigins'] = ['*']
+# 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
+defs = c.setdefault('agents', {}).setdefault('defaults', {})
+if isinstance(defs, dict) and 'fallbackModels' in defs:
+    defs.pop('fallbackModels', None)
 os.makedirs(os.path.dirname(cfg), exist_ok=True)
 with open(cfg,'w',encoding='utf-8') as f:
     json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
