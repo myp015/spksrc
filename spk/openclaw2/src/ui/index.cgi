@@ -593,22 +593,40 @@ if action in ('stop','restart'):
 
 if action in ('start','restart'):
     try:
-        p = subprocess.Popen(['/var/packages/openclaw2/target/bin/openclaw','gateway'], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        logs.append({'cmd':'gateway(spawn)','pid':p.pid})
-        time.sleep(2)
+        logf = open('/tmp/openclaw-gateway.spawn.log','ab', buffering=0)
+        p = subprocess.Popen(
+            ['/var/packages/openclaw2/target/bin/openclaw','gateway'],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=logf,
+            stderr=logf,
+            close_fds=True,
+            start_new_session=True
+        )
+        logs.append({'cmd':'gateway(spawn-detached)','pid':p.pid})
+        time.sleep(3)
     except Exception as e:
         ok = False
-        logs.append({'cmd':'gateway(spawn)','error':str(e)})
+        logs.append({'cmd':'gateway(spawn-detached)','error':str(e)})
 
 import socket
-running=False
-s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.settimeout(0.6)
-try:
-    s.connect(('127.0.0.1',44539)); running=True
-except Exception:
-    running=False
-finally:
-    s.close()
+
+def is_running(port=44539):
+    s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.settimeout(0.6)
+    try:
+        s.connect(('127.0.0.1',port)); return True
+    except Exception:
+        return False
+    finally:
+        s.close()
+
+running = is_running(44539)
+if action in ('start','restart') and not running:
+    for _ in range(12):
+        time.sleep(1)
+        running = is_running(44539)
+        if running:
+            break
 print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running}, ensure_ascii=False))
 PY
             exit 0
@@ -640,7 +658,7 @@ cat <<'HTML'
     html, body { scroll-behavior: auto; overscroll-behavior: contain; height:100%; }
     body { margin:0; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:#f5f6f8; color:#222; }
     body.modal-open { overflow: hidden; }
-    .wrap { padding:18px; height:100%; box-sizing:border-box; display:flex; flex-direction:column; }
+    .wrap { padding:12px; height:100%; box-sizing:border-box; display:flex; flex-direction:column; zoom:.93; }
     .title { font-size:24px; font-weight:700; margin-bottom:6px; }
     .sub { color:#667085; font-size:13px; margin-bottom:14px; }
     .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
@@ -665,15 +683,16 @@ cat <<'HTML'
     .field { margin-bottom:10px; }
     .field label { display:block; font-size:12px; color:#667085; margin-bottom:4px; }
     .field input, .field select, .field textarea { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
-    .field select[multiple] { min-height: 160px; max-height: 260px; overflow-y: auto; }
+    .field select[multiple] { min-height: 96px; max-height: 140px; overflow-y: auto; }
     .list { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+    .list-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px; margin-bottom:16px; }
     .item { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
     .item-title { font-size:16px; font-weight:600; margin-bottom:6px; }
     .item-meta { font-size:12px; color:#667085; margin-bottom:8px; }
     .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:12px; }
     .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:flex-start; justify-content:center; z-index:9999; overflow:hidden; padding:32px 0; }
-    .modal { width:min(760px,92vw); max-height:calc(100vh - 64px); overflow:auto; background:#fff; border-radius:16px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal { width:min(700px,90vw); max-height:none; overflow:visible; background:#fff; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
     .modal h3 { margin:0 0 14px; font-size:18px; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   </style>
@@ -761,18 +780,24 @@ cat <<'HTML'
           const webUrl = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
           const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
-            + '<div class="card" style="margin-bottom:12px;">'
-            + '  <h3>用户目录</h3>'
-            + '  <div class="field"><label>Workspace</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/docker/openclaw') + '" placeholder="/volume1/docker/openclaw"></div>'
-            + '  <div><button class="btn" onclick="saveWorkspaceQuick()">应用用户目录</button></div>'
-            + '</div>'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
+            + '  <button class="btn" onclick="openUserSettingsDialog()">用户设置</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
-            + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>';
+            + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>'
+            + '<div class="modal-mask" id="userSettingsMask">'
+            + '  <div class="modal">'
+            + '    <h3>用户设置</h3>'
+            + '    <div class="field"><label>Workspace</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/docker/openclaw') + '" placeholder="/volume1/docker/openclaw"></div>'
+            + '    <div class="modal-actions">'
+            + '      <button class="btn" onclick="closeUserSettingsDialog()">取消</button>'
+            + '      <button class="btn primary" onclick="saveWorkspaceQuick();closeUserSettingsDialog();">保存</button>'
+            + '    </div>'
+            + '  </div>'
+            + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
           return;
         }
@@ -837,15 +862,18 @@ cat <<'HTML'
             'openclaw-weixin': '微信（openclaw-weixin）',
             weixin: '微信（weixin）'
           };
-          const rows = configured.map(id => '<div class="chip" style="display:flex;align-items:center;gap:6px;padding:6px 10px;">'
-            + '<span>' + esc(descMap[id] || id) + '</span>'
-            + '<button class="btn" style="padding:2px 8px;" onclick="openChannelDialog(\'' + id + '\')">编辑</button>'
-            + '<button class="btn" style="padding:2px 8px;" onclick="deleteChannel(\'' + id + '\')">删除</button>'
+          const rows = configured.map(id => '<div class="item">'
+            + '<div class="item-title">' + esc(descMap[id] || id) + '</div>'
+            + '<div class="item-meta">channelId=' + esc(id) + '</div>'
+            + '<div style="display:flex;gap:8px;">'
+            + '<button class="btn" onclick="openChannelDialog(\'' + id + '\')">编辑</button>'
+            + '<button class="btn" onclick="deleteChannel(\'' + id + '\')">删除</button>'
+            + '</div>'
             + '</div>').join('');
           content.innerHTML = ''
             + '<div class="card" style="margin-bottom:12px;">'
             + '  <h3>已配置渠道</h3>'
-            + (configured.length ? rows : '<span style="color:#667085;">暂无已配置渠道</span>')
+            + (configured.length ? ('<div class="list-grid">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
             + '  <div style="display:flex;gap:8px;margin-top:10px;">'
             + '    <button class="btn primary" onclick="openChannelDialog()">添加渠道</button>'
             + '  </div>'
@@ -891,6 +919,18 @@ cat <<'HTML'
       const u = (url || ('http://' + window.location.hostname + ':44539/default/chat?session=main')).replace('LAN_HOST', window.location.hostname);
       window.open(u, '_blank', 'noopener,noreferrer');
       setMsg('已打开 OpenClaw Web', 'ok');
+    }
+    function openUserSettingsDialog() {
+      const m = document.getElementById('userSettingsMask');
+      if (!m) return;
+      m.style.display = 'flex';
+      document.body.classList.add('modal-open');
+    }
+    function closeUserSettingsDialog() {
+      const m = document.getElementById('userSettingsMask');
+      if (!m) return;
+      m.style.display = 'none';
+      document.body.classList.remove('modal-open');
     }
     function applyProviderPresetDialog() {
       const presetId = document.getElementById('dlg_provider_preset').value;
