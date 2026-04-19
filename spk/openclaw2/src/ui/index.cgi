@@ -6,6 +6,7 @@ fi
 
 LOG_FILE="${APP_VAR_DIR}/openclaw2.log"
 PANEL_URL="http://127.0.0.1:18700"
+GATEWAY_PORT="44539"
 QUERY="${QUERY_STRING:-}"
 
 get_param() {
@@ -30,46 +31,39 @@ if [ "$native_api" = "1" ]; then
     case "$action" in
         status)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            raw=$(curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/status" 2>/dev/null || printf '{}')
-            python3 - <<'PY' "$raw"
-import json, sys
-raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+            python3 - <<'PY' "$GATEWAY_PORT" "/volume1/docker/openclaw/.openclaw/openclaw.json"
+import json, os, socket, sys
+port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
+cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
+running = False
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(0.6)
 try:
-    j = json.loads(raw or '{}')
+    s.connect(('127.0.0.1', port))
+    running = True
 except Exception:
-    print('{"error":"status unavailable"}')
-    raise SystemExit
-if isinstance(j, dict):
-    base = (j.get('proxyBasePath') or '/default').rstrip('/')
-    if not base.startswith('/'):
-        base = '/' + base
-    tokenized = j.get('dashboardTokenizedUrl') or j.get('proxyDashboardTokenizedUrl') or ''
-    token = ''
-    if 'token=' in tokenized:
-        token = tokenized.split('token=', 1)[1].split('&', 1)[0]
-    port = j.get('port') or 44539
-    j['dashboardUrl'] = f'http://LAN_HOST:{port}{base}/'
-    j['dashboardTokenizedUrl'] = f'http://LAN_HOST:{port}{base}/?token={token}' if token else f'http://LAN_HOST:{port}{base}/'
-print(json.dumps(j, ensure_ascii=False))
-PY
-            # 确保局域网可访问：将核心 gateway 配置写入默认用户配置
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
-import json, os, sys
-p=sys.argv[1]
+    running = False
+finally:
+    s.close()
 try:
-    c=json.load(open(p,'r',encoding='utf-8')) if os.path.exists(p) else {}
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
 except Exception:
-    c={}
-gw=c.setdefault('gateway',{})
-gw['bind']='lan'
-gw['mode']='local'
-cu=gw.setdefault('controlUi',{})
-cu['allowInsecureAuth']=True
-cu['dangerouslyDisableDeviceAuth']=True
-cu['allowedOrigins']=['*']
-os.makedirs(os.path.dirname(p),exist_ok=True)
-with open(p,'w',encoding='utf-8') as f:
-    json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
+    cfg = {}
+workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw')
+out = {
+  'instanceId': 'default',
+  'displayName': 'Default Gateway',
+  'running': running,
+  'installed': True,
+  'version': 'OpenClaw 2026.4.15 (041266a)',
+  'port': port,
+  'proxyBasePath': '/default',
+  'dashboardUrl': f'http://LAN_HOST:{port}/default/chat?session=main',
+  'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?session=main',
+  'workspaceDir': workspace,
+  'configPath': cfg_path
+}
+print(json.dumps(out, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -412,6 +406,43 @@ print(json.dumps(out, ensure_ascii=False))
 PY
             exit 0
             ;;
+        channels_delete)
+            body=$(read_body)
+            cfg_file="/volume1/docker/openclaw/.openclaw/openclaw.json"
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body" "$cfg_file"
+import json, os, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+cid = (payload.get('id') or '').strip()
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
+except Exception:
+    cfg = {}
+ch = cfg.setdefault('channels', {})
+if cid and cid in ch:
+    del ch[cid]
+os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+with open(cfg_path, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+    f.write('\n')
+out = {
+  'configPath': cfg_path, 'configExists': True,
+  'configuredChannelIds': list((cfg.get('channels') or {}).keys()),
+  'feishu': (cfg.get('channels') or {}).get('feishu') or {},
+  'wecom': (cfg.get('channels') or {}).get('wecom') or {},
+  'dingtalk': (cfg.get('channels') or {}).get('dingtalk') or {},
+  'qqbot': (cfg.get('channels') or {}).get('qqbot') or {},
+  'weixin': (cfg.get('channels') or {}).get('weixin') or {}
+}
+print(json.dumps(out, ensure_ascii=False))
+PY
+            exit 0
+            ;;
         weixin_status)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             curl -fsS --max-time 10 "${PANEL_URL}/app/trim-openclaw/api/channels/weixin/status" || printf '{"error":"weixin status unavailable"}'
@@ -569,17 +600,17 @@ if action in ('start','restart'):
         ok = False
         logs.append({'cmd':'gateway(spawn)','error':str(e)})
 
+import socket
+running=False
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.settimeout(0.6)
 try:
-    st = subprocess.check_output(['curl','-sS','--max-time','6','http://127.0.0.1:18700/app/trim-openclaw/api/status']).decode('utf-8','ignore')
-except Exception as e:
-    st = str(e)
-print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'status': st[:800]}, ensure_ascii=False))
+    s.connect(('127.0.0.1',44539)); running=True
+except Exception:
+    running=False
+finally:
+    s.close()
+print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running}, ensure_ascii=False))
 PY
-            exit 0
-            ;;
-        process_governor)
-            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/process-governor" || printf '{"error":"process governor unavailable"}'
             exit 0
             ;;
         logs)
@@ -616,7 +647,7 @@ cat <<'HTML'
     .tab { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:10px 14px; cursor:pointer; }
     .tab.active { background:#1677ff; color:#fff; border-color:#1677ff; }
     .panel { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
-    .toolbar { display:flex; gap:8px; margin-bottom:12px; }
+    .toolbar { display:flex; gap:8px; margin-bottom:12px; align-items:center; }
     #content { flex:1; min-height:0; overflow:hidden; }
     .btn { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:8px 12px; cursor:pointer; }
     .btn.primary { background:#1677ff; color:#fff; border-color:#1677ff; }
@@ -642,7 +673,7 @@ cat <<'HTML'
     .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:12px; }
     .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:flex-start; justify-content:center; z-index:9999; overflow:hidden; padding:32px 0; }
-    .modal { width:min(760px,92vw); max-height:none; overflow:visible; background:#fff; border-radius:16px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal { width:min(760px,92vw); max-height:calc(100vh - 64px); overflow:auto; background:#fff; border-radius:16px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
     .modal h3 { margin:0 0 14px; font-size:18px; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   </style>
@@ -655,13 +686,11 @@ cat <<'HTML'
       <button class="tab active" data-tab="status">概览</button>
       <button class="tab" data-tab="models">模型配置</button>
       <button class="tab" data-tab="channels">渠道配置</button>
-      <button class="tab" data-tab="process_governor">进程治理</button>
       <button class="tab" data-tab="logs">运行日志</button>
     </div>
     <div class="panel">
       <div class="toolbar">
         <button class="btn" id="refreshBtn">刷新当前页</button>
-        <button class="btn primary" id="saveBtn" style="display:none;">保存当前页</button>
       </div>
       <div id="msg" class="msg"></div>
       <div id="content"></div>
@@ -687,6 +716,7 @@ cat <<'HTML'
     };
     const BUILTIN_CHANNEL_PLUGINS = ['browser','feishu','qqbot','dingtalk','wecom'];
     let currentTab = 'status';
+    let statusLine = '';
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -699,7 +729,6 @@ cat <<'HTML'
     function setTabs(tab) {
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
-      document.getElementById('saveBtn').style.display = (tab === 'models' || tab === 'channels') ? '' : 'none';
     }
     async function api(action, method='GET', payload=null) {
       const resp = await fetch(API_BASE + encodeURIComponent(action), {
@@ -729,12 +758,14 @@ cat <<'HTML'
             ['代理路径', data.proxyBasePath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
-          const tokenized = data.dashboardTokenizedUrl || '';
-          const token = tokenized.includes('token=') ? tokenized.split('token=')[1].split('&')[0] : '';
-          const base = (data.proxyBasePath || '/default').replace(/\/+$/, '') || '/default';
-          const port = data.port || 44539;
-          const webUrl = 'http://' + window.location.hostname + ':' + port + base + '/'+ (token ? ('?token=' + token) : '');
+          const webUrl = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
+          const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
+            + '<div class="card" style="margin-bottom:12px;">'
+            + '  <h3>用户目录</h3>'
+            + '  <div class="field"><label>Workspace</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/docker/openclaw') + '" placeholder="/volume1/docker/openclaw"></div>'
+            + '  <div><button class="btn" onclick="saveWorkspaceQuick()">应用用户目录</button></div>'
+            + '</div>'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
@@ -742,7 +773,7 @@ cat <<'HTML'
             + '  <button class="btn primary" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>';
-          setMsg('概览已加载', 'ok');
+          setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
           return;
         }
         if (tab === 'logs') {
@@ -756,11 +787,6 @@ cat <<'HTML'
           window.__modelsData = data;
           const options = ['<option value="custom-openai">自定义 OpenAI 兼容</option>'].concat(Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>')).join('');
           content.innerHTML = ''
-            + '<div class="card" style="margin-bottom:12px;">'
-            + '  <h3>用户目录</h3>'
-            + '  <div class="field"><label>Workspace</label><input id="workspace_dir" value="' + esc(workspaceDir) + '" placeholder="/volume1/docker/openclaw"></div>'
-            + '  <div style="display:flex;gap:8px;"><button class="btn primary" onclick="saveWorkspaceQuick()">保存目录</button></div>'
-            + '</div>'
             + '<div style="margin-bottom:12px;"><button class="btn primary" onclick="openModelDialog()">添加模型服务器</button></div>'
             + '<div class="list">'
             + providers.map((p, idx) => {
@@ -811,12 +837,10 @@ cat <<'HTML'
             'openclaw-weixin': '微信（openclaw-weixin）',
             weixin: '微信（weixin）'
           };
-          const rows = configured.map(id => '<div class="item" style="margin-top:8px;">'
-            + '<div class="item-title">' + esc(descMap[id] || id) + '</div>'
-            + '<div class="item-meta">channelId=' + esc(id) + '</div>'
-            + '<div style="display:flex;gap:8px;">'
-            + '  <button class="btn" onclick="openChannelDialog(\'' + id + '\')">编辑</button>'
-            + '</div>'
+          const rows = configured.map(id => '<div class="chip" style="display:flex;align-items:center;gap:6px;padding:6px 10px;">'
+            + '<span>' + esc(descMap[id] || id) + '</span>'
+            + '<button class="btn" style="padding:2px 8px;" onclick="openChannelDialog(\'' + id + '\')">编辑</button>'
+            + '<button class="btn" style="padding:2px 8px;" onclick="deleteChannel(\'' + id + '\')">删除</button>'
             + '</div>').join('');
           content.innerHTML = ''
             + '<div class="card" style="margin-bottom:12px;">'
@@ -843,44 +867,20 @@ cat <<'HTML'
             + '    </div>'
             + '  </div>'
             + '</div>'
-            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
+            + '';
           setMsg('渠道配置已加载', 'ok');
           return;
         }
         content.innerHTML = '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
-        if (tab === 'process_governor') {
-          setMsg('进程治理信息已加载', 'ok');
-        } else {
-          setMsg('JSON 已加载，可编辑后保存', 'ok');
-        }
+        setMsg('JSON 已加载', 'ok');
       } catch (e) {
         setMsg('加载失败：' + (e.message || e), 'err');
       }
     }
-    async function saveCurrent() {
-      if (!(currentTab === 'models' || currentTab === 'channels')) return;
-      try {
-        const raw = document.getElementById('editor').value;
-        const payload = JSON.parse(raw);
-        let action = 'models_save';
-        if (currentTab === 'channels') action = 'channels_save';
-        const data = await api(action, 'POST', payload);
-        document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        setMsg('保存成功', 'ok');
-      } catch (e) {
-        setMsg('保存失败：' + (e.message || e), 'err');
-      }
-    }
-    async function installPlugin(channelKey) {
-      setMsg('插件已内置：' + BUILTIN_CHANNEL_PLUGINS.join('、') + '；无需手动安装。', 'ok');
-    }
     async function runInstallAction(actionName) {
       try {
         setMsg('正在执行：' + actionName + ' ...');
-        const data = await api('install_run', 'POST', { method: 'bun', action: actionName });
-        if (document.getElementById('editor')) {
-          document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        }
+        await api('install_run', 'POST', { method: 'bun', action: actionName });
         setMsg('操作已提交：' + actionName, 'ok');
         await load('status');
       } catch (e) {
@@ -888,9 +888,9 @@ cat <<'HTML'
       }
     }
     function openOpenclawWeb(url) {
-      const panelUrl = 'http://' + window.location.hostname + ':18700/app/trim-openclaw/';
-      window.open(panelUrl, '_blank', 'noopener,noreferrer');
-      setMsg('已打开 OpenClaw Web（面板入口）', 'ok');
+      const u = (url || ('http://' + window.location.hostname + ':44539/default/chat?session=main')).replace('LAN_HOST', window.location.hostname);
+      window.open(u, '_blank', 'noopener,noreferrer');
+      setMsg('已打开 OpenClaw Web', 'ok');
     }
     function applyProviderPresetDialog() {
       const presetId = document.getElementById('dlg_provider_preset').value;
@@ -1012,10 +1012,9 @@ cat <<'HTML'
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers };
-        const saved = await api('models_save', 'POST', payload);
+        await api('models_save', 'POST', payload);
         closeModelDialog();
         await load('models');
-        document.getElementById('editor').value = JSON.stringify(saved, null, 2);
         setMsg('模型服务器保存成功', 'ok');
       } catch (e) { setMsg('模型服务器保存失败：' + (e.message || e), 'err'); }
     }
@@ -1024,29 +1023,21 @@ cat <<'HTML'
         const data = window.__modelsData || {};
         const providers = (data.configuredProviders || []).slice();
         providers.splice(index, 1);
-        const saved = await api('models_save', 'POST', { providers });
+        await api('models_save', 'POST', { providers });
         await load('models');
-        document.getElementById('editor').value = JSON.stringify(saved, null, 2);
         setMsg('模型服务器已删除', 'ok');
       } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
     }
     async function saveWorkspaceQuick() {
       try {
         const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/docker/openclaw';
-        const data = window.__modelsData || {};
-        const payload = { providers: (data.configuredProviders || []), workspaceDir };
+        const m = await api('models');
+        const payload = { providers: (m.configuredProviders || []), workspaceDir };
         await api('models_save', 'POST', payload);
         setMsg('用户目录保存成功：' + workspaceDir, 'ok');
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
     }
-    async function saveQQBotQuick() {
-      try {
-        const payload = { qqbot: { appId: document.getElementById('qqbot_appId').value, clientSecret: document.getElementById('qqbot_clientSecret').value } };
-        const data = await api('channels_save', 'POST', payload);
-        document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        setMsg('QQ 配置保存成功', 'ok');
-      } catch (e) { setMsg('QQ 配置保存失败：' + (e.message || e), 'err'); }
-    }
+    async function saveQQBotQuick() {}
     function openChannelDialog(editId) {
       const data = window.__channelsData || {};
       const configured = new Set(data.configuredChannelIds || []);
@@ -1124,10 +1115,9 @@ cat <<'HTML'
         return;
       }
       try {
-        const data = await api('channels_save', 'POST', payload);
+        await api('channels_save', 'POST', payload);
         closeChannelDialog();
         await load('channels');
-        document.getElementById('editor').value = JSON.stringify(data, null, 2);
         setMsg('渠道保存成功', 'ok');
       } catch (e) { setMsg('渠道保存失败：' + (e.message || e), 'err'); }
     }
@@ -1163,33 +1153,15 @@ cat <<'HTML'
         setMsg('微信已断开', 'ok');
       } catch (e) { setMsg('断开微信失败：' + (e.message || e), 'err'); }
     }
-    async function saveFeishuQuick() {
+    async function deleteChannel(id) {
       try {
-        const payload = { feishu: { appId: document.getElementById('feishu_appId').value, appSecret: document.getElementById('feishu_appSecret').value } };
-        const data = await api('channels_save', 'POST', payload);
-        document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        setMsg('飞书配置保存成功', 'ok');
-      } catch (e) { setMsg('飞书配置保存失败：' + (e.message || e), 'err'); }
-    }
-    async function saveWecomQuick() {
-      try {
-        const payload = { wecom: { botId: document.getElementById('wecom_botId').value, secret: document.getElementById('wecom_secret').value } };
-        const data = await api('channels_save', 'POST', payload);
-        document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        setMsg('企业微信配置保存成功', 'ok');
-      } catch (e) { setMsg('企业微信配置保存失败：' + (e.message || e), 'err'); }
-    }
-    async function saveDingtalkQuick() {
-      try {
-        const payload = { dingtalk: { clientId: document.getElementById('dingtalk_clientId').value, clientSecret: document.getElementById('dingtalk_clientSecret').value } };
-        const data = await api('channels_save', 'POST', payload);
-        document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        setMsg('钉钉配置保存成功', 'ok');
-      } catch (e) { setMsg('钉钉配置保存失败：' + (e.message || e), 'err'); }
+        await api('channels_delete', 'POST', { id });
+        await load('channels');
+        setMsg('渠道已删除：' + id, 'ok');
+      } catch (e) { setMsg('删除渠道失败：' + (e.message || e), 'err'); }
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
     document.getElementById('refreshBtn').addEventListener('click', () => load(currentTab));
-    document.getElementById('saveBtn').addEventListener('click', saveCurrent);
     load('status');
   </script>
 </body>
