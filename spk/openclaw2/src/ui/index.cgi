@@ -44,6 +44,52 @@ if [ "$native_api" = "1" ]; then
             printf '%s' "$body" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/models/config" || printf '{"error":"models save failed"}'
             exit 0
             ;;
+        models_discover)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body"
+import json, sys, urllib.request, urllib.error
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    print('{"error":"invalid payload"}')
+    raise SystemExit
+base_url = (payload.get('baseUrl') or '').strip().rstrip('/')
+api_key = (payload.get('apiKey') or '').strip()
+api_type = (payload.get('api') or 'openai-completions').strip()
+if not base_url:
+    print('{"error":"baseUrl required"}')
+    raise SystemExit
+headers = {'User-Agent': 'openclaw2-native-ui/1.0'}
+if api_key:
+    headers['Authorization'] = 'Bearer ' + api_key
+try:
+    if api_type == 'ollama':
+        req = urllib.request.Request(base_url + '/api/tags', headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode('utf-8', 'ignore'))
+        models = []
+        for item in data.get('models', []):
+            name = item.get('name') or item.get('model') or ''
+            if name:
+                models.append({'id': name, 'modelId': name})
+        print(json.dumps({'models': models}, ensure_ascii=False))
+    else:
+        req = urllib.request.Request(base_url + '/models', headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode('utf-8', 'ignore'))
+        models = []
+        for item in data.get('data', data.get('models', [])):
+            mid = item.get('id') or item.get('name') or item.get('model') or ''
+            if mid:
+                models.append({'id': mid, 'modelId': mid})
+        print(json.dumps({'models': models}, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({'error': str(e), 'models': []}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
         channels)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/channels/config" || printf '{"error":"channels unavailable"}'
@@ -271,6 +317,9 @@ cat <<'HTML'
             + '    <div class="field"><label>Base URL</label><input id="dlg_base_url"></div>'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password"></div>'
             + '    <div class="field"><label>模型列表（每行一个 modelId）</label><textarea id="dlg_model_ids" style="min-height:140px;"></textarea></div>'
+            + '    <div style="display:flex;gap:8px;flex-wrap:wrap;">'
+            + '      <button class="btn" onclick="discoverModelsForDialog()">刷新当前服务商模型</button>'
+            + '    </div>'
             + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveModelDialog()">保存</button>'
@@ -426,6 +475,21 @@ cat <<'HTML'
     function closeModelDialog() {
       document.getElementById('modelModalMask').style.display = 'none';
       document.getElementById('modelModalMask').dataset.editIndex = '';
+    }
+    async function discoverModelsForDialog() {
+      try {
+        setMsg('正在刷新当前服务商模型列表...');
+        const payload = {
+          baseUrl: document.getElementById('dlg_base_url').value,
+          apiKey: document.getElementById('dlg_api_key').value,
+          api: document.getElementById('dlg_api').value
+        };
+        const data = await api('models_discover', 'POST', payload);
+        const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
+        document.getElementById('dlg_model_ids').value = ids.join('\n');
+        if (ids.length > 0) setMsg('已刷新模型列表，共 ' + ids.length + ' 个', 'ok');
+        else setMsg(data.error ? ('刷新失败：' + data.error) : '未发现模型', data.error ? 'err' : '');
+      } catch (e) { setMsg('刷新模型失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
       try {
