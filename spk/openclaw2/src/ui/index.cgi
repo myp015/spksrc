@@ -9,10 +9,24 @@ LOG_FILE="${APP_VAR_DIR}/openclaw2.log"
 PID_FILE="${APP_VAR_DIR}/openclaw2.pid"
 GATEWAY_URL="http://127.0.0.1:18789/"
 PANEL_URL="http://127.0.0.1:18700"
-PROXY_PREFIX="/proxy"
+
+METHOD="${REQUEST_METHOD:-GET}"
+QUERY="${QUERY_STRING:-}"
+SCRIPT_NAME_RAW="${SCRIPT_NAME:-/webman/3rdparty/openclaw2/index.cgi}"
 
 html_escape() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+urldecode() {
+    local data
+    data=$(printf '%s' "$1" | sed 's/+/ /g;s/%/\\x/g')
+    printf '%b' "$data"
+}
+
+get_param() {
+    # $1 key, $2 query/body
+    printf '%s' "$2" | tr '&' '\n' | awk -F= -v k="$1" '$1==k{print substr($0, index($0,"=")+1)}' | tail -n1
 }
 
 check_url() {
@@ -26,87 +40,90 @@ check_url() {
     return 1
 }
 
-METHOD="${REQUEST_METHOD:-GET}"
-QUERY="${QUERY_STRING:-}"
-REQUEST_URI_RAW="${REQUEST_URI:-}"
-SCRIPT_NAME_RAW="${SCRIPT_NAME:-/webman/3rdparty/openclaw2/index.cgi}"
-PATH_INFO_RAW="${PATH_INFO:-}"
-PROXY_BASE="${SCRIPT_NAME_RAW}${PROXY_PREFIX}"
-
-if [ -z "$PATH_INFO_RAW" ] && [ -n "$REQUEST_URI_RAW" ] && [ -n "$SCRIPT_NAME_RAW" ]; then
-    case "$REQUEST_URI_RAW" in
-        "$SCRIPT_NAME_RAW"/*)
-            PATH_INFO_RAW="${REQUEST_URI_RAW#${SCRIPT_NAME_RAW}}"
-            PATH_INFO_RAW="${PATH_INFO_RAW%%\?*}"
-            ;;
-    esac
-fi
-
-# /webman/3rdparty/openclaw2/index.cgi/proxy/... -> http://127.0.0.1:18700/...
-if [ "${PATH_INFO_RAW#${PROXY_PREFIX}}" != "$PATH_INFO_RAW" ]; then
-    PROXY_PATH="${PATH_INFO_RAW#${PROXY_PREFIX}}"
-    [ -n "$PROXY_PATH" ] || PROXY_PATH="/"
-    TARGET_URL="${PANEL_URL}${PROXY_PATH}"
-    [ -n "$QUERY" ] && TARGET_URL="${TARGET_URL}?${QUERY}"
+emit_proxy_response() {
+    local target_url="$1"
 
     if ! command -v curl >/dev/null 2>&1; then
         printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
         echo "curl not found for proxy"
-        exit 0
+        return 0
     fi
 
-    RESP_HEADERS=$(mktemp)
-    RESP_BODY=$(mktemp)
-    REWRITE_BODY=$(mktemp)
+    local resp_headers resp_body rewrite_body
+    resp_headers=$(mktemp)
+    resp_body=$(mktemp)
+    rewrite_body=$(mktemp)
 
     if [ "$METHOD" = "POST" ] || [ "$METHOD" = "PUT" ] || [ "$METHOD" = "PATCH" ] || [ "$METHOD" = "DELETE" ]; then
-        BODY=""
+        local body=""
         if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
-            BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
+            body=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
         fi
-        printf '%s' "$BODY" | curl -sS -D "$RESP_HEADERS" -o "$RESP_BODY" \
+        printf '%s' "$body" | curl -sS -D "$resp_headers" -o "$resp_body" \
             -X "$METHOD" \
             -H "Content-Type: ${CONTENT_TYPE:-application/json}" \
             --data-binary @- \
-            "$TARGET_URL" || true
+            "$target_url" || true
     else
-        curl -sS -D "$RESP_HEADERS" -o "$RESP_BODY" "$TARGET_URL" || true
+        curl -sS -D "$resp_headers" -o "$resp_body" "$target_url" || true
     fi
 
-    STATUS_LINE=$(head -n 1 "$RESP_HEADERS" | tr -d '\r')
-    STATUS_CODE=$(printf '%s' "$STATUS_LINE" | awk '{print $2}')
-    [ -n "$STATUS_CODE" ] || STATUS_CODE=200
-    STATUS_TEXT=$(printf '%s' "$STATUS_LINE" | cut -d' ' -f3-)
-    [ -n "$STATUS_TEXT" ] || STATUS_TEXT="OK"
+    local status_line status_code status_text content_type
+    status_line=$(head -n 1 "$resp_headers" | tr -d '\r')
+    status_code=$(printf '%s' "$status_line" | awk '{print $2}')
+    [ -n "$status_code" ] || status_code=200
+    status_text=$(printf '%s' "$status_line" | cut -d' ' -f3-)
+    [ -n "$status_text" ] || status_text="OK"
 
-    CONTENT_TYPE=$(grep -i '^Content-Type:' "$RESP_HEADERS" | tail -n1 | cut -d':' -f2- | tr -d '\r' | sed 's/^ *//')
-    [ -n "$CONTENT_TYPE" ] || CONTENT_TYPE='text/plain; charset=UTF-8'
+    content_type=$(grep -i '^Content-Type:' "$resp_headers" | tail -n1 | cut -d':' -f2- | tr -d '\r' | sed 's/^ *//')
+    [ -n "$content_type" ] || content_type='text/plain; charset=UTF-8'
 
-    # Rewrite hardcoded /app/trim-openclaw base to DSM internal proxy base.
-    # This fixes endless-loading when assets are requested from absolute /app/... paths.
-    if printf '%s' "$CONTENT_TYPE" | grep -Eiq 'text/|javascript|json|css'; then
-        sed "s#\(/app/trim-openclaw\)#${PROXY_BASE}/app/trim-openclaw#g" "$RESP_BODY" > "$REWRITE_BODY" || cp -f "$RESP_BODY" "$REWRITE_BODY"
+    # Rewrite /app/trim-openclaw -> /webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/app/trim-openclaw
+    if printf '%s' "$content_type" | grep -Eiq 'text/|javascript|json|css'; then
+        sed "s#\(/app/trim-openclaw\)#${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw#g" "$resp_body" > "$rewrite_body" || cp -f "$resp_body" "$rewrite_body"
     else
-        cp -f "$RESP_BODY" "$REWRITE_BODY"
+        cp -f "$resp_body" "$rewrite_body"
     fi
 
-    printf 'Status: %s %s\r\n' "$STATUS_CODE" "$STATUS_TEXT"
-    printf 'Content-Type: %s\r\n' "$CONTENT_TYPE"
-    grep -i '^Set-Cookie:' "$RESP_HEADERS" | tr -d '\r' || true
-    grep -i '^Cache-Control:' "$RESP_HEADERS" | tail -n1 | tr -d '\r' || true
+    printf 'Status: %s %s\r\n' "$status_code" "$status_text"
+    printf 'Content-Type: %s\r\n' "$content_type"
+    grep -i '^Set-Cookie:' "$resp_headers" | tr -d '\r' || true
+    grep -i '^Cache-Control:' "$resp_headers" | tail -n1 | tr -d '\r' || true
 
-    # Rewrite Location redirects to stay within DSM internal proxy path.
-    LOC_LINE=$(grep -i '^Location:' "$RESP_HEADERS" | tail -n1 | tr -d '\r')
-    if [ -n "$LOC_LINE" ]; then
-        LOC_VAL=$(printf '%s' "$LOC_LINE" | cut -d':' -f2- | sed 's/^ *//')
-        LOC_VAL=$(printf '%s' "$LOC_VAL" | sed "s#^/app/trim-openclaw#${PROXY_BASE}/app/trim-openclaw#")
-        printf 'Location: %s\r\n' "$LOC_VAL"
+    local loc_line loc_val
+    loc_line=$(grep -i '^Location:' "$resp_headers" | tail -n1 | tr -d '\r')
+    if [ -n "$loc_line" ]; then
+        loc_val=$(printf '%s' "$loc_line" | cut -d':' -f2- | sed 's/^ *//')
+        loc_val=$(printf '%s' "$loc_val" | sed "s#^/app/trim-openclaw#${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw#")
+        printf 'Location: %s\r\n' "$loc_val"
     fi
 
     echo
-    cat "$REWRITE_BODY"
+    cat "$rewrite_body"
 
-    rm -f "$RESP_HEADERS" "$RESP_BODY" "$REWRITE_BODY"
+    rm -f "$resp_headers" "$resp_body" "$rewrite_body"
+    return 0
+}
+
+proxy_flag_raw=$(get_param "proxy" "$QUERY")
+proxy_flag=$(urldecode "$proxy_flag_raw")
+proxy_path_raw=$(get_param "path" "$QUERY")
+proxy_path=$(urldecode "$proxy_path_raw")
+
+if [ "$proxy_flag" = "1" ]; then
+    [ -n "$proxy_path" ] || proxy_path="/"
+    case "$proxy_path" in
+        /*) ;;
+        *) proxy_path="/$proxy_path" ;;
+    esac
+
+    target_url="${PANEL_URL}${proxy_path}"
+
+    # Pass through non-control query params to backend
+    passthrough_q=$(printf '%s' "$QUERY" | tr '&' '\n' | grep -v '^proxy=' | grep -v '^path=' | paste -sd '&' -)
+    [ -n "$passthrough_q" ] && target_url="${target_url}?${passthrough_q}"
+
+    emit_proxy_response "$target_url"
     exit 0
 fi
 
@@ -150,7 +167,7 @@ code { background:#f1f3f5; padding:2px 6px; border-radius:4px; }
   </p>
 
   <div class="actions">
-    <a href="${PROXY_BASE}/app/trim-openclaw/" target="_self">打开完整内嵌面板</a>
+    <a href="${SCRIPT_NAME_RAW}?proxy=1&path=/" target="_self">打开完整内嵌面板</a>
     <a href="/" target="_blank" rel="noopener">打开 Gateway 页面</a>
   </div>
 
