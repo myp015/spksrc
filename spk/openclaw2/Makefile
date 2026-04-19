@@ -40,7 +40,7 @@ SERVICE_PORT = 18700
 SERVICE_PORT_TITLE = OpenClaw2 Panel (HTTP)
 SERVICE_URL = /app/trim-openclaw/
 # Force Package Center "Open" to DSM same-origin proxy entry to avoid backend nesting.
-ADMIN_PORT = 5001
+ADMIN_PORT = 5000
 ADMIN_URL = /webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/app/trim-openclaw/
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
