@@ -52,8 +52,10 @@ POST_STRIP_TARGET = openclaw_extra_install
 ARCH_PREFIX := $(word 1,$(subst -, ,$(ARCH)))
 ifeq ($(ARCH_PREFIX),x64)
 NODE_DIST_ARCH = x64
+BUN_DIST_ARCH = x64
 else ifeq ($(ARCH_PREFIX),aarch64)
 NODE_DIST_ARCH = arm64
+BUN_DIST_ARCH = aarch64
 endif
 
 include ../../mk/spksrc.spk.mk
@@ -84,9 +86,9 @@ openclaw_prepare_bundle:
 		@tencent-connect/openclaw-qqbot@1.7.1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 	@cd $(WORK_DIR) && \
-		curl -fsSL -o bun-linux-$(NODE_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(NODE_DIST_ARCH).zip
-	@cd $(WORK_DIR)/bun-runtime && unzip -q $(WORK_DIR)/bun-linux-$(NODE_DIST_ARCH).zip
-	@cd $(WORK_DIR)/bun-runtime && mv bun-linux-$(NODE_DIST_ARCH)/bun bun && rm -rf bun-linux-$(NODE_DIST_ARCH)
+		curl -fsSL -o bun-linux-$(BUN_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(BUN_DIST_ARCH).zip
+	@cd $(WORK_DIR)/bun-runtime && unzip -q $(WORK_DIR)/bun-linux-$(BUN_DIST_ARCH).zip
+	@cd $(WORK_DIR)/bun-runtime && mv bun-linux-$(BUN_DIST_ARCH)/bun bun && rm -rf bun-linux-$(BUN_DIST_ARCH)
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
