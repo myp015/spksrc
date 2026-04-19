@@ -620,6 +620,46 @@ if action in ('start','restart'):
         except Exception as e:
             logs.append({'cmd': f'{sync_script} {cfg}', 'error': str(e)})
 
+    # 启动前强制清理 agents.defaults.models，只保留当前 providers.models 存在的引用
+    try:
+        c2 = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
+        defs2 = c2.setdefault('agents', {}).setdefault('defaults', {})
+        providers2 = ((c2.get('models') or {}).get('providers') or {})
+        active_refs = set()
+        for pid, pv in providers2.items():
+            if not isinstance(pv, dict):
+                continue
+            for m in (pv.get('models') or []):
+                if isinstance(m, dict):
+                    mid = (m.get('modelId') or m.get('id') or '').strip()
+                    if mid:
+                        active_refs.add(f'{pid}/{mid}')
+        cur_models = defs2.get('models')
+        if isinstance(cur_models, list):
+            cur_models = {k:{} for k in cur_models if isinstance(k, str)}
+        if not isinstance(cur_models, dict):
+            cur_models = {}
+        new_models = {k: (cur_models.get(k) if isinstance(cur_models.get(k), dict) else {}) for k in sorted(active_refs)}
+        defs2['models'] = new_models
+        # primary 若失效则兜底到第一个可用模型
+        mobj = defs2.get('model')
+        primary = ''
+        if isinstance(mobj, dict):
+            primary = (mobj.get('primary') or '').strip()
+        elif isinstance(mobj, str):
+            primary = mobj.strip()
+        if primary and primary not in active_refs and active_refs:
+            first_ref = sorted(active_refs)[0]
+            if isinstance(mobj, dict):
+                mobj['primary'] = first_ref
+            else:
+                defs2['model'] = {'primary': first_ref}
+        with open(cfg,'w',encoding='utf-8') as f:
+            json.dump(c2,f,ensure_ascii=False,indent=2); f.write('\n')
+        logs.append({'cmd':'sanitize defaults.models','active':len(active_refs),'kept':len(new_models)})
+    except Exception as e:
+        logs.append({'cmd':'sanitize defaults.models','error':str(e)})
+
     try:
         logf = open('/tmp/openclaw-gateway.spawn.log','ab', buffering=0)
         p = subprocess.Popen(
