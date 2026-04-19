@@ -1126,7 +1126,7 @@ if [ ! -f "${FN_MONITOR_ENTRY}" ]; then
 fi
 
 # Panel-first mode (as requested): keep settings panel as the primary DSM service.
-# Gateway lifecycle is handled separately by the panel backend; panel startup must not depend on gateway health.
+# Panel listens on package SERVICE_PORT (18700). Gateway remains independent (default 18789).
 SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data PORT=${SERVICE_PORT} BASE_PATH=/ STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
 SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
 SVC_BACKGROUND=yes

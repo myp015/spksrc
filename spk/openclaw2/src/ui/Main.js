@@ -14,7 +14,7 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
         this.appInstance = cfg.appInstance;
 
         var host = window.location.hostname || '127.0.0.1';
-        var monitorUrl = 'http://' + host + ':18789/';
+        var monitorUrl = 'http://' + host + ':18700/';
 
         var config = Ext.apply({
             resizable: true,

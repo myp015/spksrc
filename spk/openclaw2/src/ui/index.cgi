@@ -12,6 +12,7 @@ fi
 LOG_FILE="${APP_VAR_DIR}/openclaw2.log"
 PID_FILE="${APP_VAR_DIR}/openclaw2.pid"
 GATEWAY_URL="http://127.0.0.1:18789/"
+PANEL_URL="http://127.0.0.1:18700/"
 
 html_escape() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
@@ -29,6 +30,12 @@ check_gateway() {
 }
 
 STATUS=$(check_gateway)
+PANEL_STATUS="down"
+if command -v curl >/dev/null 2>&1; then
+    if curl -fsS --max-time 2 "${PANEL_URL}" >/dev/null 2>&1; then
+        PANEL_STATUS="running"
+    fi
+fi
 [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
 TAIL_LOG=$(tail -n 80 "$LOG_FILE" 2>/dev/null | html_escape)
 
@@ -55,6 +62,11 @@ code { background:#f1f3f5; padding:2px 6px; border-radius:4px; }
 <div class="wrapper">
   <h2>OpenClaw2 配置面板</h2>
   <p>主服务：面板（独立） | Gateway：独立运行状态可单独检查</p>
+  <p>
+    面板状态：
+    <span class="badge $( [ "$PANEL_STATUS" = "running" ] && echo ok || echo err )">$PANEL_STATUS</span>
+    （$PANEL_URL）
+  </p>
   <p>
     Gateway 状态：
     <span class="badge $( [ "$STATUS" = "running" ] && echo ok || echo err )">$STATUS</span>
