@@ -64,29 +64,59 @@ if not base_url:
 headers = {'User-Agent': 'openclaw2-native-ui/1.0'}
 if api_key:
     headers['Authorization'] = 'Bearer ' + api_key
-try:
-    if api_type == 'ollama':
-        req = urllib.request.Request(base_url + '/api/tags', headers=headers)
-        with urllib.request.urlopen(req, timeout=20) as r:
-            data = json.loads(r.read().decode('utf-8', 'ignore'))
-        models = []
-        for item in data.get('models', []):
-            name = item.get('name') or item.get('model') or ''
-            if name:
-                models.append({'id': name, 'modelId': name})
-        print(json.dumps({'models': models}, ensure_ascii=False))
+
+
+def build_candidates(base, api):
+    out = []
+
+    def add(url):
+        if url and url not in out:
+            out.append(url)
+
+    if api == 'ollama':
+        add(base + '/api/tags')
+        # 兼容部分代理将 ollama 暴露为 OpenAI 风格接口
+        if base.endswith('/v1'):
+            add(base + '/models')
+        else:
+            add(base + '/v1/models')
     else:
-        req = urllib.request.Request(base_url + '/models', headers=headers)
-        with urllib.request.urlopen(req, timeout=20) as r:
-            data = json.loads(r.read().decode('utf-8', 'ignore'))
+        if base.endswith('/v1'):
+            add(base + '/models')
+            add(base[:-3] + '/models' if base[:-3] else '/models')
+        else:
+            add(base + '/models')
+            add(base + '/v1/models')
+    return out
+
+
+def fetch_json(url):
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode('utf-8', 'ignore'))
+
+
+last_error = None
+for endpoint in build_candidates(base_url, api_type):
+    try:
+        data = fetch_json(endpoint)
         models = []
-        for item in data.get('data', data.get('models', [])):
-            mid = item.get('id') or item.get('name') or item.get('model') or ''
-            if mid:
-                models.append({'id': mid, 'modelId': mid})
-        print(json.dumps({'models': models}, ensure_ascii=False))
-except Exception as e:
-    print(json.dumps({'error': str(e), 'models': []}, ensure_ascii=False))
+        if api_type == 'ollama' and endpoint.endswith('/api/tags'):
+            for item in data.get('models', []):
+                name = item.get('name') or item.get('model') or ''
+                if name:
+                    models.append({'id': name, 'modelId': name})
+        else:
+            for item in data.get('data', data.get('models', [])):
+                mid = item.get('id') or item.get('name') or item.get('model') or ''
+                if mid:
+                    models.append({'id': mid, 'modelId': mid})
+        print(json.dumps({'models': models, 'resolvedEndpoint': endpoint}, ensure_ascii=False))
+        raise SystemExit
+    except Exception as e:
+        last_error = f"{endpoint}: {e}"
+
+print(json.dumps({'error': last_error or 'discover failed', 'models': []}, ensure_ascii=False))
 PY
             exit 0
             ;;
