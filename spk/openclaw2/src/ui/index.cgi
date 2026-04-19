@@ -79,6 +79,10 @@ emit_proxy_response() {
 
     if printf '%s' "$content_type" | grep -Eiq 'text/|javascript|json|css'; then
         sed \
+          -e "s#\"/app/trim-openclaw/#\"${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/#g" \
+          -e "s#'/app/trim-openclaw/#'${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/#g" \
+          -e "s#window\.location\.origin\+\"/app/trim-openclaw/#window.location.origin+\"${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/#g" \
+          -e "s#window\.location\.origin\+'/app/trim-openclaw/#window.location.origin+'${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/#g" \
           -e "s#\(/app/trim-openclaw\)#${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw#g" \
           -e "s#\"/api/#\"${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/api/#g" \
           -e "s#'/api/#'${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/api/#g" \
