@@ -5,7 +5,6 @@ if [ -d "/volume1/@appdata/openclaw2" ]; then
 fi
 
 LOG_FILE="${APP_VAR_DIR}/openclaw2.log"
-PANEL_URL="http://127.0.0.1:18700"
 GATEWAY_PORT="44539"
 QUERY="${QUERY_STRING:-}"
 
@@ -445,7 +444,7 @@ PY
             ;;
         weixin_status)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 10 "${PANEL_URL}/app/trim-openclaw/api/channels/weixin/status" || printf '{"error":"weixin status unavailable"}'
+            printf '{"connected":false,"status":"idle","message":"weixin status local mode"}'
             exit 0
             ;;
         weixin_login_start)
@@ -523,23 +522,22 @@ PY
             ;;
         plugins)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 3 "${PANEL_URL}/app/trim-openclaw/api/channels/plugins" || printf '{"plugins":[],"source":"fallback","stale":true,"refreshing":false,"error":"plugins unavailable"}'
+            printf '{"plugins":[],"source":"local","stale":false,"refreshing":false}'
             exit 0
             ;;
         plugins_refresh)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            printf '{}' | curl -fsS --max-time 15 -X POST -H "Content-Type: application/json" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/channels/plugins/refresh" || printf '{"error":"plugins refresh failed"}'
+            printf '{"ok":true,"source":"local"}'
             exit 0
             ;;
         plugin_install)
-            body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            printf '%s' "$body" | curl -fsS --max-time 60 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/channels/plugins/install" || printf '{"error":"plugin install failed"}'
+            printf '{"ok":true,"message":"builtin plugins, no install needed"}'
             exit 0
             ;;
         install)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/status" || printf '{"error":"install unavailable"}'
+            printf '{"ok":true,"message":"local mode"}'
             exit 0
             ;;
         install_run)
@@ -649,9 +647,13 @@ PY
             ;;
         logs)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
-            logs_json=$(tail -n 120 "$LOG_FILE" 2>/dev/null | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g')
-            printf '{"log":"%s"}' "$logs_json"
+            OCL_LOG="/tmp/openclaw-0/openclaw-$(date +%Y-%m-%d).log"
+            [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date -d yesterday +%Y-%m-%d 2>/dev/null).log"
+            [ -f "$OCL_LOG" ] || OCL_LOG="$LOG_FILE"
+            [ -f "$OCL_LOG" ] || touch "$OCL_LOG"
+            logs_json=$(tail -n 180 "$OCL_LOG" 2>/dev/null | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g')
+            src_json=$(printf '%s' "$OCL_LOG" | sed 's/\\/\\\\/g;s/"/\\"/g')
+            printf '{"log":"%s","source":"%s"}' "$logs_json" "$src_json"
             exit 0
             ;;
         *)
@@ -820,8 +822,8 @@ cat <<'HTML'
           return;
         }
         if (tab === 'logs') {
-          content.innerHTML = '<pre>' + esc(data.log || '') + '</pre>';
-          setMsg('日志已加载', 'ok');
+          content.innerHTML = '<div class="item-meta" style="margin-bottom:8px;">日志来源：' + esc(data.source || '-') + '</div><pre>' + esc(data.log || '') + '</pre>';
+          setMsg('OpenClaw 日志已加载', 'ok');
           return;
         }
         if (tab === 'models') {
@@ -934,9 +936,9 @@ cat <<'HTML'
       }
     }
     function openOpenclawWeb(url) {
-      const u = (url || ('http://' + window.location.hostname + ':44539/default/chat?session=main')).replace('LAN_HOST', window.location.hostname);
+      const u = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
       window.open(u, '_blank', 'noopener,noreferrer');
-      setMsg('已打开 OpenClaw Web', 'ok');
+      setMsg('已打开 OpenClaw Web（无需 token）', 'ok');
     }
     function openUserSettingsDialog() {
       const m = document.getElementById('userSettingsMask');
