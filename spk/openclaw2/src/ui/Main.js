@@ -13,8 +13,8 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
     constructor: function(cfg) {
         this.appInstance = cfg.appInstance;
 
-        // Use plain index entry; index.cgi itself handles routing to panel app path.
-        var monitorUrl = 'index.cgi';
+        // Always open via DSM same-origin proxy path for compatibility shim.
+        var monitorUrl = 'index.cgi?proxy=1&path=/app/trim-openclaw/';
 
         var config = Ext.apply({
             resizable: true,

@@ -119,12 +119,50 @@ if [ "$proxy_flag" = "1" ]; then
         *) proxy_path="/$proxy_path" ;;
     esac
 
-    # Critical fix:
+    # Compatibility shim for current fn-port UI bundle vs packaged backend routes.
+    # Return lightweight JSON for routes missing in backend to prevent frontend parse failures.
+    case "$proxy_path" in
+        /app/trim-openclaw/api/telemetry)
+            printf 'Status: 204 No Content\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'
+            exit 0
+            ;;
+        /app/trim-openclaw/api/process-governor)
+            printf 'Status: 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"enabled":false,"running":false,"message":"process governor compatibility fallback"}'
+            exit 0
+            ;;
+        /app/trim-openclaw/api/cloud-config/bailian-banner)
+            printf 'Status: 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"visible":false}'
+            exit 0
+            ;;
+        /app/trim-openclaw/api/models/config/fast)
+            proxy_path="/app/trim-openclaw/api/models/config"
+            ;;
+        /app/trim-openclaw/api/models/providers/ollama/discover)
+            printf 'Status: 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"models":[]}'
+            exit 0
+            ;;
+        /app/trim-openclaw/api/channels/plugins/refresh)
+            proxy_path="/app/trim-openclaw/api/channels/plugins"
+            ;;
+        /app/trim-openclaw/api/channels/weixin/status)
+            printf 'Status: 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"connected":false,"status":"idle"}'
+            exit 0
+            ;;
+        /app/trim-openclaw/api/channels/weixin/disconnect|/app/trim-openclaw/api/channels/qqbot/disconnect|/app/trim-openclaw/api/channels/weixin/login/start|/app/trim-openclaw/api/channels/weixin/login/wait)
+            printf 'Status: 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"ok":true}'
+            exit 0
+            ;;
+    esac
+
     # panel base path is /app/trim-openclaw, but backend API actually lives at /api/*.
-    # Map proxied /app/trim-openclaw/api/* -> backend /api/* to avoid HTML fallback.
+    # Map proxied /app/trim-openclaw/api/* -> backend /api/*.
     case "$proxy_path" in
         /app/trim-openclaw/api/gateway/status|/app/trim-openclaw/api/install/status|/app/trim-openclaw/api/system/status|/app/trim-openclaw/api/gateway)
-            # Compatibility shim for trim UI overview calls on this packaged runtime.
             backend_path="/api/status"
             ;;
         /app/trim-openclaw/api/*)
