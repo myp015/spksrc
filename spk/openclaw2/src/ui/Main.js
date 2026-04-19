@@ -13,8 +13,9 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
     constructor: function(cfg) {
         this.appInstance = cfg.appInstance;
 
-        // Always open via DSM same-origin proxy path for compatibility shim.
-        var monitorUrl = 'index.cgi?proxy=1&path=/app/trim-openclaw/';
+        // If DSM still launches ui/Main.js path, force top-level jump to panel path
+        // to avoid nested backend shell.
+        var monitorUrl = '/webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/app/trim-openclaw/';
 
         var config = Ext.apply({
             resizable: true,
@@ -26,7 +27,8 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
             items: [
                 new Ext.BoxComponent({
                     height: '100%',
-                    html: '<iframe src="' + monitorUrl + '" frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%"></iframe>'
+                    html: '<div style="padding:16px;font-size:14px;color:#666;">正在打开 OpenClaw2 面板…</div>' +
+                          '<script>(function(){var u="' + monitorUrl + '";try{if(window.top&&window.top!==window){window.top.location.href=u;}else{window.location.href=u;}}catch(e){window.location.href=u;}})();</script>'
                 })
             ]
         }, cfg);
