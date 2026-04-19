@@ -163,6 +163,21 @@ cat <<'HTML'
 
   <script>
     const API_BASE = '/webman/3rdparty/openclaw2/index.cgi?native_api=1&action=';
+    const PROVIDER_PRESETS = {
+      anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages' },
+      google: { label: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', api: 'openai-completions' },
+      'minimax-cn': { label: 'MiniMax CN', baseUrl: 'https://api.minimaxi.com/anthropic', api: 'anthropic-messages' },
+      minimax: { label: 'MiniMax', baseUrl: 'https://api.minimax.io/anthropic', api: 'anthropic-messages' },
+      'kimi-coding': { label: 'Kimi Coding', baseUrl: 'https://api.kimi.com/coding/', api: 'anthropic-messages' },
+      mistral: { label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', api: 'openai-completions' },
+      moonshot: { label: 'Moonshot', baseUrl: 'https://api.moonshot.ai/v1', api: 'openai-completions' },
+      openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions' },
+      ollama: { label: 'Ollama', baseUrl: 'http://127.0.0.1:11434', api: 'ollama' },
+      openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', api: 'openai-completions' },
+      together: { label: 'Together', baseUrl: 'https://api.together.xyz/v1', api: 'openai-completions' },
+      xai: { label: 'xAI', baseUrl: 'https://api.x.ai/v1', api: 'openai-completions' },
+      zai: { label: 'Z.AI', baseUrl: 'https://api.z.ai/api/paas/v4', api: 'openai-completions' }
+    };
     let currentTab = 'status';
 
     function esc(s) {
@@ -220,13 +235,15 @@ cat <<'HTML'
           const p0 = providers[0] || {};
           const models = p0.models || [];
           const modelIds = models.map(m => m.modelId || m.id).filter(Boolean).join('\n');
+          const options = Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>').join('');
           content.innerHTML = ''
             + '<div class="cards">'
             + '  <div class="card">'
             + '    <h3>默认 Provider 快速配置</h3>'
+            + '    <div class="field"><label>服务商</label><select id="model_provider_preset" onchange="applyProviderPreset()">' + options + '</select></div>'
             + '    <div class="field"><label>Provider ID</label><input id="model_provider_id" value="' + esc(p0.id || 'default') + '"></div>'
             + '    <div class="field"><label>显示名</label><input id="model_display_name" value="' + esc(p0.displayName || '') + '"></div>'
-            + '    <div class="field"><label>API 类型</label><select id="model_api"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option></select></div>'
+            + '    <div class="field"><label>API 类型</label><select id="model_api"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
             + '    <div class="field"><label>Base URL</label><input id="model_base_url" value="' + esc(p0.baseUrl || '') + '"></div>'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="model_api_key" type="password" value=""></div>'
             + '    <div class="field"><label>模型列表（每行一个 modelId）</label><textarea id="model_ids" style="min-height:140px;">' + esc(modelIds) + '</textarea></div>'
@@ -234,9 +251,12 @@ cat <<'HTML'
             + '  </div>'
             + '</div>'
             + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
+          const presetSel = document.getElementById('model_provider_preset');
           const sel = document.getElementById('model_api');
+          const currentProvider = (p0.id || 'openai');
+          if (presetSel && PROVIDER_PRESETS[currentProvider]) presetSel.value = currentProvider;
           if (sel) sel.value = p0.api || 'openai-completions';
-          setMsg('模型配置已加载；可直接填写上面的表单保存，也可编辑下方 JSON', 'ok');
+          setMsg('模型配置已加载；可下拉选择服务商并自动填充服务器地址，也可编辑下方 JSON', 'ok');
           return;
         }
         if (tab === 'plugins') {
@@ -347,6 +367,16 @@ cat <<'HTML'
       } catch (e) {
         setMsg('操作失败：' + (e.message || e), 'err');
       }
+    }
+    function applyProviderPreset() {
+      const presetId = document.getElementById('model_provider_preset').value;
+      const preset = PROVIDER_PRESETS[presetId];
+      if (!preset) return;
+      document.getElementById('model_provider_id').value = presetId;
+      document.getElementById('model_display_name').value = preset.label;
+      document.getElementById('model_base_url').value = preset.baseUrl || '';
+      document.getElementById('model_api').value = preset.api || 'openai-completions';
+      setMsg('已按服务商自动填充服务器地址与 API 类型', 'ok');
     }
     async function saveModelQuick() {
       try {
