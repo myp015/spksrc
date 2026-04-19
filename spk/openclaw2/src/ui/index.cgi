@@ -30,12 +30,52 @@ if [ "$native_api" = "1" ]; then
     case "$action" in
         status)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/status" || printf '{"error":"status unavailable"}'
+            raw=$(curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/status" 2>/dev/null || printf '{}')
+            python3 - <<'PY' "$raw"
+import json, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    j = json.loads(raw or '{}')
+except Exception:
+    print('{"error":"status unavailable"}')
+    raise SystemExit
+if isinstance(j, dict):
+    base = (j.get('proxyBasePath') or '/default').rstrip('/')
+    if not base.startswith('/'):
+        base = '/' + base
+    tokenized = j.get('dashboardTokenizedUrl') or j.get('proxyDashboardTokenizedUrl') or ''
+    token = ''
+    if 'token=' in tokenized:
+        token = tokenized.split('token=', 1)[1].split('&', 1)[0]
+    port = j.get('port') or 44539
+    j['dashboardUrl'] = f'http://LAN_HOST:{port}{base}/'
+    j['dashboardTokenizedUrl'] = f'http://LAN_HOST:{port}{base}/?token={token}' if token else f'http://LAN_HOST:{port}{base}/'
+print(json.dumps(j, ensure_ascii=False))
+PY
+            # 确保局域网可访问：将核心 gateway 配置写入默认用户配置
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
+import json, os, sys
+p=sys.argv[1]
+try:
+    c=json.load(open(p,'r',encoding='utf-8')) if os.path.exists(p) else {}
+except Exception:
+    c={}
+gw=c.setdefault('gateway',{})
+gw['bind']='lan'
+gw['mode']='local'
+cu=gw.setdefault('controlUi',{})
+cu['allowInsecureAuth']=True
+cu['dangerouslyDisableDeviceAuth']=True
+cu['allowedOrigins']=['*']
+os.makedirs(os.path.dirname(p),exist_ok=True)
+with open(p,'w',encoding='utf-8') as f:
+    json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
+PY
             exit 0
             ;;
         models)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "${APP_VAR_DIR}/data/home/.openclaw/openclaw.json"
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
 import json, os, sys
 cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
 try:
@@ -54,6 +94,9 @@ for pid, p in providers_map.items():
         'baseUrl': p.get('baseUrl') or '',
         'models': []
     }
+    if isinstance(p.get('apiKey'), str) and p.get('apiKey'):
+        item['apiKeyMasked'] = '*' * min(16, max(8, len(p.get('apiKey'))))
+        item['apiKeyRaw'] = p.get('apiKey')
     for m in (p.get('models') or []):
         if isinstance(m, dict):
             mid = m.get('modelId') or m.get('id') or ''
@@ -67,51 +110,73 @@ PY
             ;;
         models_save)
             body=$(read_body)
-            workspace=$(python3 - <<'PY' "$body"
-import json,sys
-raw=sys.argv[1] if len(sys.argv)>1 else '{}'
-try:
-    p=json.loads(raw)
-    print((p.get('workspaceDir') or '').strip())
-except Exception:
-    print('')
-PY
-)
-            if [ -n "$workspace" ]; then
-                python3 - <<'PY' "$workspace" "${APP_VAR_DIR}/data/home/.openclaw/openclaw.json"
+            cfg_file="/volume1/docker/openclaw/.openclaw/openclaw.json"
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body" "$cfg_file"
 import json, os, sys
-workspace = sys.argv[1]
-cfg_path = sys.argv[2]
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 try:
-    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
 except Exception:
     cfg = {}
-cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
-qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
-paths = qmd.setdefault('paths', [])
-if not paths:
-    paths.append({'path': workspace, 'name': 'workspace', 'pattern': '**/*.md'})
-else:
-    if isinstance(paths[0], dict):
+workspace = (payload.get('workspaceDir') or '').strip()
+if workspace:
+    cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
+    qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
+    paths = qmd.setdefault('paths', [])
+    if not paths:
+        paths.append({'path': workspace, 'name': 'workspace', 'pattern': '**/*.md'})
+    elif isinstance(paths[0], dict):
         paths[0]['path'] = workspace
+providers_payload = payload.get('providers') or []
+existing_providers = ((cfg.get('models') or {}).get('providers') or {})
+providers_map = {}
+for p in providers_payload:
+    if not isinstance(p, dict):
+        continue
+    pid = (p.get('id') or '').strip()
+    if not pid:
+        continue
+    provider = {
+        'api': p.get('api') or 'openai-completions',
+        'baseUrl': p.get('baseUrl') or '',
+        'models': []
+    }
+    old_key = ''
+    if isinstance(existing_providers.get(pid), dict) and isinstance(existing_providers.get(pid).get('apiKey'), str):
+        old_key = existing_providers.get(pid).get('apiKey').strip()
+    api_key = p.get('apiKey')
+    if isinstance(api_key, str):
+        key_trim = api_key.strip()
+        if key_trim and set(key_trim) == {'*'}:
+            if old_key:
+                provider['apiKey'] = old_key
+        elif key_trim:
+            provider['apiKey'] = key_trim
+        elif old_key:
+            provider['apiKey'] = old_key
+    elif old_key:
+        provider['apiKey'] = old_key
+    for m in (p.get('models') or []):
+        if not isinstance(m, dict):
+            continue
+        mid = (m.get('modelId') or m.get('id') or '').strip()
+        if mid:
+            provider['models'].append({'id': mid, 'name': f"{pid} / {mid}"})
+    providers_map[pid] = provider
+cfg.setdefault('models', {})['providers'] = providers_map
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
+out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw', 'configPath': cfg_path, 'configExists': True}
+print(json.dumps(out, ensure_ascii=False))
 PY
-            fi
-            providers_only=$(python3 - <<'PY' "$body"
-import json,sys
-raw=sys.argv[1] if len(sys.argv)>1 else '{}'
-try:
-    p=json.loads(raw)
-    print(json.dumps({'providers': p.get('providers') or []}, ensure_ascii=False))
-except Exception:
-    print('{"providers":[]}')
-PY
-)
-            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            printf '%s' "$providers_only" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/models/config/fast" || printf '{"error":"models save failed"}'
             exit 0
             ;;
         models_discover)
@@ -145,7 +210,6 @@ def build_candidates(base, api):
 
     if api == 'ollama':
         add(base + '/api/tags')
-        # 兼容部分代理将 ollama 暴露为 OpenAI 风格接口
         if base.endswith('/v1'):
             add(base + '/models')
         else:
@@ -190,9 +254,75 @@ print(json.dumps({'error': last_error or 'discover failed', 'models': []}, ensur
 PY
             exit 0
             ;;
+        models_sync_provider)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body"
+import json, sys, urllib.request
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    print('{"error":"invalid payload","models":[]}')
+    raise SystemExit
+base_url = (payload.get('baseUrl') or '').strip().rstrip('/')
+api_key = (payload.get('apiKey') or '').strip()
+api_type = (payload.get('api') or 'openai-completions').strip()
+if not base_url:
+    print('{"error":"baseUrl required","models":[]}')
+    raise SystemExit
+headers = {'User-Agent': 'openclaw2-native-ui/1.0'}
+if api_key:
+    headers['Authorization'] = 'Bearer ' + api_key
+
+def build_candidates(base, api):
+    out = []
+    def add(url):
+        if url and url not in out:
+            out.append(url)
+    if api == 'ollama':
+        add(base + '/api/tags')
+        if base.endswith('/v1'):
+            add(base + '/models')
+        else:
+            add(base + '/v1/models')
+    else:
+        if base.endswith('/v1'):
+            add(base + '/models')
+            add(base[:-3] + '/models' if base[:-3] else '/models')
+        else:
+            add(base + '/models')
+            add(base + '/v1/models')
+    return out
+
+last_error = None
+for endpoint in build_candidates(base_url, api_type):
+    try:
+        req = urllib.request.Request(endpoint, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode('utf-8', 'ignore'))
+        models = []
+        if api_type == 'ollama' and endpoint.endswith('/api/tags'):
+            seq = data.get('models', [])
+        else:
+            seq = data.get('data', data.get('models', []))
+        for item in seq:
+            if not isinstance(item, dict):
+                continue
+            mid = item.get('id') or item.get('name') or item.get('model') or ''
+            if mid:
+                models.append({'id': mid, 'modelId': mid})
+        print(json.dumps({'models': models, 'resolvedEndpoint': endpoint}, ensure_ascii=False))
+        raise SystemExit
+    except Exception as e:
+        last_error = f"{endpoint}: {e}"
+print(json.dumps({'error': last_error or 'sync failed', 'models': []}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
         channels)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "${APP_VAR_DIR}/data/home/.openclaw/openclaw.json"
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
 import json, os, sys
 cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
 try:
@@ -216,8 +346,148 @@ PY
             ;;
         channels_save)
             body=$(read_body)
+            cfg_file="/volume1/docker/openclaw/.openclaw/openclaw.json"
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            printf '%s' "$body" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/channels/config" || printf '{"error":"channels save failed"}'
+            python3 - <<'PY' "$body" "$cfg_file"
+import json, os, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
+except Exception:
+    cfg = {}
+ch = cfg.setdefault('channels', {})
+if isinstance(payload.get('feishu'), dict):
+    f = ch.setdefault('feishu', {})
+    app_id = (payload['feishu'].get('appId') or '').strip()
+    app_secret = (payload['feishu'].get('appSecret') or '').strip()
+    if app_id:
+        f.setdefault('defaultAccount', 'default')
+        ac = f.setdefault('accounts', {}).setdefault(f['defaultAccount'], {})
+        ac['appId'] = app_id
+    if app_secret:
+        f.setdefault('defaultAccount', 'default')
+        ac = f.setdefault('accounts', {}).setdefault(f['defaultAccount'], {})
+        ac['appSecret'] = app_secret
+    f['dmPolicy'] = 'open'; f['groupPolicy'] = 'open'; f['allowFrom'] = ['*']; f['enabled'] = True
+if isinstance(payload.get('wecom'), dict):
+    w = ch.setdefault('wecom', {})
+    bot_id = (payload['wecom'].get('botId') or '').strip()
+    sec = (payload['wecom'].get('secret') or '').strip()
+    if bot_id: w['botId'] = bot_id
+    if sec: w['secret'] = sec
+    w['enabled'] = True
+if isinstance(payload.get('dingtalk'), dict):
+    d = ch.setdefault('dingtalk', {})
+    cid = (payload['dingtalk'].get('clientId') or '').strip()
+    csec = (payload['dingtalk'].get('clientSecret') or '').strip()
+    if cid: d['clientId'] = cid
+    if csec: d['clientSecret'] = csec
+    d['enabled'] = True
+if isinstance(payload.get('qqbot'), dict):
+    q = ch.setdefault('qqbot', {})
+    aid = (payload['qqbot'].get('appId') or '').strip()
+    sec = (payload['qqbot'].get('clientSecret') or '').strip()
+    if aid: q['appId'] = aid
+    if sec: q['clientSecret'] = sec
+    q['enabled'] = True; q['dmPolicy']='open'; q['groupPolicy']='open'; q['allowFrom']=['*']
+os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+with open(cfg_path, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+    f.write('\n')
+out = {
+  'configPath': cfg_path, 'configExists': True,
+  'configuredChannelIds': list((cfg.get('channels') or {}).keys()),
+  'feishu': (cfg.get('channels') or {}).get('feishu') or {},
+  'wecom': (cfg.get('channels') or {}).get('wecom') or {},
+  'dingtalk': (cfg.get('channels') or {}).get('dingtalk') or {},
+  'qqbot': (cfg.get('channels') or {}).get('qqbot') or {},
+  'weixin': (cfg.get('channels') or {}).get('weixin') or {}
+}
+print(json.dumps(out, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        weixin_status)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            curl -fsS --max-time 10 "${PANEL_URL}/app/trim-openclaw/api/channels/weixin/status" || printf '{"error":"weixin status unavailable"}'
+            exit 0
+            ;;
+        weixin_login_start)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json"
+import json, os, re, subprocess, sys
+home_dir = sys.argv[1]
+cfg_path = sys.argv[2]
+env = os.environ.copy()
+env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['HOME'] = home_dir
+env['OPENCLAW_CONFIG_PATH'] = cfg_path
+env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
+text = ''
+try:
+    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=25)
+    text = (p.stdout or b'').decode('utf-8', 'ignore')
+except subprocess.TimeoutExpired as e:
+    text = ((e.stdout or b'') + (e.stderr or b'')).decode('utf-8', 'ignore')
+url = None
+m = re.search(r'https://liteapp\.weixin\.qq\.com/q/\S+', text)
+if m:
+    url = m.group(0)
+if url:
+    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录'}, ensure_ascii=False))
+else:
+    print(json.dumps({'supported': False, 'message': '未获取到二维码，请确认 openclaw-weixin 插件已安装并重试', 'raw': text[-800:]}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        weixin_login_wait)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
+import json, os, subprocess, sys
+cfg_path = sys.argv[1]
+env = os.environ.copy()
+env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+env['OPENCLAW_CONFIG_PATH'] = cfg_path
+env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'status']
+try:
+    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8)
+    text = (p.stdout or b'').decode('utf-8', 'ignore')
+except Exception as e:
+    text = str(e)
+ok = ('openclaw-weixin' in text.lower()) and ('connected' in text.lower() or 'ready' in text.lower() or 'online' in text.lower())
+print(json.dumps({'supported': True, 'connected': bool(ok), 'status': 'connected' if ok else 'pending', 'message': '已连接' if ok else '等待扫码确认', 'raw': text[-400:]}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        weixin_disconnect)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
+import json, os, subprocess, sys
+cfg_path = sys.argv[1]
+env = os.environ.copy()
+env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+env['OPENCLAW_CONFIG_PATH'] = cfg_path
+env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
+try:
+    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
+    text = (p.stdout or b'').decode('utf-8', 'ignore')
+    print(json.dumps({'supported': True, 'ok': p.returncode == 0, 'message': '已断开' if p.returncode == 0 else '断开失败', 'raw': text[-300:]}, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({'supported': False, 'ok': False, 'message': str(e)}, ensure_ascii=False))
+PY
             exit 0
             ;;
         plugins)
@@ -244,7 +514,67 @@ PY
         install_run)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            printf '%s' "$body" | curl -fsS --max-time 120 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/install" || printf '{"error":"install action failed"}'
+            python3 - <<'PY' "$body" "/volume1/@appdata/openclaw2/data/home/.openclaw/openclaw.json"
+import json, os, subprocess, sys, time
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+cfg = sys.argv[2]
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+action = (payload.get('action') or '').strip().lower()
+if action not in ('start','stop','restart'):
+    print(json.dumps({'ok': False, 'error': 'unsupported action'}, ensure_ascii=False)); raise SystemExit
+
+env = os.environ.copy()
+env['OPENCLAW_USE_SYSTEM_CONFIG']='0'
+env['OPENCLAW_DATA_DIR']='/volume1/@appdata/openclaw2/data'
+env['HOME']='/volume1/@appdata/openclaw2/data/home'
+env['OPENCLAW_CONFIG_PATH']=cfg
+env['OPENCLAW_STATE_DIR']='/volume1/docker/openclaw/.openclaw'
+
+def run(cmd, timeout=20):
+    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
+    return p.returncode, (p.stdout or b'').decode('utf-8','ignore')
+
+def force_stop():
+    out=[]
+    for cmd in [
+        ['pkill','-f','openclaw-gatew'],
+        ['pkill','-f','/app/openclaw/dist/index.js gateway'],
+        ['pkill','-f','openclaw gateway']
+    ]:
+        try:
+            p=subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
+            out.append((cmd,p.returncode,(p.stdout or b'').decode('utf-8','ignore')))
+        except Exception as e:
+            out.append((cmd,999,str(e)))
+    return out
+
+logs=[]
+ok=True
+if action in ('stop','restart'):
+    rc, txt = run(['/var/packages/openclaw2/target/bin/openclaw','gateway','stop','--json'], timeout=35)
+    logs.append({'cmd':'gateway stop --json','rc':rc,'out':txt[-800:]})
+    force = force_stop()
+    logs.append({'cmd':'force-stop','out':str(force)[:800]})
+    time.sleep(1)
+
+if action in ('start','restart'):
+    try:
+        p = subprocess.Popen(['/var/packages/openclaw2/target/bin/openclaw','gateway'], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logs.append({'cmd':'gateway(spawn)','pid':p.pid})
+        time.sleep(2)
+    except Exception as e:
+        ok = False
+        logs.append({'cmd':'gateway(spawn)','error':str(e)})
+
+try:
+    st = subprocess.check_output(['curl','-sS','--max-time','6','http://127.0.0.1:18700/app/trim-openclaw/api/status']).decode('utf-8','ignore')
+except Exception as e:
+    st = str(e)
+print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'status': st[:800]}, ensure_ascii=False))
+PY
             exit 0
             ;;
         process_governor)
@@ -276,22 +606,25 @@ cat <<'HTML'
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenClaw2</title>
   <style>
-    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:#f5f6f8; color:#222; }
-    .wrap { padding:18px; }
+    html, body { scroll-behavior: auto; overscroll-behavior: contain; height:100%; }
+    body { margin:0; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:#f5f6f8; color:#222; }
+    body.modal-open { overflow: hidden; }
+    .wrap { padding:18px; height:100%; box-sizing:border-box; display:flex; flex-direction:column; }
     .title { font-size:24px; font-weight:700; margin-bottom:6px; }
     .sub { color:#667085; font-size:13px; margin-bottom:14px; }
     .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
     .tab { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:10px 14px; cursor:pointer; }
     .tab.active { background:#1677ff; color:#fff; border-color:#1677ff; }
-    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; min-height:560px; }
+    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
     .toolbar { display:flex; gap:8px; margin-bottom:12px; }
+    #content { flex:1; min-height:0; overflow:hidden; }
     .btn { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:8px 12px; cursor:pointer; }
     .btn.primary { background:#1677ff; color:#fff; border-color:#1677ff; }
     .grid { display:grid; grid-template-columns:180px 1fr; border-top:1px solid #eee; }
     .cellk,.cellv { padding:10px 8px; border-bottom:1px solid #eee; }
     .cellk { color:#667085; }
     textarea { width:100%; min-height:520px; resize:vertical; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:10px; padding:12px; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-    pre { white-space:pre-wrap; word-break:break-word; background:#111827; color:#dbeafe; border-radius:10px; padding:14px; min-height:520px; overflow:auto; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    pre { white-space:pre-wrap; word-break:break-word; background:#111827; color:#dbeafe; border-radius:10px; padding:14px; min-height:520px; overflow:hidden; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .msg { margin-bottom:12px; font-size:13px; color:#667085; }
     .err { color:#b42318; }
     .ok { color:#067647; }
@@ -301,15 +634,15 @@ cat <<'HTML'
     .field { margin-bottom:10px; }
     .field label { display:block; font-size:12px; color:#667085; margin-bottom:4px; }
     .field input, .field select, .field textarea { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
-    .field select[multiple] { min-height: 160px; }
+    .field select[multiple] { min-height: 160px; max-height: 260px; overflow-y: auto; }
     .list { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
     .item { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
     .item-title { font-size:16px; font-weight:600; margin-bottom:6px; }
     .item-meta { font-size:12px; color:#667085; margin-bottom:8px; }
     .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:12px; }
-    .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:9999; }
-    .modal { width:min(760px,92vw); max-height:88vh; overflow:auto; background:#fff; border-radius:16px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:flex-start; justify-content:center; z-index:9999; overflow:hidden; padding:32px 0; }
+    .modal { width:min(760px,92vw); max-height:none; overflow:visible; background:#fff; border-radius:16px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
     .modal h3 { margin:0 0 14px; font-size:18px; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   </style>
@@ -321,9 +654,7 @@ cat <<'HTML'
     <div class="tabs">
       <button class="tab active" data-tab="status">概览</button>
       <button class="tab" data-tab="models">模型配置</button>
-      <button class="tab" data-tab="channels">消息渠道</button>
-      <button class="tab" data-tab="plugins">插件管理</button>
-      <button class="tab" data-tab="install">安装 / 控制</button>
+      <button class="tab" data-tab="channels">渠道配置</button>
       <button class="tab" data-tab="process_governor">进程治理</button>
       <button class="tab" data-tab="logs">运行日志</button>
     </div>
@@ -340,20 +671,21 @@ cat <<'HTML'
   <script>
     const API_BASE = '/webman/3rdparty/openclaw2/index.cgi?native_api=1&action=';
     const PROVIDER_PRESETS = {
-      anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages' },
-      google: { label: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', api: 'openai-completions' },
-      'minimax-cn': { label: 'MiniMax CN', baseUrl: 'https://api.minimaxi.com/anthropic', api: 'anthropic-messages' },
-      minimax: { label: 'MiniMax', baseUrl: 'https://api.minimax.io/anthropic', api: 'anthropic-messages' },
-      'kimi-coding': { label: 'Kimi Coding', baseUrl: 'https://api.kimi.com/coding/', api: 'anthropic-messages' },
-      mistral: { label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', api: 'openai-completions' },
-      moonshot: { label: 'Moonshot', baseUrl: 'https://api.moonshot.ai/v1', api: 'openai-completions' },
-      openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions' },
-      ollama: { label: 'Ollama', baseUrl: 'http://127.0.0.1:11434', api: 'ollama' },
-      openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', api: 'openai-completions' },
-      together: { label: 'Together', baseUrl: 'https://api.together.xyz/v1', api: 'openai-completions' },
-      xai: { label: 'xAI', baseUrl: 'https://api.x.ai/v1', api: 'openai-completions' },
-      zai: { label: 'Z.AI', baseUrl: 'https://api.z.ai/api/paas/v4', api: 'openai-completions' }
+      anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages', models: ['claude-3-5-sonnet-latest','claude-3-7-sonnet-latest','claude-sonnet-4-20250514','claude-opus-4-20250514'] },
+      google: { label: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', api: 'openai-completions', models: ['gemini-2.5-pro','gemini-2.5-flash','gemini-2.0-flash'] },
+      'minimax-cn': { label: 'MiniMax CN', baseUrl: 'https://api.minimaxi.com/anthropic', api: 'anthropic-messages', models: ['MiniMax-M2.5','MiniMax-Text-01'] },
+      minimax: { label: 'MiniMax', baseUrl: 'https://api.minimax.io/anthropic', api: 'anthropic-messages', models: ['MiniMax-M2.5','MiniMax-Text-01'] },
+      'kimi-coding': { label: 'Kimi Coding', baseUrl: 'https://api.kimi.com/coding/', api: 'anthropic-messages', models: ['kimi-k2-0905-preview','kimi-latest'] },
+      mistral: { label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', api: 'openai-completions', models: ['mistral-large-latest','mistral-small-latest'] },
+      moonshot: { label: 'Moonshot', baseUrl: 'https://api.moonshot.ai/v1', api: 'openai-completions', models: ['moonshot-v1-8k','moonshot-v1-32k','moonshot-v1-128k'] },
+      openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions', models: ['gpt-5.4-mini','gpt-5.3-codex','gpt-4.1','o4-mini'] },
+      ollama: { label: 'Ollama', baseUrl: 'http://127.0.0.1:11434', api: 'ollama', models: ['qwen2.5:7b','llama3.1:8b','deepseek-r1:8b'] },
+      openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', api: 'openai-completions', models: ['openai/gpt-4.1','anthropic/claude-sonnet-4','google/gemini-2.5-pro'] },
+      together: { label: 'Together', baseUrl: 'https://api.together.xyz/v1', api: 'openai-completions', models: ['Qwen/Qwen2.5-72B-Instruct-Turbo','meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'] },
+      xai: { label: 'xAI', baseUrl: 'https://api.x.ai/v1', api: 'openai-completions', models: ['grok-4','grok-3-mini'] },
+      zai: { label: 'Z.AI', baseUrl: 'https://api.z.ai/api/paas/v4', api: 'openai-completions', models: ['glm-4.5','glm-4.5-air'] }
     };
+    const BUILTIN_CHANNEL_PLUGINS = ['browser','feishu','qqbot','dingtalk','wecom'];
     let currentTab = 'status';
 
     function esc(s) {
@@ -367,7 +699,7 @@ cat <<'HTML'
     function setTabs(tab) {
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
-      document.getElementById('saveBtn').style.display = (tab === 'models' || tab === 'channels' || tab === 'plugins' || tab === 'install') ? '' : 'none';
+      document.getElementById('saveBtn').style.display = (tab === 'models' || tab === 'channels') ? '' : 'none';
     }
     async function api(action, method='GET', payload=null) {
       const resp = await fetch(API_BASE + encodeURIComponent(action), {
@@ -397,7 +729,19 @@ cat <<'HTML'
             ['代理路径', data.proxyBasePath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
-          content.innerHTML = '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>';
+          const tokenized = data.dashboardTokenizedUrl || '';
+          const token = tokenized.includes('token=') ? tokenized.split('token=')[1].split('&')[0] : '';
+          const base = (data.proxyBasePath || '/default').replace(/\/+$/, '') || '/default';
+          const port = data.port || 44539;
+          const webUrl = 'http://' + window.location.hostname + ':' + port + base + '/'+ (token ? ('?token=' + token) : '');
+          content.innerHTML = ''
+            + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
+            + '  <button class="btn" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
+            + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
+            + '  <button class="btn" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
+            + '  <button class="btn primary" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
+            + '</div>'
+            + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>';
           setMsg('概览已加载', 'ok');
           return;
         }
@@ -444,6 +788,9 @@ cat <<'HTML'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>可选模型（按住 Ctrl / Command 可多选）</label><select id="dlg_model_select" multiple onchange="syncModelTextareaFromSelect()" onclick="triggerDiscoverModelsForDialog()" onfocus="triggerDiscoverModelsForDialog()"></select></div>'
             + '    <div class="field"><label>模型列表（每行一个 modelId，可手工补充）</label><textarea id="dlg_model_ids" style="min-height:140px;" oninput="syncModelSelectFromTextarea()"></textarea></div>'
+            + '    <div style="display:flex;gap:8px;justify-content:flex-end;">'
+            + '      <button class="btn" onclick="syncProviderModelsToCache()">手动同步到本地缓存</button>'
+            + '    </div>'
             + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveModelDialog()">保存</button>'
@@ -453,77 +800,51 @@ cat <<'HTML'
           setMsg('模型配置已加载；可添加模型服务器，或编辑当前已配置的服务', 'ok');
           return;
         }
-        if (tab === 'plugins') {
-          const list = (data.plugins || []);
-          content.innerHTML = '<div>' + list.map(p => {
-            return '<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:10px;background:#fff;">'
-              + '<div style="font-weight:600;margin-bottom:4px;">' + esc(p.label || p.channelKey || '-') + '</div>'
-              + '<div style="font-size:12px;color:#667085;margin-bottom:8px;">pluginId=' + esc(p.pluginId || '-') + ' / installed=' + esc(String(!!p.installed)) + '</div>'
-              + '<div style="font-size:12px;color:#667085;margin-bottom:8px;">' + esc(p.note || '') + '</div>'
-              + '<button class="btn primary" onclick="installPlugin(' + JSON.stringify(p.channelKey || '') + ')">安装/修复插件</button>'
-              + '</div>';
-          }).join('') + '</div>';
-          setMsg('插件列表已加载，可直接点击安装/修复插件', 'ok');
-          return;
-        }
-        if (tab === 'install') {
-          const running = !!data.running;
-          const installed = !!data.installed;
-          content.innerHTML = ''
-            + '<div style="margin-bottom:16px;">'
-            + '<div style="font-size:14px;color:#667085;margin-bottom:8px;">当前状态：installed=' + esc(String(installed)) + ' / running=' + esc(String(running)) + '</div>'
-            + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
-            + '<button class="btn primary" onclick="runInstallAction(\'install\')">安装/修复</button>'
-            + '<button class="btn" onclick="runInstallAction(\'start\')">启动</button>'
-            + '<button class="btn" onclick="runInstallAction(\'stop\')">停止</button>'
-            + '<button class="btn" onclick="runInstallAction(\'restart\')">重启</button>'
-            + '</div></div>'
-            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
-          setMsg('安装/控制面板已加载，可直接点按钮执行', 'ok');
-          return;
-        }
         if (tab === 'channels') {
-          const feishu = data.feishu || {};
-          const wecom = data.wecom || {};
-          const dingtalk = data.dingtalk || {};
-          const qqbot = data.qqbot || {};
-          const weixin = data.weixin || {};
+          window.__channelsData = data || {};
+          const configured = data.configuredChannelIds || [];
+          const descMap = {
+            feishu: '飞书',
+            wecom: '企业微信',
+            dingtalk: '钉钉',
+            qqbot: 'QQ Bot',
+            'openclaw-weixin': '微信（openclaw-weixin）',
+            weixin: '微信（weixin）'
+          };
+          const rows = configured.map(id => '<div class="item" style="margin-top:8px;">'
+            + '<div class="item-title">' + esc(descMap[id] || id) + '</div>'
+            + '<div class="item-meta">channelId=' + esc(id) + '</div>'
+            + '<div style="display:flex;gap:8px;">'
+            + '  <button class="btn" onclick="openChannelDialog(\'' + id + '\')">编辑</button>'
+            + '</div>'
+            + '</div>').join('');
           content.innerHTML = ''
-            + '<div class="cards">'
-            + '  <div class="card">'
-            + '    <h3>飞书</h3>'
-            + '    <div class="field"><label>App ID</label><input id="feishu_appId" value="' + esc(feishu.appId || '') + '"></div>'
-            + '    <div class="field"><label>App Secret（留空表示不改）</label><input id="feishu_appSecret" type="password" value=""></div>'
-            + '    <button class="btn primary" onclick="saveFeishuQuick()">保存飞书配置</button>'
+            + '<div class="card" style="margin-bottom:12px;">'
+            + '  <h3>已配置渠道</h3>'
+            + (configured.length ? rows : '<span style="color:#667085;">暂无已配置渠道</span>')
+            + '  <div style="display:flex;gap:8px;margin-top:10px;">'
+            + '    <button class="btn primary" onclick="openChannelDialog()">添加渠道</button>'
             + '  </div>'
-            + '  <div class="card">'
-            + '    <h3>企业微信</h3>'
-            + '    <div class="field"><label>Bot ID</label><input id="wecom_botId" value="' + esc(wecom.botId || '') + '"></div>'
-            + '    <div class="field"><label>Secret（留空表示不改）</label><input id="wecom_secret" type="password" value=""></div>'
-            + '    <button class="btn primary" onclick="saveWecomQuick()">保存企业微信配置</button>'
-            + '  </div>'
-            + '  <div class="card">'
-            + '    <h3>钉钉</h3>'
-            + '    <div class="field"><label>Client ID</label><input id="dingtalk_clientId" value="' + esc(dingtalk.clientId || '') + '"></div>'
-            + '    <div class="field"><label>Client Secret（留空表示不改）</label><input id="dingtalk_clientSecret" type="password" value=""></div>'
-            + '    <button class="btn primary" onclick="saveDingtalkQuick()">保存钉钉配置</button>'
-            + '  </div>'
-            + '  <div class="card">'
-            + '    <h3>QQ Bot</h3>'
-            + '    <div class="field"><label>App ID</label><input id="qqbot_appId" value="' + esc(qqbot.appId || '') + '"></div>'
-            + '    <div class="field"><label>Client Secret（留空表示不改）</label><input id="qqbot_clientSecret" type="password" value=""></div>'
-            + '    <button class="btn primary" onclick="saveQQBotQuick()">保存 QQ 配置</button>'
-            + '  </div>'
-            + '  <div class="card">'
-            + '    <h3>微信（Weixin）</h3>'
-            + '    <div style="font-size:12px;color:#667085;margin-bottom:8px;">参考 trim 方式：先安装微信插件，再扫码登录。</div>'
-            + '    <div style="display:flex;gap:8px;flex-wrap:wrap;">'
-            + '      <button class="btn" onclick="installPlugin(\'weixin\')">安装微信插件</button>'
+            + '</div>'
+            + '<div class="modal-mask" id="channelModalMask">'
+            + '  <div class="modal">'
+            + '    <h3>添加渠道</h3>'
+            + '    <div class="field"><label>渠道</label><select id="dlg_channel_type" onchange="switchChannelDialog()">'
+            + '      <option value="feishu">飞书</option>'
+            + '      <option value="qqbot">QQ Bot</option>'
+            + '      <option value="wecom">企业微信</option>'
+            + '      <option value="dingtalk">钉钉</option>'
+            + '      <option value="openclaw-weixin">微信（扫码）</option>'
+            + '    </select></div>'
+            + '    <div id="channelFormArea"></div>'
+            + '    <div class="modal-actions">'
+            + '      <button class="btn" onclick="closeChannelDialog()">取消</button>'
+            + '      <button class="btn primary" onclick="saveChannelDialog()">保存</button>'
             + '    </div>'
             + '  </div>'
             + '</div>'
             + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
-          setMsg('消息渠道已加载；可直接填写上面的表单保存，也可编辑下方 JSON', 'ok');
+          setMsg('渠道配置已加载', 'ok');
           return;
         }
         content.innerHTML = '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
@@ -537,14 +858,12 @@ cat <<'HTML'
       }
     }
     async function saveCurrent() {
-      if (!(currentTab === 'models' || currentTab === 'channels' || currentTab === 'plugins' || currentTab === 'install')) return;
+      if (!(currentTab === 'models' || currentTab === 'channels')) return;
       try {
         const raw = document.getElementById('editor').value;
         const payload = JSON.parse(raw);
         let action = 'models_save';
         if (currentTab === 'channels') action = 'channels_save';
-        else if (currentTab === 'plugins') action = 'plugin_install';
-        else if (currentTab === 'install') action = 'install_run';
         const data = await api(action, 'POST', payload);
         document.getElementById('editor').value = JSON.stringify(data, null, 2);
         setMsg('保存成功', 'ok');
@@ -553,17 +872,7 @@ cat <<'HTML'
       }
     }
     async function installPlugin(channelKey) {
-      try {
-        setMsg('正在安装/修复插件：' + channelKey + ' ...');
-        const data = await api('plugin_install', 'POST', { channelKey });
-        setMsg('插件操作已提交：' + channelKey, 'ok');
-        if (document.getElementById('editor')) {
-          document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        }
-        await load('plugins');
-      } catch (e) {
-        setMsg('插件安装失败：' + (e.message || e), 'err');
-      }
+      setMsg('插件已内置：' + BUILTIN_CHANNEL_PLUGINS.join('、') + '；无需手动安装。', 'ok');
     }
     async function runInstallAction(actionName) {
       try {
@@ -573,9 +882,15 @@ cat <<'HTML'
           document.getElementById('editor').value = JSON.stringify(data, null, 2);
         }
         setMsg('操作已提交：' + actionName, 'ok');
+        await load('status');
       } catch (e) {
         setMsg('操作失败：' + (e.message || e), 'err');
       }
+    }
+    function openOpenclawWeb(url) {
+      const panelUrl = 'http://' + window.location.hostname + ':18700/app/trim-openclaw/';
+      window.open(panelUrl, '_blank', 'noopener,noreferrer');
+      setMsg('已打开 OpenClaw Web（面板入口）', 'ok');
     }
     function applyProviderPresetDialog() {
       const presetId = document.getElementById('dlg_provider_preset').value;
@@ -584,6 +899,8 @@ cat <<'HTML'
         document.getElementById('dlg_display_name').value = '自定义 OpenAI 兼容';
         document.getElementById('dlg_api').value = 'openai-completions';
         document.getElementById('dlg_base_url').value = '';
+        setModelSelectOptions([], []);
+        document.getElementById('dlg_model_ids').value = '';
         setMsg('已切换到自定义 OpenAI 兼容，请手动填写服务器地址', 'ok');
         return;
       }
@@ -593,7 +910,10 @@ cat <<'HTML'
       document.getElementById('dlg_display_name').value = preset.label;
       document.getElementById('dlg_base_url').value = preset.baseUrl || '';
       document.getElementById('dlg_api').value = preset.api || 'openai-completions';
-      setMsg('已按服务商自动填充服务器地址与 API 类型', 'ok');
+      const builtin = (preset.models || []).filter(Boolean);
+      setModelSelectOptions(builtin, builtin);
+      document.getElementById('dlg_model_ids').value = builtin.join('\n');
+      setMsg('已按内置模板填充服务商模型列表（不联网拉取）', 'ok');
     }
     function setModelSelectOptions(ids, selectedIds) {
       const select = document.getElementById('dlg_model_select');
@@ -611,21 +931,17 @@ cat <<'HTML'
       setModelSelectOptions(ids, ids);
     }
     function getDiscoverCacheKey() {
-      return JSON.stringify({
-        baseUrl: (document.getElementById('dlg_base_url').value || '').trim(),
-        api: (document.getElementById('dlg_api').value || '').trim(),
-        apiKey: (document.getElementById('dlg_api_key').value || '').trim()
-      });
+      return '';
     }
-    function invalidateModelDiscoverCache() {
-      window.__modelsDiscovering = false;
-      window.__modelsDiscoveredKey = '';
-    }
+    function invalidateModelDiscoverCache() {}
     async function triggerDiscoverModelsForDialog() {
-      const key = getDiscoverCacheKey();
-      if (window.__modelsDiscovering) return;
-      if (window.__modelsDiscoveredKey === key && key !== JSON.stringify({ baseUrl: '', api: '', apiKey: '' })) return;
-      await discoverModelsForDialog();
+      const presetId = document.getElementById('dlg_provider_preset').value;
+      const preset = PROVIDER_PRESETS[presetId];
+      const ids = (preset && Array.isArray(preset.models)) ? preset.models : [];
+      const existing = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      const merged = Array.from(new Set(ids.concat(existing)));
+      setModelSelectOptions(merged, existing.length ? existing : ids);
+      if (!existing.length) document.getElementById('dlg_model_ids').value = merged.join('\n');
     }
     function openModelDialog(index) {
       const data = window.__modelsData || {};
@@ -639,41 +955,46 @@ cat <<'HTML'
       document.getElementById('dlg_display_name').value = p.displayName || '';
       document.getElementById('dlg_api').value = p.api || 'openai-completions';
       document.getElementById('dlg_base_url').value = p.baseUrl || '';
-      document.getElementById('dlg_api_key').value = '';
+      document.getElementById('dlg_api_key').value = p.apiKeyMasked || '';
+      document.getElementById('dlg_api_key').dataset.raw = p.apiKeyRaw || '';
       document.getElementById('dlg_model_ids').value = currentIds.join('\n');
       setModelSelectOptions(currentIds, currentIds);
       window.__modelsDiscovering = false;
       window.__modelsDiscoveredKey = '';
       document.getElementById('modelModalMask').style.display = 'flex';
+      document.body.classList.add('modal-open');
       document.getElementById('modelModalMask').dataset.editIndex = editing ? String(index) : '';
     }
     function closeModelDialog() {
       document.getElementById('modelModalMask').style.display = 'none';
+      document.body.classList.remove('modal-open');
       document.getElementById('modelModalMask').dataset.editIndex = '';
     }
     async function discoverModelsForDialog() {
+      await triggerDiscoverModelsForDialog();
+      const count = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).length;
+      setMsg('已加载内置模型列表，共 ' + count + ' 个', 'ok');
+    }
+    async function syncProviderModelsToCache() {
       try {
-        window.__modelsDiscovering = true;
-        setMsg('正在获取模型列表...');
+        setMsg('正在同步服务商模型到本地缓存...');
+        const keyInput = document.getElementById('dlg_api_key').value || '';
+        const keyRaw = document.getElementById('dlg_api_key').dataset.raw || '';
         const payload = {
           baseUrl: document.getElementById('dlg_base_url').value,
-          apiKey: document.getElementById('dlg_api_key').value,
+          apiKey: (keyInput && keyInput.replace(/\*/g,'').trim().length>0) ? keyInput : keyRaw,
           api: document.getElementById('dlg_api').value
         };
-        const key = getDiscoverCacheKey();
-        const data = await api('models_discover', 'POST', payload);
+        const data = await api('models_sync_provider', 'POST', payload);
         const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
-        const existing = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-        const merged = Array.from(new Set(ids.concat(existing)));
-        document.getElementById('dlg_model_ids').value = merged.join('\n');
-        setModelSelectOptions(merged, existing.length ? existing : ids);
-        if (!data.error) {
-          window.__modelsDiscoveredKey = key;
+        if (!ids.length) {
+          setMsg(data.error ? ('同步失败：' + data.error) : '未同步到模型', data.error ? 'err' : '');
+          return;
         }
-        if (ids.length > 0) setMsg('模型列表已更新，共 ' + ids.length + ' 个', 'ok');
-        else setMsg(data.error ? ('获取失败：' + data.error) : '未发现模型', data.error ? 'err' : '');
-      } catch (e) { setMsg('获取模型失败：' + (e.message || e), 'err'); }
-      finally { window.__modelsDiscovering = false; }
+        document.getElementById('dlg_model_ids').value = ids.join('\n');
+        setModelSelectOptions(ids, ids);
+        setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
+      } catch (e) { setMsg('同步失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
       try {
@@ -725,6 +1046,122 @@ cat <<'HTML'
         document.getElementById('editor').value = JSON.stringify(data, null, 2);
         setMsg('QQ 配置保存成功', 'ok');
       } catch (e) { setMsg('QQ 配置保存失败：' + (e.message || e), 'err'); }
+    }
+    function openChannelDialog(editId) {
+      const data = window.__channelsData || {};
+      const configured = new Set(data.configuredChannelIds || []);
+      const allOptions = [
+        ['feishu','飞书'],
+        ['qqbot','QQ Bot'],
+        ['wecom','企业微信'],
+        ['dingtalk','钉钉'],
+        ['openclaw-weixin','微信（扫码）']
+      ];
+      const options = allOptions.filter(([id]) => editId ? (id === editId) : !configured.has(id));
+      if (!options.length) { setMsg('可添加渠道为空（已全部配置）', 'ok'); return; }
+      const select = document.getElementById('dlg_channel_type');
+      select.innerHTML = options.map(([id,label]) => '<option value="'+id+'">'+label+'</option>').join('');
+      if (editId) select.value = editId;
+      document.getElementById('channelModalMask').dataset.editId = editId || '';
+      document.getElementById('channelModalMask').style.display = 'flex';
+      document.body.classList.add('modal-open');
+      switchChannelDialog();
+    }
+    function closeChannelDialog() {
+      document.getElementById('channelModalMask').style.display = 'none';
+      document.getElementById('channelModalMask').dataset.editId = '';
+      document.body.classList.remove('modal-open');
+    }
+    function switchChannelDialog() {
+      const t = document.getElementById('dlg_channel_type').value;
+      const data = window.__channelsData || {};
+      const area = document.getElementById('channelFormArea');
+      if (t === 'feishu') {
+        const appId = (((data.feishu||{}).accounts||{})[((data.feishu||{}).defaultAccount)||'default']||{}).appId || '';
+        const appSecret = (((data.feishu||{}).accounts||{})[((data.feishu||{}).defaultAccount)||'default']||{}).appSecret || '';
+        area.innerHTML = '<div class="field"><label>App ID</label><input id="dlg_feishu_appId" value="'+esc(appId)+'"></div><div class="field"><label>App Secret</label><input id="dlg_feishu_appSecret" type="password" value="'+esc(appSecret)+'"></div>';
+      } else if (t === 'qqbot') {
+        const appId = (data.qqbot||{}).appId || '';
+        const secret = (data.qqbot||{}).clientSecret || '';
+        area.innerHTML = '<div class="field"><label>App ID</label><input id="dlg_qqbot_appId" value="'+esc(appId)+'"></div><div class="field"><label>Client Secret</label><input id="dlg_qqbot_secret" type="password" value="'+esc(secret)+'"></div>';
+      } else if (t === 'wecom') {
+        const botId = (data.wecom||{}).botId || '';
+        const secret = (data.wecom||{}).secret || '';
+        area.innerHTML = '<div class="field"><label>Bot ID</label><input id="dlg_wecom_botId" value="'+esc(botId)+'"></div><div class="field"><label>Secret</label><input id="dlg_wecom_secret" type="password" value="'+esc(secret)+'"></div>';
+      } else if (t === 'dingtalk') {
+        const clientId = (data.dingtalk||{}).clientId || '';
+        const secret = (data.dingtalk||{}).clientSecret || '';
+        area.innerHTML = '<div class="field"><label>Client ID</label><input id="dlg_dd_clientId" value="'+esc(clientId)+'"></div><div class="field"><label>Client Secret</label><input id="dlg_dd_secret" type="password" value="'+esc(secret)+'"></div>';
+      } else {
+        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;"><button class="btn" onclick="startWeixinLogin()">开始微信登录</button><button class="btn" onclick="pollWeixinLogin()">检查状态</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
+      }
+    }
+    async function saveChannelDialog() {
+      const t = document.getElementById('dlg_channel_type').value;
+      let payload = {};
+      if (t === 'feishu') {
+        const appId = (document.getElementById('dlg_feishu_appId').value || '').trim();
+        const appSecret = (document.getElementById('dlg_feishu_appSecret').value || '').trim();
+        if (!appId || !appSecret) { setMsg('飞书 App ID / App Secret 不能为空', 'err'); return; }
+        payload = { feishu: { appId, appSecret } };
+      } else if (t === 'qqbot') {
+        const appId = (document.getElementById('dlg_qqbot_appId').value || '').trim();
+        const clientSecret = (document.getElementById('dlg_qqbot_secret').value || '').trim();
+        if (!appId || !clientSecret) { setMsg('QQ App ID / Client Secret 不能为空', 'err'); return; }
+        payload = { qqbot: { appId, clientSecret } };
+      } else if (t === 'wecom') {
+        const botId = (document.getElementById('dlg_wecom_botId').value || '').trim();
+        const secret = (document.getElementById('dlg_wecom_secret').value || '').trim();
+        if (!botId || !secret) { setMsg('企业微信 Bot ID / Secret 不能为空', 'err'); return; }
+        payload = { wecom: { botId, secret } };
+      } else if (t === 'dingtalk') {
+        const clientId = (document.getElementById('dlg_dd_clientId').value || '').trim();
+        const clientSecret = (document.getElementById('dlg_dd_secret').value || '').trim();
+        if (!clientId || !clientSecret) { setMsg('钉钉 Client ID / Client Secret 不能为空', 'err'); return; }
+        payload = { dingtalk: { clientId, clientSecret } };
+      } else {
+        setMsg('微信渠道请使用扫码按钮完成登录。', 'ok');
+        return;
+      }
+      try {
+        const data = await api('channels_save', 'POST', payload);
+        closeChannelDialog();
+        await load('channels');
+        document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        setMsg('渠道保存成功', 'ok');
+      } catch (e) { setMsg('渠道保存失败：' + (e.message || e), 'err'); }
+    }
+    async function startWeixinLogin() {
+      try {
+        const data = await api('weixin_login_start', 'POST', {});
+        if (data && data.qrUrl) {
+          document.getElementById('weixin_qr').innerHTML = '<img src="' + esc(data.qrUrl) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" />';
+          document.getElementById('weixin_status').textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
+          window.__weixinSessionKey = data.sessionKey || '';
+          setMsg('二维码已生成，请扫码登录。', 'ok');
+        } else {
+          document.getElementById('weixin_status').textContent = data.message || data.error || '当前版本不支持微信扫码登录';
+          setMsg(data.message || data.error || '当前版本不支持微信扫码登录', data.supported === false ? '' : 'err');
+        }
+      } catch (e) { setMsg('微信登录启动失败：' + (e.message || e), 'err'); }
+    }
+    async function pollWeixinLogin() {
+      try {
+        const sessionKey = window.__weixinSessionKey || '';
+        const data = await api('weixin_login_wait', 'POST', { sessionKey, timeoutMs: 1000 });
+        const msg = data.message || data.status || '未知状态';
+        document.getElementById('weixin_status').textContent = msg;
+        if (data.connected) setMsg('微信已连接', 'ok');
+      } catch (e) { setMsg('查询微信状态失败：' + (e.message || e), 'err'); }
+    }
+    async function disconnectWeixin() {
+      try {
+        const data = await api('weixin_disconnect', 'POST', { accountId: '' });
+        document.getElementById('weixin_status').textContent = '已断开';
+        document.getElementById('weixin_qr').innerHTML = '';
+        window.__weixinSessionKey = '';
+        setMsg('微信已断开', 'ok');
+      } catch (e) { setMsg('断开微信失败：' + (e.message || e), 'err'); }
     }
     async function saveFeishuQuick() {
       try {
