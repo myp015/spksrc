@@ -14,7 +14,7 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
         this.appInstance = cfg.appInstance;
 
         // Use DSM internal proxy path to avoid mixed-content/frame-security blocking.
-        var monitorUrl = '/webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/';
+        var monitorUrl = '/webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/app/trim-openclaw/';
 
         var config = Ext.apply({
             resizable: true,

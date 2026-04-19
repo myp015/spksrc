@@ -78,9 +78,13 @@ emit_proxy_response() {
     content_type=$(grep -i '^Content-Type:' "$resp_headers" | tail -n1 | cut -d':' -f2- | tr -d '\r' | sed 's/^ *//')
     [ -n "$content_type" ] || content_type='text/plain; charset=UTF-8'
 
-    # Rewrite /app/trim-openclaw -> /webman/3rdparty/openclaw2/index.cgi?proxy=1&path=/app/trim-openclaw
+    # Rewrite front-end absolute paths to DSM proxy query paths.
     if printf '%s' "$content_type" | grep -Eiq 'text/|javascript|json|css'; then
-        sed "s#\(/app/trim-openclaw\)#${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw#g" "$resp_body" > "$rewrite_body" || cp -f "$resp_body" "$rewrite_body"
+        sed \
+          -e "s#\(/app/trim-openclaw\)#${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw#g" \
+          -e "s#\"/api/#\"${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/api/#g" \
+          -e "s#'/api/#'${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/api/#g" \
+          "$resp_body" > "$rewrite_body" || cp -f "$resp_body" "$rewrite_body"
     else
         cp -f "$resp_body" "$rewrite_body"
     fi
@@ -167,7 +171,7 @@ code { background:#f1f3f5; padding:2px 6px; border-radius:4px; }
   </p>
 
   <div class="actions">
-    <a href="${SCRIPT_NAME_RAW}?proxy=1&path=/" target="_self">打开完整内嵌面板</a>
+    <a href="${SCRIPT_NAME_RAW}?proxy=1&path=/app/trim-openclaw/" target="_self">打开完整内嵌面板</a>
     <a href="/" target="_blank" rel="noopener">打开 Gateway 页面</a>
   </div>
 
