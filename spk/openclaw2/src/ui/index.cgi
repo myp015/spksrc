@@ -113,10 +113,59 @@ emit_proxy_response() {
     return 0
 }
 
+read_body() {
+    if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
+        dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null
+    fi
+}
+
 proxy_flag_raw=$(get_param "proxy" "$QUERY")
 proxy_flag=$(urldecode "$proxy_flag_raw")
 proxy_path_raw=$(get_param "path" "$QUERY")
 proxy_path=$(urldecode "$proxy_path_raw")
+native_api_raw=$(get_param "native_api" "$QUERY")
+native_api=$(urldecode "$native_api_raw")
+action_raw=$(get_param "action" "$QUERY")
+action=$(urldecode "$action_raw")
+
+if [ "$native_api" = "1" ]; then
+    case "$action" in
+        status)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/status" || printf '{"error":"status unavailable"}'
+            exit 0
+            ;;
+        models)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/models/config" || printf '{"error":"models unavailable"}'
+            exit 0
+            ;;
+        models_save)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '%s' "$body" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/models/config" || printf '{"error":"models save failed"}'
+            exit 0
+            ;;
+        channels)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/channels/config" || printf '{"error":"channels unavailable"}'
+            exit 0
+            ;;
+        channels_save)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '%s' "$body" | curl -fsS --max-time 15 -X POST -H "Content-Type: ${CONTENT_TYPE:-application/json}" --data-binary @- "${PANEL_URL}/app/trim-openclaw/api/channels/config" || printf '{"error":"channels save failed"}'
+            exit 0
+            ;;
+        logs)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
+            logs_json=$(tail -n 120 "$LOG_FILE" 2>/dev/null | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g')
+            printf '{"log":"%s"}' "$logs_json"
+            exit 0
+            ;;
+    esac
+fi
 
 if [ "$proxy_flag" = "1" ]; then
     [ -n "$proxy_path" ] || proxy_path="/"
