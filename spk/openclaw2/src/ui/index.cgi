@@ -544,7 +544,7 @@ PY
         install_run)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body" "/volume1/@appdata/openclaw2/data/home/.openclaw/openclaw.json"
+            python3 - <<'PY' "$body" "/volume1/docker/openclaw/.openclaw/openclaw.json"
 import json, os, subprocess, sys, time
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg = sys.argv[2]
@@ -650,10 +650,18 @@ PY
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             OCL_LOG="/tmp/openclaw-0/openclaw-$(date +%Y-%m-%d).log"
             [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date -d yesterday +%Y-%m-%d 2>/dev/null).log"
-            [ -f "$OCL_LOG" ] || OCL_LOG="$LOG_FILE"
+            APP_LOG="$LOG_FILE"
+            SPAWN_LOG="/tmp/openclaw-gateway.spawn.log"
             [ -f "$OCL_LOG" ] || touch "$OCL_LOG"
-            logs_json=$(tail -n 180 "$OCL_LOG" 2>/dev/null | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g')
-            src_json=$(printf '%s' "$OCL_LOG" | sed 's/\\/\\\\/g;s/"/\\"/g')
+            [ -f "$APP_LOG" ] || touch "$APP_LOG"
+            [ -f "$SPAWN_LOG" ] || touch "$SPAWN_LOG"
+            merged=$( \
+              printf '===== openclaw (gateway) :: %s =====\n' "$OCL_LOG"; tail -n 500 "$OCL_LOG" 2>/dev/null; \
+              printf '\n===== openclaw2 app :: %s =====\n' "$APP_LOG"; tail -n 220 "$APP_LOG" 2>/dev/null; \
+              printf '\n===== spawn log :: %s =====\n' "$SPAWN_LOG"; tail -n 180 "$SPAWN_LOG" 2>/dev/null \
+            )
+            logs_json=$(printf '%s' "$merged" | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g')
+            src_json=$(printf '%s | %s | %s' "$OCL_LOG" "$APP_LOG" "$SPAWN_LOG" | sed 's/\\/\\\\/g;s/"/\\"/g')
             printf '{"log":"%s","source":"%s"}' "$logs_json" "$src_json"
             exit 0
             ;;
