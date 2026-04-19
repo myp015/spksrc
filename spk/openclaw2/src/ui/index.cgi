@@ -111,10 +111,54 @@ emit_proxy_response() {
     return 0
 }
 
+json_escape() {
+    sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g'
+}
+
 proxy_flag_raw=$(get_param "proxy" "$QUERY")
 proxy_flag=$(urldecode "$proxy_flag_raw")
 proxy_path_raw=$(get_param "path" "$QUERY")
 proxy_path=$(urldecode "$proxy_path_raw")
+native_api_raw=$(get_param "native_api" "$QUERY")
+native_api=$(urldecode "$native_api_raw")
+action_raw=$(get_param "action" "$QUERY")
+action=$(urldecode "$action_raw")
+
+if [ "$native_api" = "1" ]; then
+    printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+    case "$action" in
+        status)
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/status" || printf '{"error":"status unavailable"}'
+            else
+                printf '{"error":"curl not found"}'
+            fi
+            ;;
+        models)
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/models/config" || printf '{"error":"models unavailable"}'
+            else
+                printf '{"error":"curl not found"}'
+            fi
+            ;;
+        channels)
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/channels/config" || printf '{"error":"channels unavailable"}'
+            else
+                printf '{"error":"curl not found"}'
+            fi
+            ;;
+        logs)
+            [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
+            logs_json=$(tail -n 120 "$LOG_FILE" 2>/dev/null | json_escape)
+            printf '{"log":"%s"}' "$logs_json"
+            ;;
+        *)
+            printf '{"error":"unknown action"}'
+            ;;
+    esac
+    exit 0
+fi
 
 if [ "$proxy_flag" = "1" ]; then
     [ -n "$proxy_path" ] || proxy_path="/"
