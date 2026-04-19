@@ -86,6 +86,8 @@ emit_proxy_response() {
           -e "s#\(/app/trim-openclaw\)#${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw#g" \
           -e "s#\"/api/#\"${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/api/#g" \
           -e "s#'/api/#'${SCRIPT_NAME_RAW}?proxy=1\\&path=/app/trim-openclaw/api/#g" \
+          -e "s#${SCRIPT_NAME_RAW}?proxy=1\\&path=${SCRIPT_NAME_RAW}?proxy=1\\&path=#${SCRIPT_NAME_RAW}?proxy=1\\&path=#g" \
+          -e "s#/webman/3rdparty/openclaw2/index.cgi?proxy=1\\&path=/webman/3rdparty/openclaw2/index.cgi?proxy=1\\&path=#/webman/3rdparty/openclaw2/index.cgi?proxy=1\\&path=#g" \
           "$resp_body" > "$rewrite_body" || cp -f "$resp_body" "$rewrite_body"
     else
         cp -f "$resp_body" "$rewrite_body"
