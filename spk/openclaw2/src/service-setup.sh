@@ -1125,9 +1125,9 @@ if [ ! -f "${FN_MONITOR_ENTRY}" ]; then
     echo "[openclaw2] ERROR: fn monitor entry missing: ${FN_MONITOR_ENTRY}" 1>&2
 fi
 
-# Keep DSM service role aligned with OpenClaw package behavior:
-# SERVICE_PORT is the gateway server port (not fn monitor panel).
-SERVICE_COMMAND="${OPENCLAW_NODE} ${OPENCLAW_ENTRY} gateway run --allow-unconfigured --bind lan --port ${SERVICE_PORT}"
-SVC_CWD="${OPENCLAW_APP_DIR}"
+# Panel-first mode (as requested): keep settings panel as the primary DSM service.
+# Gateway lifecycle is handled separately by the panel backend; panel startup must not depend on gateway health.
+SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data PORT=${SERVICE_PORT} BASE_PATH=/ STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
+SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
 SVC_BACKGROUND=yes
 SVC_WRITE_PID=yes

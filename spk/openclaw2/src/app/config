@@ -4,7 +4,7 @@
             "title": "OpenClaw2",
             "desc": "OpenClaw2 设置面板",
             "icon": "images/openclaw2-{0}.png",
-            "type": "url",
+            "type": "iframe",
             "protocol": "http",
             "port": "18789",
             "url": "/",
