@@ -607,6 +607,15 @@ if action in ('stop','restart'):
     time.sleep(1)
 
 if action in ('start','restart'):
+    # 启动前执行一次模型同步脚本（不阻塞启动）
+    sync_script = '/root/openclaw-sync-models.sh'
+    if os.path.exists(sync_script):
+        try:
+            rc_sync, out_sync = run([sync_script, cfg], timeout=120)
+            logs.append({'cmd': f'{sync_script} {cfg}', 'rc': rc_sync, 'out': out_sync[-1200:]})
+        except Exception as e:
+            logs.append({'cmd': f'{sync_script} {cfg}', 'error': str(e)})
+
     try:
         logf = open('/tmp/openclaw-gateway.spawn.log','ab', buffering=0)
         p = subprocess.Popen(
@@ -838,6 +847,8 @@ cat <<'HTML'
             + '  <button class="btn" onclick="refreshLogsNow()">立即刷新</button>'
             + '</div>'
             + '<pre id="log_pre">' + esc(data.log || '') + '</pre>';
+          const pre = document.getElementById('log_pre');
+          if (pre) pre.scrollTop = pre.scrollHeight;
           setMsg('OpenClaw 日志已加载（实时刷新中）', 'ok');
           logsTimer = setInterval(refreshLogsNow, 2000);
           return;
@@ -1247,9 +1258,8 @@ cat <<'HTML'
         const data = await api('logs');
         const pre = document.getElementById('log_pre');
         if (!pre) return;
-        const atBottom = (pre.scrollTop + pre.clientHeight + 24) >= pre.scrollHeight;
         pre.textContent = data.log || '';
-        if (atBottom) pre.scrollTop = pre.scrollHeight;
+        pre.scrollTop = pre.scrollHeight;
       } catch (e) {}
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
