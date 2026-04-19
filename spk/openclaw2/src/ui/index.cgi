@@ -136,6 +136,16 @@ cat <<'HTML'
     .field { margin-bottom:10px; }
     .field label { display:block; font-size:12px; color:#667085; margin-bottom:4px; }
     .field input, .field select, .field textarea { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
+    .list { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+    .item { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
+    .item-title { font-size:16px; font-weight:600; margin-bottom:6px; }
+    .item-meta { font-size:12px; color:#667085; margin-bottom:8px; }
+    .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:12px; }
+    .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .modal { width:min(760px,92vw); max-height:88vh; overflow:auto; background:#fff; border-radius:16px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal h3 { margin:0 0 14px; font-size:18px; }
+    .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   </style>
 </head>
 <body>
@@ -232,31 +242,42 @@ cat <<'HTML'
         }
         if (tab === 'models') {
           const providers = data.configuredProviders || [];
-          const p0 = providers[0] || {};
-          const models = p0.models || [];
-          const modelIds = models.map(m => m.modelId || m.id).filter(Boolean).join('\n');
-          const options = Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>').join('');
+          window.__modelsData = data;
+          const options = ['<option value="custom-openai">自定义 OpenAI 兼容</option>'].concat(Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>')).join('');
           content.innerHTML = ''
-            + '<div class="cards">'
-            + '  <div class="card">'
-            + '    <h3>默认 Provider 快速配置</h3>'
-            + '    <div class="field"><label>服务商</label><select id="model_provider_preset" onchange="applyProviderPreset()">' + options + '</select></div>'
-            + '    <div class="field"><label>Provider ID</label><input id="model_provider_id" value="' + esc(p0.id || 'default') + '"></div>'
-            + '    <div class="field"><label>显示名</label><input id="model_display_name" value="' + esc(p0.displayName || '') + '"></div>'
-            + '    <div class="field"><label>API 类型</label><select id="model_api"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
-            + '    <div class="field"><label>Base URL</label><input id="model_base_url" value="' + esc(p0.baseUrl || '') + '"></div>'
-            + '    <div class="field"><label>API Key（留空表示不改）</label><input id="model_api_key" type="password" value=""></div>'
-            + '    <div class="field"><label>模型列表（每行一个 modelId）</label><textarea id="model_ids" style="min-height:140px;">' + esc(modelIds) + '</textarea></div>'
-            + '    <button class="btn primary" onclick="saveModelQuick()">保存默认 Provider</button>'
-            + '  </div>'
+            + '<div style="margin-bottom:12px;"><button class="btn primary" onclick="openModelDialog()">添加模型服务器</button></div>'
+            + '<div class="list">'
+            + providers.map((p, idx) => {
+                const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
+                return '<div class="item">'
+                  + '<div class="item-title">' + esc(p.displayName || p.id || '未命名服务') + '</div>'
+                  + '<div class="item-meta">providerId=' + esc(p.id || '-') + ' / api=' + esc(p.api || '-') + ' / baseUrl=' + esc(p.baseUrl || '-') + '</div>'
+                  + '<div class="chips">' + modelIds.map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div>'
+                  + '<div style="display:flex;gap:8px;">'
+                  + '<button class="btn" onclick="openModelDialog(' + idx + ')">编辑</button>'
+                  + '<button class="btn" onclick="deleteModelProvider(' + idx + ')">删除</button>'
+                  + '</div>'
+                  + '</div>';
+              }).join('')
             + '</div>'
-            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
-          const presetSel = document.getElementById('model_provider_preset');
-          const sel = document.getElementById('model_api');
-          const currentProvider = (p0.id || 'openai');
-          if (presetSel && PROVIDER_PRESETS[currentProvider]) presetSel.value = currentProvider;
-          if (sel) sel.value = p0.api || 'openai-completions';
-          setMsg('模型配置已加载；可下拉选择服务商并自动填充服务器地址，也可编辑下方 JSON', 'ok');
+            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>'
+            + '<div class="modal-mask" id="modelModalMask">'
+            + '  <div class="modal">'
+            + '    <h3 id="modelModalTitle">添加模型服务器</h3>'
+            + '    <div class="field"><label>服务商</label><select id="dlg_provider_preset" onchange="applyProviderPresetDialog()">' + options + '</select></div>'
+            + '    <div class="field"><label>Provider ID</label><input id="dlg_provider_id"></div>'
+            + '    <div class="field"><label>显示名</label><input id="dlg_display_name"></div>'
+            + '    <div class="field"><label>API 类型</label><select id="dlg_api"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
+            + '    <div class="field"><label>Base URL</label><input id="dlg_base_url"></div>'
+            + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password"></div>'
+            + '    <div class="field"><label>模型列表（每行一个 modelId）</label><textarea id="dlg_model_ids" style="min-height:140px;"></textarea></div>'
+            + '    <div class="modal-actions">'
+            + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
+            + '      <button class="btn primary" onclick="saveModelDialog()">保存</button>'
+            + '    </div>'
+            + '  </div>'
+            + '</div>';
+          setMsg('模型配置已加载；可添加模型服务器，或编辑当前已配置的服务', 'ok');
           return;
         }
         if (tab === 'plugins') {
@@ -368,33 +389,77 @@ cat <<'HTML'
         setMsg('操作失败：' + (e.message || e), 'err');
       }
     }
-    function applyProviderPreset() {
-      const presetId = document.getElementById('model_provider_preset').value;
+    function applyProviderPresetDialog() {
+      const presetId = document.getElementById('dlg_provider_preset').value;
+      if (presetId === 'custom-openai') {
+        document.getElementById('dlg_provider_id').value = 'custom-openai';
+        document.getElementById('dlg_display_name').value = '自定义 OpenAI 兼容';
+        document.getElementById('dlg_api').value = 'openai-completions';
+        document.getElementById('dlg_base_url').value = '';
+        setMsg('已切换到自定义 OpenAI 兼容，请手动填写服务器地址', 'ok');
+        return;
+      }
       const preset = PROVIDER_PRESETS[presetId];
       if (!preset) return;
-      document.getElementById('model_provider_id').value = presetId;
-      document.getElementById('model_display_name').value = preset.label;
-      document.getElementById('model_base_url').value = preset.baseUrl || '';
-      document.getElementById('model_api').value = preset.api || 'openai-completions';
+      document.getElementById('dlg_provider_id').value = presetId;
+      document.getElementById('dlg_display_name').value = preset.label;
+      document.getElementById('dlg_base_url').value = preset.baseUrl || '';
+      document.getElementById('dlg_api').value = preset.api || 'openai-completions';
       setMsg('已按服务商自动填充服务器地址与 API 类型', 'ok');
     }
-    async function saveModelQuick() {
+    function openModelDialog(index) {
+      const data = window.__modelsData || {};
+      const providers = data.configuredProviders || [];
+      const editing = typeof index === 'number';
+      const p = editing ? (providers[index] || {}) : {};
+      document.getElementById('modelModalTitle').textContent = editing ? '编辑模型服务器' : '添加模型服务器';
+      document.getElementById('dlg_provider_preset').value = p.id && PROVIDER_PRESETS[p.id] ? p.id : (p.id === 'custom-openai' ? 'custom-openai' : 'openai');
+      document.getElementById('dlg_provider_id').value = p.id || '';
+      document.getElementById('dlg_display_name').value = p.displayName || '';
+      document.getElementById('dlg_api').value = p.api || 'openai-completions';
+      document.getElementById('dlg_base_url').value = p.baseUrl || '';
+      document.getElementById('dlg_api_key').value = '';
+      document.getElementById('dlg_model_ids').value = (p.models || []).map(m => m.modelId || m.id).filter(Boolean).join('\n');
+      document.getElementById('modelModalMask').style.display = 'flex';
+      document.getElementById('modelModalMask').dataset.editIndex = editing ? String(index) : '';
+    }
+    function closeModelDialog() {
+      document.getElementById('modelModalMask').style.display = 'none';
+      document.getElementById('modelModalMask').dataset.editIndex = '';
+    }
+    async function saveModelDialog() {
       try {
-        const providerId = document.getElementById('model_provider_id').value || 'default';
-        const payload = {
-          providers: [{
-            id: providerId,
-            displayName: document.getElementById('model_display_name').value,
-            api: document.getElementById('model_api').value,
-            baseUrl: document.getElementById('model_base_url').value,
-            apiKey: document.getElementById('model_api_key').value,
-            models: (document.getElementById('model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(id => ({ modelId: id, id: id }))
-          }]
+        const data = window.__modelsData || {};
+        const providers = (data.configuredProviders || []).slice();
+        const idxRaw = document.getElementById('modelModalMask').dataset.editIndex;
+        const idx = idxRaw === '' ? -1 : parseInt(idxRaw, 10);
+        const provider = {
+          id: document.getElementById('dlg_provider_id').value || 'custom-openai',
+          displayName: document.getElementById('dlg_display_name').value,
+          api: document.getElementById('dlg_api').value,
+          baseUrl: document.getElementById('dlg_base_url').value,
+          apiKey: document.getElementById('dlg_api_key').value,
+          models: (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(id => ({ modelId: id, id: id }))
         };
-        const data = await api('models_save', 'POST', payload);
-        document.getElementById('editor').value = JSON.stringify(data, null, 2);
-        setMsg('模型配置保存成功', 'ok');
-      } catch (e) { setMsg('模型配置保存失败：' + (e.message || e), 'err'); }
+        if (idx >= 0) providers[idx] = provider; else providers.push(provider);
+        const payload = { providers };
+        const saved = await api('models_save', 'POST', payload);
+        closeModelDialog();
+        await load('models');
+        document.getElementById('editor').value = JSON.stringify(saved, null, 2);
+        setMsg('模型服务器保存成功', 'ok');
+      } catch (e) { setMsg('模型服务器保存失败：' + (e.message || e), 'err'); }
+    }
+    async function deleteModelProvider(index) {
+      try {
+        const data = window.__modelsData || {};
+        const providers = (data.configuredProviders || []).slice();
+        providers.splice(index, 1);
+        const saved = await api('models_save', 'POST', { providers });
+        await load('models');
+        document.getElementById('editor').value = JSON.stringify(saved, null, 2);
+        setMsg('模型服务器已删除', 'ok');
+      } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
     }
     async function saveFeishuQuick() {
       try {
