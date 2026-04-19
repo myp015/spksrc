@@ -123,6 +123,10 @@ if [ "$proxy_flag" = "1" ]; then
     # panel base path is /app/trim-openclaw, but backend API actually lives at /api/*.
     # Map proxied /app/trim-openclaw/api/* -> backend /api/* to avoid HTML fallback.
     case "$proxy_path" in
+        /app/trim-openclaw/api/gateway/status|/app/trim-openclaw/api/install/status|/app/trim-openclaw/api/system/status|/app/trim-openclaw/api/gateway)
+            # Compatibility shim for trim UI overview calls on this packaged runtime.
+            backend_path="/api/status"
+            ;;
         /app/trim-openclaw/api/*)
             backend_path="/api/${proxy_path#/app/trim-openclaw/api/}"
             ;;
