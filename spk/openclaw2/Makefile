@@ -32,9 +32,9 @@ LICENSE = MIT
 STARTABLE = yes
 SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
+NO_SERVICE_SHORTCUT = yes
 
-DSM_UI_DIR = app
-DSM_UI_CONFIG = src/app/config
+DSM_UI_DIR = ui
 SERVICE_PORT = 18789
 SERVICE_PORT_TITLE = OpenClaw Gateway (HTTP)
 SERVICE_URL = /
@@ -101,6 +101,9 @@ openclaw_copy_target:
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json
 	@install -d -m 755 $(STAGING_DIR)/app
 	@cp -rf src/app/* $(STAGING_DIR)/app/
+	@install -d -m 755 $(STAGING_DIR)/ui
+	@cp -rf src/ui/* $(STAGING_DIR)/ui/
+	@chmod 755 $(STAGING_DIR)/ui/index.cgi
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md

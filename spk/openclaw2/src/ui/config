@@ -1,0 +1,23 @@
+{
+    "Main.js": {
+        "SYNO.SDS.OpenClaw2.Instance": {
+            "type":"app",
+            "version": "1.0.0",
+            "desc": "OpenClaw2 配置面板",
+            "icon": "images/icon_{0}.png",
+            "title": "OpenClaw2",
+            "texts": "texts",
+            "allowMultiInstance": false,
+            "waterfallLoadTexts": true,
+            "appWindow": "SYNO.SDS.OpenClaw2.Main",
+            "depend": []
+        },
+        "SYNO.SDS.OpenClaw2.Main": {
+            "type": "lib",
+            "title": "OpenClaw2",
+            "icon": "images/icon_{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
+    }
+}
