@@ -49,6 +49,7 @@ try:
 except Exception:
     cfg = {}
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw')
+token = ((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '123456')
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -58,7 +59,7 @@ out = {
   'port': port,
   'proxyBasePath': '/default',
   'dashboardUrl': f'http://LAN_HOST:{port}/default/chat?session=main',
-  'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?session=main',
+  'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?session=main&token={token}',
   'workspaceDir': workspace,
   'configPath': cfg_path
 }
@@ -691,7 +692,7 @@ cat <<'HTML'
     .cellk,.cellv { padding:10px 8px; border-bottom:1px solid #eee; }
     .cellk { color:#667085; }
     textarea { width:100%; min-height:520px; resize:vertical; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:10px; padding:12px; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-    pre { white-space:pre-wrap; word-break:break-word; background:#111827; color:#dbeafe; border-radius:10px; padding:14px; min-height:520px; overflow:hidden; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    pre { white-space:pre-wrap; word-break:break-word; background:#111827; color:#dbeafe; border-radius:10px; padding:14px; min-height:520px; overflow:auto; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .msg { margin-bottom:12px; font-size:13px; color:#667085; }
     .err { color:#b42318; }
     .ok { color:#067647; }
@@ -754,6 +755,7 @@ cat <<'HTML'
     const BUILTIN_CHANNEL_PLUGINS = ['browser','feishu','qqbot','dingtalk','wecom'];
     let currentTab = 'status';
     let statusLine = '';
+    let logsTimer = null;
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -765,6 +767,7 @@ cat <<'HTML'
     }
     function setTabs(tab) {
       currentTab = tab;
+      if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     }
     async function api(action, method='GET', payload=null) {
@@ -797,7 +800,7 @@ cat <<'HTML'
             ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
-          const webUrl = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
+          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || 'http://LAN_HOST:44539/default/chat?session=main').replace('LAN_HOST', window.location.hostname);
           const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
@@ -822,8 +825,13 @@ cat <<'HTML'
           return;
         }
         if (tab === 'logs') {
-          content.innerHTML = '<div class="item-meta" style="margin-bottom:8px;">日志来源：' + esc(data.source || '-') + '</div><pre>' + esc(data.log || '') + '</pre>';
-          setMsg('OpenClaw 日志已加载', 'ok');
+          content.innerHTML = ''
+            + '<div class="item-meta" style="margin-bottom:8px;display:flex;gap:8px;align-items:center;">日志来源：' + esc(data.source || '-')
+            + '  <button class="btn" onclick="refreshLogsNow()">立即刷新</button>'
+            + '</div>'
+            + '<pre id="log_pre">' + esc(data.log || '') + '</pre>';
+          setMsg('OpenClaw 日志已加载（实时刷新中）', 'ok');
+          logsTimer = setInterval(refreshLogsNow, 2000);
           return;
         }
         if (tab === 'models') {
@@ -936,9 +944,15 @@ cat <<'HTML'
       }
     }
     function openOpenclawWeb(url) {
-      const u = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
+      let u = (url || '').trim();
+      if (!u) u = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
+      u = u.replace('LAN_HOST', window.location.hostname);
+      if (!/[?&]token=/.test(u)) {
+        const token = '123456';
+        u += (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+      }
       window.open(u, '_blank', 'noopener,noreferrer');
-      setMsg('已打开 OpenClaw Web（无需 token）', 'ok');
+      setMsg('已打开 OpenClaw Web（自动附带 token）', 'ok');
     }
     function openUserSettingsDialog() {
       const m = document.getElementById('userSettingsMask');
@@ -1219,6 +1233,16 @@ cat <<'HTML'
         await load('channels');
         setMsg('渠道已删除：' + id, 'ok');
       } catch (e) { setMsg('删除渠道失败：' + (e.message || e), 'err'); }
+    }
+    async function refreshLogsNow() {
+      try {
+        const data = await api('logs');
+        const pre = document.getElementById('log_pre');
+        if (!pre) return;
+        const atBottom = (pre.scrollTop + pre.clientHeight + 24) >= pre.scrollHeight;
+        pre.textContent = data.log || '';
+        if (atBottom) pre.scrollTop = pre.scrollHeight;
+      } catch (e) {}
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
     document.getElementById('refreshBtn').addEventListener('click', () => load(currentTab));
