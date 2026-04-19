@@ -564,6 +564,22 @@ env['HOME']='/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH']=cfg
 env['OPENCLAW_STATE_DIR']='/volume1/docker/openclaw/.openclaw'
 
+# 强制保持 LAN 可访问（44539）
+try:
+    c = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
+except Exception:
+    c = {}
+gw = c.setdefault('gateway', {})
+gw['bind'] = 'lan'
+gw['mode'] = 'local'
+cu = gw.setdefault('controlUi', {})
+cu['allowInsecureAuth'] = True
+cu['dangerouslyDisableDeviceAuth'] = True
+cu['allowedOrigins'] = ['*']
+os.makedirs(os.path.dirname(cfg), exist_ok=True)
+with open(cfg,'w',encoding='utf-8') as f:
+    json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
+
 def run(cmd, timeout=20):
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
     return p.returncode, (p.stdout or b'').decode('utf-8','ignore')
@@ -775,6 +791,8 @@ cat <<'HTML'
             ['版本', data.version || '-'],
             ['端口', data.port || '-'],
             ['代理路径', data.proxyBasePath || '-'],
+            ['用户文件夹路径', data.workspaceDir || '/volume1/docker/openclaw'],
+            ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
           const webUrl = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
