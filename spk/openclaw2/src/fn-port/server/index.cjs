@@ -12177,6 +12177,42 @@ async function bootstrap() {
   app7.route(`${apiBase}/instances`, instances_default);
   app7.route(`${apiBase}/models`, models_default);
   app7.route(`${apiBase}/channels`, channels_default);
+
+  // Compatibility endpoints for newer trim-openclaw UI bundles.
+  app7.post(`${apiBase}/telemetry`, async (c) => {
+    return c.body(null, 204);
+  });
+  app7.get(`${apiBase}/process-governor`, (c) => {
+    return c.json({ governors: [] });
+  });
+  app7.get(`${apiBase}/models/config/fast`, async (c) => {
+    return c.json(await getModelsConfig(ensureDefaultInstance()));
+  });
+  app7.get(`${apiBase}/models/providers/ollama/discover`, (c) => {
+    return c.json({ models: [] });
+  });
+  app7.post(`${apiBase}/channels/plugins/refresh`, async (c) => {
+    return c.json({ refreshing: false, plugins: await getChannelPlugins(ensureDefaultInstance()) });
+  });
+  app7.get(`${apiBase}/channels/weixin/status`, (c) => {
+    return c.json({ connected: false, status: "idle" });
+  });
+  app7.post(`${apiBase}/channels/weixin/disconnect`, (c) => {
+    return c.json({ ok: true });
+  });
+  app7.post(`${apiBase}/channels/qqbot/disconnect`, (c) => {
+    return c.json({ ok: true });
+  });
+  app7.post(`${apiBase}/channels/weixin/login/start`, (c) => {
+    return c.json({ ok: true });
+  });
+  app7.post(`${apiBase}/channels/weixin/login/wait`, (c) => {
+    return c.json({ ok: true });
+  });
+  app7.get(`${apiBase}/cloud-config/bailian-banner`, (c) => {
+    return c.json({ visible: false });
+  });
+
   app7.get(`${apiBase}/health`, (c) => {
     return c.json({ status: "ok", port: process.env.PORT || 3e3 });
   });
