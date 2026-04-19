@@ -230,7 +230,124 @@ if [ "$proxy_flag" = "1" ]; then
     exit 0
 fi
 
-# Always enter panel directly from DSM entry to avoid nested backend shell.
-redirect_url="${SCRIPT_NAME_RAW}?proxy=1&path=/app/trim-openclaw/"
-printf 'Status: 302 Found\r\nLocation: %s\r\nCache-Control: no-store\r\n\r\n' "$redirect_url"
+printf 'Content-Type: text/html; charset=UTF-8\r\n\r\n'
+cat <<'HTML'
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenClaw2</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:#f5f6f8; color:#222; }
+    .wrap { padding: 18px; }
+    .header { margin-bottom: 14px; }
+    .title { font-size: 24px; font-weight: 700; margin: 0 0 6px; }
+    .sub { color:#666; font-size: 13px; }
+    .tabs { display:flex; gap:8px; margin: 14px 0 16px; flex-wrap:wrap; }
+    .tab { border:1px solid #d8dde6; background:#fff; color:#333; border-radius:10px; padding:10px 14px; cursor:pointer; font-size:14px; }
+    .tab.active { background:#1677ff; color:#fff; border-color:#1677ff; }
+    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(0,0,0,.03); min-height:520px; }
+    .grid { display:grid; grid-template-columns:180px 1fr; border-top:1px solid #eee; }
+    .cellk,.cellv { padding:11px 8px; border-bottom:1px solid #eee; }
+    .cellk { color:#666; }
+    .pre { white-space:pre-wrap; word-break:break-word; background:#0f172a; color:#d6e2ff; border-radius:10px; padding:14px; max-height:560px; overflow:auto; font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:1.5; }
+    .json { white-space:pre-wrap; word-break:break-word; background:#f8fafc; color:#222; border:1px solid #e5e7eb; border-radius:10px; padding:14px; max-height:560px; overflow:auto; font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:1.5; }
+    .muted { color:#667085; }
+    .err { color:#b42318; }
+    .ok { color:#067647; }
+    .toolbar { display:flex; gap:8px; margin-bottom:12px; }
+    .btn { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:8px 12px; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="title">OpenClaw2</div>
+      <div class="sub">DSM 原生调试界面（本地 API 驱动）</div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="status">概览</button>
+      <button class="tab" data-tab="models">模型配置</button>
+      <button class="tab" data-tab="channels">消息渠道</button>
+      <button class="tab" data-tab="logs">运行日志</button>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <button class="btn" id="refreshBtn">刷新当前页</button>
+      </div>
+      <div id="content" class="muted">加载中…</div>
+    </div>
+  </div>
+
+  <script>
+    const apiBase = '/webman/3rdparty/openclaw2/index.cgi?native_api=1&action=';
+    let currentTab = 'status';
+
+    function setActiveTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+      });
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+
+    async function loadTab(tab) {
+      setActiveTab(tab);
+      const content = document.getElementById('content');
+      content.className = 'muted';
+      content.innerHTML = '加载中…';
+      try {
+        const resp = await fetch(apiBase + encodeURIComponent(tab), { cache: 'no-store' });
+        const text = await resp.text();
+        let data;
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { error: 'JSON parse failed', raw: text }; }
+
+        if (tab === 'status') {
+          const rows = [
+            ['实例 ID', data.instanceId || '-'],
+            ['显示名', data.displayName || '-'],
+            ['已安装', data.installed ? '是' : '否'],
+            ['运行中', data.running ? '是' : '否'],
+            ['版本', data.version || '-'],
+            ['端口', data.port || '-'],
+            ['代理路径', data.proxyBasePath || '-'],
+            ['binaryPath', data.binaryPath || '-']
+          ];
+          content.className = '';
+          content.innerHTML = '<div class="grid">' + rows.map(([k,v]) =>
+            '<div class="cellk">' + esc(k) + '</div><div class="cellv">' + esc(v) + '</div>'
+          ).join('') + '</div>';
+          return;
+        }
+
+        if (tab === 'logs') {
+          content.className = '';
+          content.innerHTML = '<div class="pre">' + esc(data.log || '') + '</div>';
+          return;
+        }
+
+        content.className = '';
+        content.innerHTML = '<div class="json">' + esc(JSON.stringify(data, null, 2)) + '</div>';
+      } catch (err) {
+        content.className = 'err';
+        content.innerHTML = '加载失败：' + esc(err.message || err);
+      }
+    }
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => loadTab(btn.dataset.tab));
+    });
+    document.getElementById('refreshBtn').addEventListener('click', () => loadTab(currentTab));
+    loadTab('status');
+  </script>
+</body>
+</html>
+HTML
 exit 0
