@@ -130,6 +130,12 @@ cat <<'HTML'
     .msg { margin-bottom:12px; font-size:13px; color:#667085; }
     .err { color:#b42318; }
     .ok { color:#067647; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-bottom:16px; }
+    .card { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
+    .card h3 { margin:0 0 10px; font-size:16px; }
+    .field { margin-bottom:10px; }
+    .field label { display:block; font-size:12px; color:#667085; margin-bottom:4px; }
+    .field input { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
   </style>
 </head>
 <body>
@@ -238,6 +244,35 @@ cat <<'HTML'
           setMsg('安装/控制面板已加载，可直接点按钮执行', 'ok');
           return;
         }
+        if (tab === 'channels') {
+          const feishu = data.feishu || {};
+          const wecom = data.wecom || {};
+          const dingtalk = data.dingtalk || {};
+          content.innerHTML = ''
+            + '<div class="cards">'
+            + '  <div class="card">'
+            + '    <h3>飞书</h3>'
+            + '    <div class="field"><label>App ID</label><input id="feishu_appId" value="' + esc(feishu.appId || '') + '"></div>'
+            + '    <div class="field"><label>App Secret（留空表示不改）</label><input id="feishu_appSecret" type="password" value=""></div>'
+            + '    <button class="btn primary" onclick="saveFeishuQuick()">保存飞书配置</button>'
+            + '  </div>'
+            + '  <div class="card">'
+            + '    <h3>企业微信</h3>'
+            + '    <div class="field"><label>Bot ID</label><input id="wecom_botId" value="' + esc(wecom.botId || '') + '"></div>'
+            + '    <div class="field"><label>Secret（留空表示不改）</label><input id="wecom_secret" type="password" value=""></div>'
+            + '    <button class="btn primary" onclick="saveWecomQuick()">保存企业微信配置</button>'
+            + '  </div>'
+            + '  <div class="card">'
+            + '    <h3>钉钉</h3>'
+            + '    <div class="field"><label>Client ID</label><input id="dingtalk_clientId" value="' + esc(dingtalk.clientId || '') + '"></div>'
+            + '    <div class="field"><label>Client Secret（留空表示不改）</label><input id="dingtalk_clientSecret" type="password" value=""></div>'
+            + '    <button class="btn primary" onclick="saveDingtalkQuick()">保存钉钉配置</button>'
+            + '  </div>'
+            + '</div>'
+            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
+          setMsg('消息渠道已加载；可直接填写上面的表单保存，也可编辑下方 JSON', 'ok');
+          return;
+        }
         content.innerHTML = '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
         if (tab === 'process_governor') {
           setMsg('进程治理信息已加载', 'ok');
@@ -288,6 +323,30 @@ cat <<'HTML'
       } catch (e) {
         setMsg('操作失败：' + (e.message || e), 'err');
       }
+    }
+    async function saveFeishuQuick() {
+      try {
+        const payload = { feishu: { appId: document.getElementById('feishu_appId').value, appSecret: document.getElementById('feishu_appSecret').value } };
+        const data = await api('channels_save', 'POST', payload);
+        document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        setMsg('飞书配置保存成功', 'ok');
+      } catch (e) { setMsg('飞书配置保存失败：' + (e.message || e), 'err'); }
+    }
+    async function saveWecomQuick() {
+      try {
+        const payload = { wecom: { botId: document.getElementById('wecom_botId').value, secret: document.getElementById('wecom_secret').value } };
+        const data = await api('channels_save', 'POST', payload);
+        document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        setMsg('企业微信配置保存成功', 'ok');
+      } catch (e) { setMsg('企业微信配置保存失败：' + (e.message || e), 'err'); }
+    }
+    async function saveDingtalkQuick() {
+      try {
+        const payload = { dingtalk: { clientId: document.getElementById('dingtalk_clientId').value, clientSecret: document.getElementById('dingtalk_clientSecret').value } };
+        const data = await api('channels_save', 'POST', payload);
+        document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        setMsg('钉钉配置保存成功', 'ok');
+      } catch (e) { setMsg('钉钉配置保存失败：' + (e.message || e), 'err'); }
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
     document.getElementById('refreshBtn').addEventListener('click', () => load(currentTab));
