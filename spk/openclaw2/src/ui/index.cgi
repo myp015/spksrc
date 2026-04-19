@@ -73,7 +73,7 @@ if [ "$native_api" = "1" ]; then
             ;;
         install)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/install" || printf '{"error":"install unavailable"}'
+            curl -fsS --max-time 8 "${PANEL_URL}/app/trim-openclaw/api/status" || printf '{"error":"install unavailable"}'
             exit 0
             ;;
         install_run)
@@ -209,12 +209,37 @@ cat <<'HTML'
           setMsg('日志已加载', 'ok');
           return;
         }
-        content.innerHTML = '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
         if (tab === 'plugins') {
-          setMsg('插件列表已加载；可编辑 JSON 后保存，或先点刷新后查看状态', 'ok');
-        } else if (tab === 'install') {
-          setMsg('安装/控制信息已加载；可编辑 JSON 后保存提交动作', 'ok');
-        } else if (tab === 'process_governor') {
+          const list = (data.plugins || []);
+          content.innerHTML = '<div>' + list.map(p => {
+            return '<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:10px;background:#fff;">'
+              + '<div style="font-weight:600;margin-bottom:4px;">' + esc(p.label || p.channelKey || '-') + '</div>'
+              + '<div style="font-size:12px;color:#667085;margin-bottom:8px;">pluginId=' + esc(p.pluginId || '-') + ' / installed=' + esc(String(!!p.installed)) + '</div>'
+              + '<div style="font-size:12px;color:#667085;margin-bottom:8px;">' + esc(p.note || '') + '</div>'
+              + '<button class="btn primary" onclick="installPlugin(' + JSON.stringify(p.channelKey || '') + ')">安装/修复插件</button>'
+              + '</div>';
+          }).join('') + '</div>';
+          setMsg('插件列表已加载，可直接点击安装/修复插件', 'ok');
+          return;
+        }
+        if (tab === 'install') {
+          const running = !!data.running;
+          const installed = !!data.installed;
+          content.innerHTML = ''
+            + '<div style="margin-bottom:16px;">'
+            + '<div style="font-size:14px;color:#667085;margin-bottom:8px;">当前状态：installed=' + esc(String(installed)) + ' / running=' + esc(String(running)) + '</div>'
+            + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+            + '<button class="btn primary" onclick="runInstallAction(\'install\')">安装/修复</button>'
+            + '<button class="btn" onclick="runInstallAction(\'start\')">启动</button>'
+            + '<button class="btn" onclick="runInstallAction(\'stop\')">停止</button>'
+            + '<button class="btn" onclick="runInstallAction(\'restart\')">重启</button>'
+            + '</div></div>'
+            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
+          setMsg('安装/控制面板已加载，可直接点按钮执行', 'ok');
+          return;
+        }
+        content.innerHTML = '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
+        if (tab === 'process_governor') {
           setMsg('进程治理信息已加载', 'ok');
         } else {
           setMsg('JSON 已加载，可编辑后保存', 'ok');
@@ -237,6 +262,31 @@ cat <<'HTML'
         setMsg('保存成功', 'ok');
       } catch (e) {
         setMsg('保存失败：' + (e.message || e), 'err');
+      }
+    }
+    async function installPlugin(channelKey) {
+      try {
+        setMsg('正在安装/修复插件：' + channelKey + ' ...');
+        const data = await api('plugin_install', 'POST', { channelKey });
+        setMsg('插件操作已提交：' + channelKey, 'ok');
+        if (document.getElementById('editor')) {
+          document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        }
+        await load('plugins');
+      } catch (e) {
+        setMsg('插件安装失败：' + (e.message || e), 'err');
+      }
+    }
+    async function runInstallAction(actionName) {
+      try {
+        setMsg('正在执行：' + actionName + ' ...');
+        const data = await api('install_run', 'POST', { method: 'bun', action: actionName });
+        if (document.getElementById('editor')) {
+          document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        }
+        setMsg('操作已提交：' + actionName, 'ok');
+      } catch (e) {
+        setMsg('操作失败：' + (e.message || e), 'err');
       }
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
