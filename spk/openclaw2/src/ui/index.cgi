@@ -314,14 +314,11 @@ cat <<'HTML'
             + '    <div class="field"><label>服务商</label><select id="dlg_provider_preset" onchange="applyProviderPresetDialog()">' + options + '</select></div>'
             + '    <div class="field"><label>Provider ID</label><input id="dlg_provider_id"></div>'
             + '    <div class="field"><label>显示名</label><input id="dlg_display_name"></div>'
-            + '    <div class="field"><label>API 类型</label><select id="dlg_api"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
-            + '    <div class="field"><label>Base URL</label><input id="dlg_base_url"></div>'
-            + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password"></div>'
-            + '    <div class="field"><label>可选模型（按住 Ctrl / Command 可多选）</label><select id="dlg_model_select" multiple onchange="syncModelTextareaFromSelect()"></select></div>'
+            + '    <div class="field"><label>API 类型</label><select id="dlg_api" onchange="invalidateModelDiscoverCache()"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
+            + '    <div class="field"><label>Base URL</label><input id="dlg_base_url" oninput="invalidateModelDiscoverCache()"></div>'
+            + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
+            + '    <div class="field"><label>可选模型（按住 Ctrl / Command 可多选）</label><select id="dlg_model_select" multiple onchange="syncModelTextareaFromSelect()" onclick="triggerDiscoverModelsForDialog()" onfocus="triggerDiscoverModelsForDialog()"></select></div>'
             + '    <div class="field"><label>模型列表（每行一个 modelId，可手工补充）</label><textarea id="dlg_model_ids" style="min-height:140px;" oninput="syncModelSelectFromTextarea()"></textarea></div>'
-            + '    <div style="display:flex;gap:8px;flex-wrap:wrap;">'
-            + '      <button class="btn" onclick="discoverModelsForDialog()">刷新当前服务商模型</button>'
-            + '    </div>'
             + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveModelDialog()">保存</button>'
@@ -473,6 +470,23 @@ cat <<'HTML'
       const ids = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
       setModelSelectOptions(ids, ids);
     }
+    function getDiscoverCacheKey() {
+      return JSON.stringify({
+        baseUrl: (document.getElementById('dlg_base_url').value || '').trim(),
+        api: (document.getElementById('dlg_api').value || '').trim(),
+        apiKey: (document.getElementById('dlg_api_key').value || '').trim()
+      });
+    }
+    function invalidateModelDiscoverCache() {
+      window.__modelsDiscovering = false;
+      window.__modelsDiscoveredKey = '';
+    }
+    async function triggerDiscoverModelsForDialog() {
+      const key = getDiscoverCacheKey();
+      if (window.__modelsDiscovering) return;
+      if (window.__modelsDiscoveredKey === key && key !== JSON.stringify({ baseUrl: '', api: '', apiKey: '' })) return;
+      await discoverModelsForDialog();
+    }
     function openModelDialog(index) {
       const data = window.__modelsData || {};
       const providers = data.configuredProviders || [];
@@ -488,6 +502,8 @@ cat <<'HTML'
       document.getElementById('dlg_api_key').value = '';
       document.getElementById('dlg_model_ids').value = currentIds.join('\n');
       setModelSelectOptions(currentIds, currentIds);
+      window.__modelsDiscovering = false;
+      window.__modelsDiscoveredKey = '';
       document.getElementById('modelModalMask').style.display = 'flex';
       document.getElementById('modelModalMask').dataset.editIndex = editing ? String(index) : '';
     }
@@ -497,21 +513,27 @@ cat <<'HTML'
     }
     async function discoverModelsForDialog() {
       try {
-        setMsg('正在刷新当前服务商模型列表...');
+        window.__modelsDiscovering = true;
+        setMsg('正在获取模型列表...');
         const payload = {
           baseUrl: document.getElementById('dlg_base_url').value,
           apiKey: document.getElementById('dlg_api_key').value,
           api: document.getElementById('dlg_api').value
         };
+        const key = getDiscoverCacheKey();
         const data = await api('models_discover', 'POST', payload);
         const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
         const existing = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
         const merged = Array.from(new Set(ids.concat(existing)));
         document.getElementById('dlg_model_ids').value = merged.join('\n');
         setModelSelectOptions(merged, existing.length ? existing : ids);
-        if (ids.length > 0) setMsg('已刷新模型列表，共 ' + ids.length + ' 个', 'ok');
-        else setMsg(data.error ? ('刷新失败：' + data.error) : '未发现模型', data.error ? 'err' : '');
-      } catch (e) { setMsg('刷新模型失败：' + (e.message || e), 'err'); }
+        if (!data.error) {
+          window.__modelsDiscoveredKey = key;
+        }
+        if (ids.length > 0) setMsg('模型列表已更新，共 ' + ids.length + ' 个', 'ok');
+        else setMsg(data.error ? ('获取失败：' + data.error) : '未发现模型', data.error ? 'err' : '');
+      } catch (e) { setMsg('获取模型失败：' + (e.message || e), 'err'); }
+      finally { window.__modelsDiscovering = false; }
     }
     async function saveModelDialog() {
       try {
