@@ -135,7 +135,7 @@ cat <<'HTML'
     .card h3 { margin:0 0 10px; font-size:16px; }
     .field { margin-bottom:10px; }
     .field label { display:block; font-size:12px; color:#667085; margin-bottom:4px; }
-    .field input { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
+    .field input, .field select, .field textarea { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
   </style>
 </head>
 <body>
@@ -213,6 +213,30 @@ cat <<'HTML'
         if (tab === 'logs') {
           content.innerHTML = '<pre>' + esc(data.log || '') + '</pre>';
           setMsg('日志已加载', 'ok');
+          return;
+        }
+        if (tab === 'models') {
+          const providers = data.configuredProviders || [];
+          const p0 = providers[0] || {};
+          const models = p0.models || [];
+          const modelIds = models.map(m => m.modelId || m.id).filter(Boolean).join('\n');
+          content.innerHTML = ''
+            + '<div class="cards">'
+            + '  <div class="card">'
+            + '    <h3>默认 Provider 快速配置</h3>'
+            + '    <div class="field"><label>Provider ID</label><input id="model_provider_id" value="' + esc(p0.id || 'default') + '"></div>'
+            + '    <div class="field"><label>显示名</label><input id="model_display_name" value="' + esc(p0.displayName || '') + '"></div>'
+            + '    <div class="field"><label>API 类型</label><select id="model_api"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option></select></div>'
+            + '    <div class="field"><label>Base URL</label><input id="model_base_url" value="' + esc(p0.baseUrl || '') + '"></div>'
+            + '    <div class="field"><label>API Key（留空表示不改）</label><input id="model_api_key" type="password" value=""></div>'
+            + '    <div class="field"><label>模型列表（每行一个 modelId）</label><textarea id="model_ids" style="min-height:140px;">' + esc(modelIds) + '</textarea></div>'
+            + '    <button class="btn primary" onclick="saveModelQuick()">保存默认 Provider</button>'
+            + '  </div>'
+            + '</div>'
+            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
+          const sel = document.getElementById('model_api');
+          if (sel) sel.value = p0.api || 'openai-completions';
+          setMsg('模型配置已加载；可直接填写上面的表单保存，也可编辑下方 JSON', 'ok');
           return;
         }
         if (tab === 'plugins') {
@@ -323,6 +347,24 @@ cat <<'HTML'
       } catch (e) {
         setMsg('操作失败：' + (e.message || e), 'err');
       }
+    }
+    async function saveModelQuick() {
+      try {
+        const providerId = document.getElementById('model_provider_id').value || 'default';
+        const payload = {
+          providers: [{
+            id: providerId,
+            displayName: document.getElementById('model_display_name').value,
+            api: document.getElementById('model_api').value,
+            baseUrl: document.getElementById('model_base_url').value,
+            apiKey: document.getElementById('model_api_key').value,
+            models: (document.getElementById('model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(id => ({ modelId: id, id: id }))
+          }]
+        };
+        const data = await api('models_save', 'POST', payload);
+        document.getElementById('editor').value = JSON.stringify(data, null, 2);
+        setMsg('模型配置保存成功', 'ok');
+      } catch (e) { setMsg('模型配置保存失败：' + (e.message || e), 'err'); }
     }
     async function saveFeishuQuick() {
       try {
