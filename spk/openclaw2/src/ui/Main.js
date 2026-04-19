@@ -13,8 +13,8 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
     constructor: function(cfg) {
         this.appInstance = cfg.appInstance;
 
-        var host = window.location.hostname || '127.0.0.1';
-        var monitorUrl = 'http://' + host + ':18700/';
+        // Use DSM internal proxy path to avoid mixed-content/frame-security blocking.
+        var monitorUrl = '/webman/3rdparty/openclaw2/index.cgi/proxy/';
 
         var config = Ext.apply({
             resizable: true,
