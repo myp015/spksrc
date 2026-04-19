@@ -3,8 +3,8 @@
         "com.synocommunity.packages.openclaw2": {
             "title": "OpenClaw2",
             "desc": "OpenClaw2 设置面板",
-            "icon": "images/openclaw-{0}.png",
-            "type": "iframe",
+            "icon": "images/openclaw2-{0}.png",
+            "type": "url",
             "protocol": "http",
             "port": "18789",
             "url": "/",
