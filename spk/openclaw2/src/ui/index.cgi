@@ -460,21 +460,35 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+# 先确保插件已启用，避免 Unsupported channel（超时不阻断扫码流程）
+bootstrap_log = ''
+try:
+    pp = subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'plugins', 'enable', 'openclaw-weixin'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
+    bootstrap_log = (pp.stdout or b'').decode('utf-8', 'ignore')
+except Exception as e:
+    bootstrap_log = f'plugins enable skipped: {e}'
+
 cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
 text = ''
 try:
-    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=25)
+    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     text = (p.stdout or b'').decode('utf-8', 'ignore')
 except subprocess.TimeoutExpired as e:
     text = ((e.stdout or b'') + (e.stderr or b'')).decode('utf-8', 'ignore')
+except Exception as e:
+    text = str(e)
 url = None
 m = re.search(r'https://liteapp\.weixin\.qq\.com/q/\S+', text)
 if m:
     url = m.group(0)
+if not url:
+    m2 = re.search(r'https://[^\s\"]*weixin[^\s\"]*', text, re.I)
+    if m2:
+        url = m2.group(0)
 if url:
     print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录'}, ensure_ascii=False))
 else:
-    print(json.dumps({'supported': False, 'message': '未获取到二维码，请确认 openclaw-weixin 插件已安装并重试', 'raw': text[-800:]}, ensure_ascii=False))
+    print(json.dumps({'supported': False, 'message': '未获取到二维码，请重试并确认 openclaw-weixin 已启用', 'raw': (bootstrap_log + '\n' + text)[-1500:]}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -489,14 +503,27 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'status']
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'status', '--json']
+raw = ''
 try:
-    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8)
-    text = (p.stdout or b'').decode('utf-8', 'ignore')
+    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
+    raw = (p.stdout or b'').decode('utf-8', 'ignore')
 except Exception as e:
-    text = str(e)
-ok = ('openclaw-weixin' in text.lower()) and ('connected' in text.lower() or 'ready' in text.lower() or 'online' in text.lower())
-print(json.dumps({'supported': True, 'connected': bool(ok), 'status': 'connected' if ok else 'pending', 'message': '已连接' if ok else '等待扫码确认', 'raw': text[-400:]}, ensure_ascii=False))
+    raw = str(e)
+text = raw
+if raw.strip().startswith('202') and '\n{' in raw:
+    text = raw[raw.find('\n{')+1:]
+connected = False
+message = '等待扫码确认'
+try:
+    j = json.loads(text)
+    ch = (j.get('channels') or {}).get('openclaw-weixin') or {}
+    accs = (j.get('channelAccounts') or {}).get('openclaw-weixin') or []
+    connected = bool(ch.get('configured')) or any(bool((a or {}).get('configured')) for a in accs)
+    message = '已连接' if connected else '等待扫码确认'
+except Exception:
+    connected = False
+print(json.dumps({'supported': True, 'connected': bool(connected), 'status': 'connected' if connected else 'pending', 'message': message, 'raw': raw[-500:]}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -780,7 +807,6 @@ cat <<'HTML'
 <body>
   <div class="wrap">
     <div class="title">OpenClaw2</div>
-    <div class="sub">DSM 原生可编辑 MVP（本地 API 桥接）</div>
     <div class="tabs">
       <button class="tab active" data-tab="status">概览</button>
       <button class="tab" data-tab="models">模型配置</button>
@@ -788,9 +814,6 @@ cat <<'HTML'
       <button class="tab" data-tab="logs">运行日志</button>
     </div>
     <div class="panel">
-      <div class="toolbar">
-        <button class="btn" id="refreshBtn">刷新当前页</button>
-      </div>
       <div id="msg" class="msg"></div>
       <div id="content"></div>
     </div>
@@ -813,7 +836,7 @@ cat <<'HTML'
       xai: { label: 'xAI', baseUrl: 'https://api.x.ai/v1', api: 'openai-completions', models: ['grok-4','grok-3-mini'] },
       zai: { label: 'Z.AI', baseUrl: 'https://api.z.ai/api/paas/v4', api: 'openai-completions', models: ['glm-4.5','glm-4.5-air'] }
     };
-    const BUILTIN_CHANNEL_PLUGINS = ['browser','feishu','qqbot','dingtalk','wecom'];
+    const BUILTIN_CHANNEL_PLUGINS = ['feishu','qqbot','dingtalk','wecom','openclaw-weixin'];
     let currentTab = 'status';
     let statusLine = '';
     let logsTimer = null;
@@ -887,13 +910,10 @@ cat <<'HTML'
         }
         if (tab === 'logs') {
           content.innerHTML = ''
-            + '<div class="item-meta" style="margin-bottom:8px;display:flex;gap:8px;align-items:center;">日志来源：' + esc(data.source || '-')
-            + '  <button class="btn" onclick="refreshLogsNow()">立即刷新</button>'
-            + '</div>'
             + '<pre id="log_pre">' + esc(data.log || '') + '</pre>';
           const pre = document.getElementById('log_pre');
           if (pre) pre.scrollTop = pre.scrollHeight;
-          setMsg('OpenClaw 日志已加载（实时刷新中）', 'ok');
+          setMsg('');
           logsTimer = setInterval(refreshLogsNow, 2000);
           return;
         }
@@ -1033,12 +1053,14 @@ cat <<'HTML'
       const presetId = document.getElementById('dlg_provider_preset').value;
       if (presetId === 'custom-openai') {
         document.getElementById('dlg_provider_id').value = 'custom-openai';
-        document.getElementById('dlg_display_name').value = '自定义 OpenAI 兼容';
+        document.getElementById('dlg_display_name').value = 'custom-openai';
         document.getElementById('dlg_api').value = 'openai-completions';
-        document.getElementById('dlg_base_url').value = '';
+        document.getElementById('dlg_base_url').value = 'http://127.0.0.1:8317/v1';
+        const keyEl = document.getElementById('dlg_api_key');
+        if (keyEl && !keyEl.value) keyEl.value = 'sk-V5zPkG6MJrIpxgmDw';
         setModelSelectOptions([], []);
         document.getElementById('dlg_model_ids').value = '';
-        setMsg('已切换到自定义 OpenAI 兼容，请手动填写服务器地址', 'ok');
+        setMsg('已切换到 custom-openai 默认模板', 'ok');
         return;
       }
       const preset = PROVIDER_PRESETS[presetId];
@@ -1087,7 +1109,7 @@ cat <<'HTML'
       const p = editing ? (providers[index] || {}) : {};
       const currentIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
       document.getElementById('modelModalTitle').textContent = editing ? '编辑模型服务器' : '添加模型服务器';
-      document.getElementById('dlg_provider_preset').value = p.id && PROVIDER_PRESETS[p.id] ? p.id : (p.id === 'custom-openai' ? 'custom-openai' : 'openai');
+      document.getElementById('dlg_provider_preset').value = p.id && PROVIDER_PRESETS[p.id] ? p.id : (p.id === 'custom-openai' ? 'custom-openai' : 'custom-openai');
       document.getElementById('dlg_provider_id').value = p.id || '';
       document.getElementById('dlg_display_name').value = p.displayName || '';
       document.getElementById('dlg_api').value = p.api || 'openai-completions';
@@ -1096,6 +1118,9 @@ cat <<'HTML'
       document.getElementById('dlg_api_key').dataset.raw = p.apiKeyRaw || '';
       document.getElementById('dlg_model_ids').value = currentIds.join('\n');
       setModelSelectOptions(currentIds, currentIds);
+      if (!editing) {
+        applyProviderPresetDialog();
+      }
       window.__modelsDiscovering = false;
       window.__modelsDiscoveredKey = '';
       document.getElementById('modelModalMask').style.display = 'flex';
@@ -1307,7 +1332,6 @@ cat <<'HTML'
       } catch (e) {}
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
-    document.getElementById('refreshBtn').addEventListener('click', () => load(currentTab));
     load('status');
   </script>
 </body>
