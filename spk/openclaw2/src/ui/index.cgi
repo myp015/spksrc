@@ -31,8 +31,8 @@ QUERY="${QUERY_STRING:-}"
 REQUEST_URI_RAW="${REQUEST_URI:-}"
 SCRIPT_NAME_RAW="${SCRIPT_NAME:-/webman/3rdparty/openclaw2/index.cgi}"
 PATH_INFO_RAW="${PATH_INFO:-}"
+PROXY_BASE="${SCRIPT_NAME_RAW}${PROXY_PREFIX}"
 
-# Derive PATH_INFO when DSM doesn't pass it.
 if [ -z "$PATH_INFO_RAW" ] && [ -n "$REQUEST_URI_RAW" ] && [ -n "$SCRIPT_NAME_RAW" ]; then
     case "$REQUEST_URI_RAW" in
         "$SCRIPT_NAME_RAW"/*)
@@ -42,7 +42,6 @@ if [ -z "$PATH_INFO_RAW" ] && [ -n "$REQUEST_URI_RAW" ] && [ -n "$SCRIPT_NAME_RA
     esac
 fi
 
-# DSM-internal proxy mode:
 # /webman/3rdparty/openclaw2/index.cgi/proxy/... -> http://127.0.0.1:18700/...
 if [ "${PATH_INFO_RAW#${PROXY_PREFIX}}" != "$PATH_INFO_RAW" ]; then
     PROXY_PATH="${PATH_INFO_RAW#${PROXY_PREFIX}}"
@@ -58,6 +57,7 @@ if [ "${PATH_INFO_RAW#${PROXY_PREFIX}}" != "$PATH_INFO_RAW" ]; then
 
     RESP_HEADERS=$(mktemp)
     RESP_BODY=$(mktemp)
+    REWRITE_BODY=$(mktemp)
 
     if [ "$METHOD" = "POST" ] || [ "$METHOD" = "PUT" ] || [ "$METHOD" = "PATCH" ] || [ "$METHOD" = "DELETE" ]; then
         BODY=""
@@ -79,15 +79,34 @@ if [ "${PATH_INFO_RAW#${PROXY_PREFIX}}" != "$PATH_INFO_RAW" ]; then
     STATUS_TEXT=$(printf '%s' "$STATUS_LINE" | cut -d' ' -f3-)
     [ -n "$STATUS_TEXT" ] || STATUS_TEXT="OK"
 
+    CONTENT_TYPE=$(grep -i '^Content-Type:' "$RESP_HEADERS" | tail -n1 | cut -d':' -f2- | tr -d '\r' | sed 's/^ *//')
+    [ -n "$CONTENT_TYPE" ] || CONTENT_TYPE='text/plain; charset=UTF-8'
+
+    # Rewrite hardcoded /app/trim-openclaw base to DSM internal proxy base.
+    # This fixes endless-loading when assets are requested from absolute /app/... paths.
+    if printf '%s' "$CONTENT_TYPE" | grep -Eiq 'text/|javascript|json|css'; then
+        sed "s#\(/app/trim-openclaw\)#${PROXY_BASE}/app/trim-openclaw#g" "$RESP_BODY" > "$REWRITE_BODY" || cp -f "$RESP_BODY" "$REWRITE_BODY"
+    else
+        cp -f "$RESP_BODY" "$REWRITE_BODY"
+    fi
+
     printf 'Status: %s %s\r\n' "$STATUS_CODE" "$STATUS_TEXT"
-    (grep -i '^Content-Type:' "$RESP_HEADERS" | tail -n1 | tr -d '\r') || true
+    printf 'Content-Type: %s\r\n' "$CONTENT_TYPE"
     grep -i '^Set-Cookie:' "$RESP_HEADERS" | tr -d '\r' || true
     grep -i '^Cache-Control:' "$RESP_HEADERS" | tail -n1 | tr -d '\r' || true
-    grep -i '^Location:' "$RESP_HEADERS" | tail -n1 | tr -d '\r' || true
-    echo
-    cat "$RESP_BODY"
 
-    rm -f "$RESP_HEADERS" "$RESP_BODY"
+    # Rewrite Location redirects to stay within DSM internal proxy path.
+    LOC_LINE=$(grep -i '^Location:' "$RESP_HEADERS" | tail -n1 | tr -d '\r')
+    if [ -n "$LOC_LINE" ]; then
+        LOC_VAL=$(printf '%s' "$LOC_LINE" | cut -d':' -f2- | sed 's/^ *//')
+        LOC_VAL=$(printf '%s' "$LOC_VAL" | sed "s#^/app/trim-openclaw#${PROXY_BASE}/app/trim-openclaw#")
+        printf 'Location: %s\r\n' "$LOC_VAL"
+    fi
+
+    echo
+    cat "$REWRITE_BODY"
+
+    rm -f "$RESP_HEADERS" "$RESP_BODY" "$REWRITE_BODY"
     exit 0
 fi
 
@@ -131,7 +150,7 @@ code { background:#f1f3f5; padding:2px 6px; border-radius:4px; }
   </p>
 
   <div class="actions">
-    <a href="${PROXY_PREFIX}/" target="_self">打开内嵌面板（DSM 内部代理）</a>
+    <a href="${PROXY_BASE}/app/trim-openclaw/" target="_self">打开完整内嵌面板</a>
     <a href="/" target="_blank" rel="noopener">打开 Gateway 页面</a>
   </div>
 
