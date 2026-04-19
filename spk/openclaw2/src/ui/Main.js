@@ -13,17 +13,20 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
     constructor: function(cfg) {
         this.appInstance = cfg.appInstance;
 
+        var host = window.location.hostname || '127.0.0.1';
+        var monitorUrl = 'http://' + host + ':18789/';
+
         var config = Ext.apply({
             resizable: true,
             maximizable: true,
             minimizable: true,
-            width: 1100,
-            height: 760,
+            width: 1280,
+            height: 820,
             layout: 'fit',
             items: [
                 new Ext.BoxComponent({
                     height: '100%',
-                    html: '<iframe src="/webman/3rdparty/openclaw2/index.cgi" frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%"></iframe>'
+                    html: '<iframe src="' + monitorUrl + '" frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%"></iframe>'
                 })
             ]
         }, cfg);
