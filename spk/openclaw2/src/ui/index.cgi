@@ -1283,16 +1283,27 @@ cat <<'HTML'
         setMsg('渠道保存成功', 'ok');
       } catch (e) { setMsg('渠道保存失败：' + (e.message || e), 'err'); }
     }
+    function getWeixinUiEls() {
+      return {
+        statusEl: document.getElementById('weixin_status'),
+        qrEl: document.getElementById('weixin_qr')
+      };
+    }
     async function startWeixinLogin() {
       try {
         const data = await api('weixin_login_start', 'POST', {});
+        const { statusEl, qrEl } = getWeixinUiEls();
+        if (!statusEl || !qrEl) {
+          setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
+          return;
+        }
         if (data && data.qrUrl) {
-          document.getElementById('weixin_qr').innerHTML = '<img src="' + esc(data.qrUrl) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" />';
-          document.getElementById('weixin_status').textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
+          qrEl.innerHTML = '<img src="' + esc(data.qrUrl) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" />';
+          statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
           setMsg('二维码已生成，请扫码登录。', 'ok');
         } else {
-          document.getElementById('weixin_status').textContent = data.message || data.error || '当前版本不支持微信扫码登录';
+          statusEl.textContent = data.message || data.error || '当前版本不支持微信扫码登录';
           setMsg(data.message || data.error || '当前版本不支持微信扫码登录', data.supported === false ? '' : 'err');
         }
       } catch (e) { setMsg('微信登录启动失败：' + (e.message || e), 'err'); }
@@ -1302,15 +1313,21 @@ cat <<'HTML'
         const sessionKey = window.__weixinSessionKey || '';
         const data = await api('weixin_login_wait', 'POST', { sessionKey, timeoutMs: 1000 });
         const msg = data.message || data.status || '未知状态';
-        document.getElementById('weixin_status').textContent = msg;
+        const { statusEl } = getWeixinUiEls();
+        if (!statusEl) {
+          setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
+          return;
+        }
+        statusEl.textContent = msg;
         if (data.connected) setMsg('微信已连接', 'ok');
       } catch (e) { setMsg('查询微信状态失败：' + (e.message || e), 'err'); }
     }
     async function disconnectWeixin() {
       try {
         const data = await api('weixin_disconnect', 'POST', { accountId: '' });
-        document.getElementById('weixin_status').textContent = '已断开';
-        document.getElementById('weixin_qr').innerHTML = '';
+        const { statusEl, qrEl } = getWeixinUiEls();
+        if (statusEl) statusEl.textContent = '已断开';
+        if (qrEl) qrEl.innerHTML = '';
         window.__weixinSessionKey = '';
         setMsg('微信已断开', 'ok');
       } catch (e) { setMsg('断开微信失败：' + (e.message || e), 'err'); }
