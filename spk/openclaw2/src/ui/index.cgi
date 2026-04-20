@@ -940,7 +940,7 @@ NODE
     esac
 fi
 
-printf 'Content-Type: text/html; charset=UTF-8\r\n\r\n'
+printf 'Content-Type: text/html; charset=UTF-8\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\n\r\n'
 cat <<'HTML'
 <!doctype html>
 <html lang="zh-CN">
