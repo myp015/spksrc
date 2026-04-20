@@ -883,6 +883,7 @@ cat <<'HTML'
     .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:12px; }
     .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:9999; overflow:hidden; padding:16px; }
     .modal { width:min(700px,90vw); max-height:calc(100vh - 32px); overflow:auto; background:#fff; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal.model-modal { width:min(560px,90vw); }
     .modal h3 { margin:0 0 14px; font-size:18px; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   </style>
@@ -1064,20 +1065,17 @@ cat <<'HTML'
             + '</div>'
             + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>'
             + '<div class="modal-mask" id="modelModalMask">'
-            + '  <div class="modal">'
+            + '  <div class="modal model-modal">'
             + '    <h3 id="modelModalTitle">添加模型服务器</h3>'
             + '    <div class="field"><label>服务商</label><select id="dlg_provider_preset" onchange="applyProviderPresetDialog()">' + options + '</select></div>'
-            + '    <div class="field"><label>Provider ID</label><input id="dlg_provider_id"></div>'
-            + '    <div class="field"><label>显示名</label><input id="dlg_display_name"></div>'
+            + '    <div class="field"><label>Provider ID（显示名与此一致）</label><input id="dlg_provider_id"></div>'
             + '    <div class="field"><label>API 类型</label><select id="dlg_api" onchange="invalidateModelDiscoverCache()"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
             + '    <div class="field"><label>Base URL</label><input id="dlg_base_url" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>可选模型（按住 Ctrl / Command 可多选）</label><select id="dlg_model_select" multiple onchange="syncModelTextareaFromSelect()" onclick="triggerDiscoverModelsForDialog()" onfocus="triggerDiscoverModelsForDialog()"></select></div>'
             + '    <div class="field"><label>模型列表（每行一个 modelId，可手工补充）</label><textarea id="dlg_model_ids" style="min-height:140px;" oninput="syncModelSelectFromTextarea()"></textarea></div>'
-            + '    <div style="display:flex;gap:8px;justify-content:flex-end;">'
-            + '      <button class="btn" onclick="syncProviderModelsToCache()">手动同步到本地缓存</button>'
-            + '    </div>'
             + '    <div class="modal-actions">'
+            + '      <button class="btn" onclick="syncProviderModelsToCache()">手动同步到本地缓存</button>'
             + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveModelDialog()">保存</button>'
             + '    </div>'
@@ -1177,7 +1175,6 @@ cat <<'HTML'
       const presetId = document.getElementById('dlg_provider_preset').value;
       if (presetId === 'custom-openai') {
         document.getElementById('dlg_provider_id').value = 'custom-openai';
-        document.getElementById('dlg_display_name').value = 'custom-openai';
         document.getElementById('dlg_api').value = 'openai-completions';
         document.getElementById('dlg_base_url').value = 'http://127.0.0.1:8317/v1';
         const keyEl = document.getElementById('dlg_api_key');
@@ -1190,7 +1187,6 @@ cat <<'HTML'
       const preset = PROVIDER_PRESETS[presetId];
       if (!preset) return;
       document.getElementById('dlg_provider_id').value = presetId;
-      document.getElementById('dlg_display_name').value = preset.label;
       document.getElementById('dlg_base_url').value = preset.baseUrl || '';
       document.getElementById('dlg_api').value = preset.api || 'openai-completions';
       const builtin = (preset.models || []).filter(Boolean);
@@ -1235,7 +1231,6 @@ cat <<'HTML'
       document.getElementById('modelModalTitle').textContent = editing ? '编辑模型服务器' : '添加模型服务器';
       document.getElementById('dlg_provider_preset').value = p.id && PROVIDER_PRESETS[p.id] ? p.id : (p.id === 'custom-openai' ? 'custom-openai' : 'custom-openai');
       document.getElementById('dlg_provider_id').value = p.id || '';
-      document.getElementById('dlg_display_name').value = p.displayName || '';
       document.getElementById('dlg_api').value = p.api || 'openai-completions';
       document.getElementById('dlg_base_url').value = p.baseUrl || '';
       document.getElementById('dlg_api_key').value = p.apiKeyMasked || '';
@@ -1290,7 +1285,7 @@ cat <<'HTML'
         const idx = idxRaw === '' ? -1 : parseInt(idxRaw, 10);
         const provider = {
           id: document.getElementById('dlg_provider_id').value || 'custom-openai',
-          displayName: document.getElementById('dlg_display_name').value,
+          displayName: (document.getElementById('dlg_provider_id').value || 'custom-openai'),
           api: document.getElementById('dlg_api').value,
           baseUrl: document.getElementById('dlg_base_url').value,
           apiKey: document.getElementById('dlg_api_key').value,
@@ -1370,7 +1365,7 @@ cat <<'HTML'
         const secret = (data.dingtalk||{}).clientSecret || '';
         area.innerHTML = '<div class="field"><label>Client ID</label><input id="dlg_dd_clientId" value="'+esc(clientId)+'"></div><div class="field"><label>Client Secret</label><input id="dlg_dd_secret" type="password" value="'+esc(secret)+'"></div>';
       } else {
-        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;"><button class="btn" onclick="startWeixinLogin()">开始微信登录</button><button class="btn" onclick="pollWeixinLogin()">检查状态</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
+        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin()">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="pollWeixinLogin()">检查状态</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
       }
     }
     async function saveChannelDialog() {
@@ -1409,20 +1404,51 @@ cat <<'HTML'
     function getWeixinUiEls() {
       return {
         statusEl: document.getElementById('weixin_status'),
-        qrEl: document.getElementById('weixin_qr')
+        qrEl: document.getElementById('weixin_qr'),
+        startBtn: document.getElementById('btn_wx_start'),
+        pollBtn: document.getElementById('btn_wx_poll')
       };
     }
-    async function startWeixinLogin() {
+    function setWeixinBusy(mode, busy) {
+      const { startBtn, pollBtn } = getWeixinUiEls();
+      if (startBtn) {
+        startBtn.disabled = !!busy;
+        startBtn.textContent = (busy && mode === 'start') ? '登录中...' : '开始微信登录';
+      }
+      if (pollBtn) {
+        pollBtn.disabled = !!busy;
+        pollBtn.textContent = (busy && mode === 'poll') ? '查询中...' : '检查状态';
+      }
+    }
+    async function renderWeixinQr(qrUrl, qrEl) {
+      const qrProxy = API_BASE + 'weixin_qr_proxy&url=' + encodeURIComponent(qrUrl);
       try {
-        const data = await api('weixin_login_start', 'POST', {});
+        const resp = await fetch(qrProxy, { cache: 'no-store' });
+        const ctype = (resp.headers.get('content-type') || '').toLowerCase();
+        if (!resp.ok || !ctype.startsWith('image/')) {
+          const t = await resp.text();
+          throw new Error(t || ('二维码代理失败：HTTP ' + resp.status));
+        }
+        const blob = await resp.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><img src="' + esc(objectUrl) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" /><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a></div>';
+      } catch (e) {
+        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码内嵌加载失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
+        throw e;
+      }
+    }
+    async function startWeixinLogin() {
+      setWeixinBusy('start', true);
+      try {
         const { statusEl, qrEl } = getWeixinUiEls();
         if (!statusEl || !qrEl) {
           setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
           return;
         }
+        statusEl.textContent = '正在获取二维码...';
+        const data = await api('weixin_login_start', 'POST', {});
         if (data && data.qrUrl) {
-          const qrProxy = API_BASE + 'weixin_qr_proxy&url=' + encodeURIComponent(data.qrUrl);
-          qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><img src="' + esc(qrProxy) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" /><a class="btn" target="_blank" rel="noopener" href="' + esc(data.qrUrl) + '">新窗口打开二维码</a></div>';
+          await renderWeixinQr(data.qrUrl, qrEl);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
           setMsg('二维码已生成，请扫码登录。', 'ok');
@@ -1431,20 +1457,24 @@ cat <<'HTML'
           setMsg(data.message || data.error || '当前版本不支持微信扫码登录', data.supported === false ? '' : 'err');
         }
       } catch (e) { setMsg('微信登录启动失败：' + (e.message || e), 'err'); }
+      finally { setWeixinBusy('start', false); }
     }
     async function pollWeixinLogin() {
+      setWeixinBusy('poll', true);
       try {
         const sessionKey = window.__weixinSessionKey || '';
-        const data = await api('weixin_login_wait', 'POST', { sessionKey, timeoutMs: 1000 });
-        const msg = data.message || data.status || '未知状态';
         const { statusEl } = getWeixinUiEls();
         if (!statusEl) {
           setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
           return;
         }
+        statusEl.textContent = '正在查询登录状态...';
+        const data = await api('weixin_login_wait', 'POST', { sessionKey, timeoutMs: 1000 });
+        const msg = data.message || data.status || '未知状态';
         statusEl.textContent = msg;
         if (data.connected) setMsg('微信已连接', 'ok');
       } catch (e) { setMsg('查询微信状态失败：' + (e.message || e), 'err'); }
+      finally { setWeixinBusy('poll', false); }
     }
     async function disconnectWeixin() {
       try {
