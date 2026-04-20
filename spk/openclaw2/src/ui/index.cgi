@@ -1463,20 +1463,51 @@ cat <<'HTML'
         pollBtn.textContent = (busy && mode === 'poll') ? '查询中...' : '检查状态';
       }
     }
-    function openWeixinQrPopup(popup, title, dataUrl, qrUrl, note) {
-      const w = popup || window.open('', 'openclaw_weixin_qr', 'width=420,height=620,resizable=yes,scrollbars=yes');
-      if (!w) return false;
-      const safeTitle = esc(title || '微信扫码登录');
-      const safeNote = esc(note || '请使用微信扫码');
-      const safeDataUrl = esc(dataUrl || '');
-      const safeQrUrl = esc(qrUrl || '');
-      w.document.open();
-      w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + safeTitle + '</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:16px;margin:0}h3{margin:0 0 10px;font-size:16px}.hint{color:#667085;font-size:12px;margin:0 0 10px}.qr{max-width:320px;width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;box-sizing:border-box}.row{margin-top:10px}.btn{display:inline-block;border:1px solid #d0d5dd;border-radius:8px;padding:6px 10px;text-decoration:none;color:#111827}</style></head><body><h3>' + safeTitle + '</h3><p class="hint">' + safeNote + '</p>' + (safeDataUrl ? ('<img class="qr" src="' + safeDataUrl + '" />') : '<p class="hint">二维码加载中...</p>') + '<div class="row"><a class="btn" target="_blank" rel="noopener" href="' + safeQrUrl + '">新窗口打开二维码链接</a></div></body></html>');
-      w.document.close();
-      try { w.focus(); } catch (_) {}
-      return true;
+    function ensureWeixinQrModal() {
+      let mask = document.getElementById('weixinQrMask');
+      if (mask) return mask;
+      mask = document.createElement('div');
+      mask.id = 'weixinQrMask';
+      mask.className = 'modal-mask';
+      mask.innerHTML = ''
+        + '<div class="modal" style="width:min(460px,92vw);">'
+        + '  <h3 id="weixinQrTitle">微信扫码登录</h3>'
+        + '  <div id="weixinQrHint" style="font-size:12px;color:#667085;margin-bottom:8px;">请使用微信扫码</div>'
+        + '  <div id="weixinQrBody" style="text-align:center;"></div>'
+        + '  <div class="modal-actions">'
+        + '    <a id="weixinQrLink" class="btn" target="_blank" rel="noopener" href="#">新窗口打开二维码</a>'
+        + '    <button class="btn" onclick="closeWeixinQrModal()">关闭</button>'
+        + '  </div>'
+        + '</div>';
+      document.body.appendChild(mask);
+      return mask;
     }
-    async function renderWeixinQr(qrUrl, qrEl, popup) {
+    function closeWeixinQrModal() {
+      const mask = document.getElementById('weixinQrMask');
+      if (!mask) return;
+      mask.style.display = 'none';
+      document.body.classList.remove('modal-open');
+    }
+    function openWeixinQrModal(title, dataUrl, qrUrl, note) {
+      const mask = ensureWeixinQrModal();
+      const titleEl = document.getElementById('weixinQrTitle');
+      const hintEl = document.getElementById('weixinQrHint');
+      const bodyEl = document.getElementById('weixinQrBody');
+      const linkEl = document.getElementById('weixinQrLink');
+      if (titleEl) titleEl.textContent = title || '微信扫码登录';
+      if (hintEl) hintEl.textContent = note || '请使用微信扫码';
+      if (bodyEl) {
+        if (dataUrl) {
+          bodyEl.innerHTML = '<img src="' + esc(dataUrl) + '" style="max-width:320px;width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;box-sizing:border-box;" />';
+        } else {
+          bodyEl.innerHTML = '<div style="font-size:12px;color:#667085;">二维码加载中...</div>';
+        }
+      }
+      if (linkEl) linkEl.href = qrUrl || '#';
+      mask.style.display = 'flex';
+      document.body.classList.add('modal-open');
+    }
+    async function renderWeixinQr(qrUrl, qrEl) {
       try {
         const resp = await fetch(API_BASE + 'weixin_qr_data', {
           method: 'POST',
@@ -1490,8 +1521,8 @@ cat <<'HTML'
         }
         window.__weixinQrDataUrl = data.dataUrl;
         window.__weixinQrUrl = qrUrl;
-        openWeixinQrPopup(popup, '微信扫码登录', window.__weixinQrDataUrl, window.__weixinQrUrl, '请使用微信扫码完成登录');
-        qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><button class="btn" onclick="openWeixinQrPopup(null,\'微信扫码登录\', window.__weixinQrDataUrl, window.__weixinQrUrl, \'请使用微信扫码完成登录\')">弹出二维码窗口</button><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a></div>';
+        openWeixinQrModal('微信扫码登录', window.__weixinQrDataUrl, window.__weixinQrUrl, '请使用微信扫码完成登录');
+        qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><button class="btn" onclick="openWeixinQrModal(\'微信扫码登录\', window.__weixinQrDataUrl, window.__weixinQrUrl, \'请使用微信扫码完成登录\')">在当前页弹窗显示</button><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a></div>';
       } catch (e) {
         qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码内嵌加载失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
@@ -1506,13 +1537,10 @@ cat <<'HTML'
           return;
         }
         statusEl.textContent = '正在获取二维码...';
-        const popup = window.open('', 'openclaw_weixin_qr', 'width=420,height=620,resizable=yes,scrollbars=yes');
-        if (!popup) {
-          setMsg('浏览器拦截了弹窗，请先允许当前站点弹窗。', 'err');
-        }
+        openWeixinQrModal('微信扫码登录', '', '#', '正在获取二维码...');
         const data = await api('weixin_login_start', 'POST', {});
         if (data && data.qrUrl) {
-          await renderWeixinQr(data.qrUrl, qrEl, popup);
+          await renderWeixinQr(data.qrUrl, qrEl);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
           setMsg('二维码已生成，请扫码登录。', 'ok');
