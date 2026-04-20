@@ -888,34 +888,48 @@ PY
             body=$(read_body)
             qr_encoded=$(urldecode "$(get_param url "$QUERY")")
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body" "$qr_encoded"
-import sys, json, urllib.request, base64
-raw = sys.argv[1] if len(sys.argv) > 1 else ''
-query_url = sys.argv[2] if len(sys.argv) > 2 else ''
-url = query_url
-if raw:
-    try:
-        payload = json.loads(raw)
-        if isinstance(payload, dict) and payload.get('url'):
-            url = str(payload.get('url'))
-    except Exception:
-        pass
-if not url:
-    print(json.dumps({'ok': False, 'error': 'missing url'}, ensure_ascii=False))
-    raise SystemExit
-req = urllib.request.Request(url, headers={
-    'User-Agent': 'Mozilla/5.0',
-    'Referer': 'https://liteapp.weixin.qq.com/'
-})
-try:
-    with urllib.request.urlopen(req, timeout=20) as r:
-        ctype = (r.headers.get('Content-Type') or 'image/png').split(';')[0]
-        data = r.read()
-    b64 = base64.b64encode(data).decode('ascii')
-    print(json.dumps({'ok': True, 'contentType': ctype, 'dataUrl': f'data:{ctype};base64,{b64}'}, ensure_ascii=False))
-except Exception as e:
-    print(json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False))
-PY
+            /var/packages/openclaw2/target/bin/node - <<'NODE' "$body" "$qr_encoded"
+const fs = require('fs');
+const body = process.argv[2] || '';
+const queryUrl = process.argv[3] || '';
+let url = queryUrl;
+if (body) {
+  try {
+    const payload = JSON.parse(body);
+    if (payload && typeof payload.url === 'string' && payload.url) url = payload.url;
+  } catch {}
+}
+if (!url) {
+  process.stdout.write(JSON.stringify({ ok: false, error: 'missing url' }));
+  process.exit(0);
+}
+try {
+  const QRCode = require('/volume1/@appstore/openclaw2/app/openclaw/node_modules/qrcode-terminal/vendor/QRCode');
+  const qr = new QRCode(-1, 'M');
+  qr.addData(url);
+  qr.make();
+  const count = qr.getModuleCount();
+  const cell = 6;
+  const margin = 4;
+  const size = (count + margin * 2) * cell;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">`;
+  svg += `<rect width="100%" height="100%" fill="#ffffff"/>`;
+  for (let r = 0; r < count; r++) {
+    for (let c = 0; c < count; c++) {
+      if (qr.isDark(r, c)) {
+        const x = (c + margin) * cell;
+        const y = (r + margin) * cell;
+        svg += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" fill="#000000"/>`;
+      }
+    }
+  }
+  svg += '</svg>';
+  const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
+  process.stdout.write(JSON.stringify({ ok: true, contentType: 'image/svg+xml', dataUrl }));
+} catch (e) {
+  process.stdout.write(JSON.stringify({ ok: false, error: String(e && e.message || e) }));
+}
+NODE
             exit 0
             ;;
         *)
@@ -1554,33 +1568,19 @@ cat <<'HTML'
       mask.style.display = 'flex';
       document.body.classList.add('modal-open');
     }
-    async function ensureQrLib() {
-      if (window.QRCode && typeof window.QRCode.toDataURL === 'function') return;
-      if (window.__weixinQrLibLoading) {
-        await window.__weixinQrLibLoading;
-        return;
-      }
-      window.__weixinQrLibLoading = new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js';
-        s.async = true;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error('二维码库加载失败'));
-        document.head.appendChild(s);
-      });
-      await window.__weixinQrLibLoading;
-    }
-    async function buildQrDataUrl(text) {
-      await ensureQrLib();
-      return await window.QRCode.toDataURL(text, {
-        width: 320,
-        margin: 1,
-        errorCorrectionLevel: 'M'
-      });
-    }
     async function renderWeixinQr(qrUrl, qrEl) {
       try {
-        const dataUrl = await buildQrDataUrl(qrUrl);
+        const resp = await fetch(API_BASE + 'weixin_qr_data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: qrUrl }),
+          cache: 'no-store'
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data || !data.ok || !data.dataUrl) {
+          throw new Error((data && data.error) || ('二维码生成失败：HTTP ' + resp.status));
+        }
+        const dataUrl = data.dataUrl;
         window.__weixinQrDataUrl = dataUrl;
         window.__weixinQrUrl = qrUrl;
         openWeixinQrModal('微信扫码登录', window.__weixinQrDataUrl, window.__weixinQrUrl, '请使用微信扫码完成登录');
