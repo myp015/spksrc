@@ -491,45 +491,99 @@ PY
             ;;
         weixin_login_start)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json"
-import json, os, re, subprocess, sys
+            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log"
+import json, os, re, subprocess, sys, time, select
 home_dir = sys.argv[1]
 cfg_path = sys.argv[2]
+debug_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-weixin-login.log'
+start_ts = time.time()
+
+def log(msg):
+    try:
+        os.makedirs(os.path.dirname(debug_log), exist_ok=True)
+        with open(debug_log, 'a', encoding='utf-8') as f:
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+    except Exception:
+        pass
+
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+log('weixin_login_start begin')
 # 先确保插件已启用，避免 Unsupported channel（超时不阻断扫码流程）
 bootstrap_log = ''
+bootstrap_begin = time.time()
 try:
     pp = subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'plugins', 'enable', 'openclaw-weixin'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
     bootstrap_log = (pp.stdout or b'').decode('utf-8', 'ignore')
+    log(f'plugin_enable_ms={int((time.time()-bootstrap_begin)*1000)} rc={pp.returncode}')
 except Exception as e:
     bootstrap_log = f'plugins enable skipped: {e}'
+    log(f'plugin_enable_error_ms={int((time.time()-bootstrap_begin)*1000)} err={e}')
 
 cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
 text = ''
+url = None
+login_begin = time.time()
+proc = None
 try:
-    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
-    text = (p.stdout or b'').decode('utf-8', 'ignore')
-except subprocess.TimeoutExpired as e:
-    text = ((e.stdout or b'') + (e.stderr or b'')).decode('utf-8', 'ignore')
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', bufsize=1)
+    deadline = time.time() + 75
+    lines = []
+    while time.time() < deadline:
+        if proc.stdout is None:
+            break
+        r, _, _ = select.select([proc.stdout], [], [], 0.5)
+        if not r:
+            if proc.poll() is not None:
+                break
+            continue
+        line = proc.stdout.readline()
+        if not line:
+            if proc.poll() is not None:
+                break
+            continue
+        lines.append(line)
+        if len(lines) > 400:
+            lines = lines[-400:]
+        text = ''.join(lines)
+        m = re.search(r'https://liteapp\.weixin\.qq\.com/q/\S+', line)
+        if not m:
+            m = re.search(r'https://[^\s\"]*weixin[^\s\"]*', line, re.I)
+        if m:
+            url = m.group(0)
+            log(f'qr_url_detected_ms={int((time.time()-login_begin)*1000)} url={url}')
+            break
+    if not url and proc.stdout is not None:
+        rest = proc.stdout.read() or ''
+        lines.append(rest)
+        text = ''.join(lines)
+        m = re.search(r'https://liteapp\.weixin\.qq\.com/q/\S+', text)
+        if not m:
+            m = re.search(r'https://[^\s\"]*weixin[^\s\"]*', text, re.I)
+        if m:
+            url = m.group(0)
+            log(f'qr_url_detected_after_drain_ms={int((time.time()-login_begin)*1000)} url={url}')
 except Exception as e:
     text = str(e)
-url = None
-m = re.search(r'https://liteapp\.weixin\.qq\.com/q/\S+', text)
-if m:
-    url = m.group(0)
-if not url:
-    m2 = re.search(r'https://[^\s\"]*weixin[^\s\"]*', text, re.I)
-    if m2:
-        url = m2.group(0)
+    log(f'login_exception_ms={int((time.time()-login_begin)*1000)} err={e}')
+finally:
+    if proc and proc.poll() is None:
+        try:
+            proc.kill()
+            log(f'login_proc_killed_ms={int((time.time()-login_begin)*1000)}')
+        except Exception:
+            pass
+
 if url:
-    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录'}, ensure_ascii=False))
+    log(f'return_ms={int((time.time()-start_ts)*1000)} success=1')
+    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录', 'debugLog': debug_log}, ensure_ascii=False))
 else:
-    print(json.dumps({'supported': False, 'message': '未获取到二维码，请重试并确认 openclaw-weixin 已启用', 'raw': (bootstrap_log + '\n' + text)[-1500:]}, ensure_ascii=False))
+    log(f'return_ms={int((time.time()-start_ts)*1000)} success=0')
+    print(json.dumps({'supported': False, 'message': '未获取到二维码，请重试并确认 openclaw-weixin 已启用', 'raw': (bootstrap_log + '\n' + text)[-2000:], 'debugLog': debug_log}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -1507,24 +1561,39 @@ cat <<'HTML'
       mask.style.display = 'flex';
       document.body.classList.add('modal-open');
     }
+    async function ensureQrLib() {
+      if (window.QRCode && typeof window.QRCode.toDataURL === 'function') return;
+      if (window.__weixinQrLibLoading) {
+        await window.__weixinQrLibLoading;
+        return;
+      }
+      window.__weixinQrLibLoading = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js';
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('二维码库加载失败'));
+        document.head.appendChild(s);
+      });
+      await window.__weixinQrLibLoading;
+    }
+    async function buildQrDataUrl(text) {
+      await ensureQrLib();
+      return await window.QRCode.toDataURL(text, {
+        width: 320,
+        margin: 1,
+        errorCorrectionLevel: 'M'
+      });
+    }
     async function renderWeixinQr(qrUrl, qrEl) {
       try {
-        const resp = await fetch(API_BASE + 'weixin_qr_data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: qrUrl }),
-          cache: 'no-store'
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data || !data.ok || !data.dataUrl) {
-          throw new Error((data && data.error) || ('二维码数据获取失败：HTTP ' + resp.status));
-        }
-        window.__weixinQrDataUrl = data.dataUrl;
+        const dataUrl = await buildQrDataUrl(qrUrl);
+        window.__weixinQrDataUrl = dataUrl;
         window.__weixinQrUrl = qrUrl;
         openWeixinQrModal('微信扫码登录', window.__weixinQrDataUrl, window.__weixinQrUrl, '请使用微信扫码完成登录');
         qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><button class="btn" onclick="openWeixinQrModal(\'微信扫码登录\', window.__weixinQrDataUrl, window.__weixinQrUrl, \'请使用微信扫码完成登录\')">在当前页弹窗显示</button><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a></div>';
       } catch (e) {
-        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码内嵌加载失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
+        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码生成失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
       }
     }
@@ -1546,7 +1615,8 @@ cat <<'HTML'
           setMsg('二维码已生成，请扫码登录。', 'ok');
         } else {
           statusEl.textContent = data.message || data.error || '当前版本不支持微信扫码登录';
-          setMsg(data.message || data.error || '当前版本不支持微信扫码登录', data.supported === false ? '' : 'err');
+          const extra = data && data.debugLog ? ('（调试日志：' + data.debugLog + '）') : '';
+          setMsg((data.message || data.error || '当前版本不支持微信扫码登录') + extra, data.supported === false ? '' : 'err');
         }
       } catch (e) { setMsg('微信登录启动失败：' + (e.message || e), 'err'); }
       finally { setWeixinBusy('start', false); }
