@@ -837,6 +837,40 @@ except Exception as e:
 PY
             exit 0
             ;;
+        weixin_qr_data)
+            body=$(read_body)
+            qr_encoded=$(urldecode "$(get_param url "$QUERY")")
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body" "$qr_encoded"
+import sys, json, urllib.request, base64
+raw = sys.argv[1] if len(sys.argv) > 1 else ''
+query_url = sys.argv[2] if len(sys.argv) > 2 else ''
+url = query_url
+if raw:
+    try:
+        payload = json.loads(raw)
+        if isinstance(payload, dict) and payload.get('url'):
+            url = str(payload.get('url'))
+    except Exception:
+        pass
+if not url:
+    print(json.dumps({'ok': False, 'error': 'missing url'}, ensure_ascii=False))
+    raise SystemExit
+req = urllib.request.Request(url, headers={
+    'User-Agent': 'Mozilla/5.0',
+    'Referer': 'https://liteapp.weixin.qq.com/'
+})
+try:
+    with urllib.request.urlopen(req, timeout=20) as r:
+        ctype = (r.headers.get('Content-Type') or 'image/png').split(';')[0]
+        data = r.read()
+    b64 = base64.b64encode(data).decode('ascii')
+    print(json.dumps({'ok': True, 'contentType': ctype, 'dataUrl': f'data:{ctype};base64,{b64}'}, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
         *)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             printf '{"error":"unknown action"}'
@@ -1429,22 +1463,35 @@ cat <<'HTML'
         pollBtn.textContent = (busy && mode === 'poll') ? '查询中...' : '检查状态';
       }
     }
-    async function renderWeixinQr(qrUrl, qrEl) {
+    function openWeixinQrPopup(popup, title, dataUrl, qrUrl, note) {
+      const w = popup || window.open('', 'openclaw_weixin_qr', 'width=420,height=620,resizable=yes,scrollbars=yes');
+      if (!w) return false;
+      const safeTitle = esc(title || '微信扫码登录');
+      const safeNote = esc(note || '请使用微信扫码');
+      const safeDataUrl = esc(dataUrl || '');
+      const safeQrUrl = esc(qrUrl || '');
+      w.document.open();
+      w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + safeTitle + '</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:16px;margin:0}h3{margin:0 0 10px;font-size:16px}.hint{color:#667085;font-size:12px;margin:0 0 10px}.qr{max-width:320px;width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;box-sizing:border-box}.row{margin-top:10px}.btn{display:inline-block;border:1px solid #d0d5dd;border-radius:8px;padding:6px 10px;text-decoration:none;color:#111827}</style></head><body><h3>' + safeTitle + '</h3><p class="hint">' + safeNote + '</p>' + (safeDataUrl ? ('<img class="qr" src="' + safeDataUrl + '" />') : '<p class="hint">二维码加载中...</p>') + '<div class="row"><a class="btn" target="_blank" rel="noopener" href="' + safeQrUrl + '">新窗口打开二维码链接</a></div></body></html>');
+      w.document.close();
+      try { w.focus(); } catch (_) {}
+      return true;
+    }
+    async function renderWeixinQr(qrUrl, qrEl, popup) {
       try {
-        const resp = await fetch(API_BASE + 'weixin_qr_proxy', {
+        const resp = await fetch(API_BASE + 'weixin_qr_data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: qrUrl }),
           cache: 'no-store'
         });
-        const ctype = (resp.headers.get('content-type') || '').toLowerCase();
-        if (!resp.ok || !ctype.startsWith('image/')) {
-          const t = await resp.text();
-          throw new Error(t || ('二维码代理失败：HTTP ' + resp.status));
+        const data = await resp.json();
+        if (!resp.ok || !data || !data.ok || !data.dataUrl) {
+          throw new Error((data && data.error) || ('二维码数据获取失败：HTTP ' + resp.status));
         }
-        const blob = await resp.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><img src="' + esc(objectUrl) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" /><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a></div>';
+        window.__weixinQrDataUrl = data.dataUrl;
+        window.__weixinQrUrl = qrUrl;
+        openWeixinQrPopup(popup, '微信扫码登录', window.__weixinQrDataUrl, window.__weixinQrUrl, '请使用微信扫码完成登录');
+        qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><button class="btn" onclick="openWeixinQrPopup(null,\'微信扫码登录\', window.__weixinQrDataUrl, window.__weixinQrUrl, \'请使用微信扫码完成登录\')">弹出二维码窗口</button><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a></div>';
       } catch (e) {
         qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码内嵌加载失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
@@ -1459,9 +1506,13 @@ cat <<'HTML'
           return;
         }
         statusEl.textContent = '正在获取二维码...';
+        const popup = window.open('', 'openclaw_weixin_qr', 'width=420,height=620,resizable=yes,scrollbars=yes');
+        if (!popup) {
+          setMsg('浏览器拦截了弹窗，请先允许当前站点弹窗。', 'err');
+        }
         const data = await api('weixin_login_start', 'POST', {});
         if (data && data.qrUrl) {
-          await renderWeixinQr(data.qrUrl, qrEl);
+          await renderWeixinQr(data.qrUrl, qrEl, popup);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
           setMsg('二维码已生成，请扫码登录。', 'ok');
@@ -1496,6 +1547,8 @@ cat <<'HTML'
         if (statusEl) statusEl.textContent = '已断开';
         if (qrEl) qrEl.innerHTML = '';
         window.__weixinSessionKey = '';
+        window.__weixinQrDataUrl = '';
+        window.__weixinQrUrl = '';
         setMsg('微信已断开', 'ok');
       } catch (e) { setMsg('断开微信失败：' + (e.message || e), 'err'); }
     }
