@@ -324,10 +324,21 @@ try:
 except Exception:
     cfg = {}
 ch = cfg.get('channels') or {}
+
+def enabled_ids(channels):
+  ids = []
+  for cid, cv in (channels or {}).items():
+    if isinstance(cv, dict):
+      if cv.get('enabled', True):
+        ids.append(cid)
+    else:
+      ids.append(cid)
+  return ids
+
 out = {
   'configPath': cfg_path,
   'configExists': bool(cfg),
-  'configuredChannelIds': list(ch.keys()),
+  'configuredChannelIds': enabled_ids(ch),
   'feishu': ch.get('feishu') or {},
   'wecom': ch.get('wecom') or {},
   'dingtalk': ch.get('dingtalk') or {},
@@ -389,18 +400,33 @@ if isinstance(payload.get('qqbot'), dict):
     if aid: q['appId'] = aid
     if sec: q['clientSecret'] = sec
     q['enabled'] = True; q['dmPolicy']='open'; q['groupPolicy']='open'; q['allowFrom']=['*']
+if isinstance(payload.get('weixin'), dict):
+    w = ch.setdefault('openclaw-weixin', {})
+    w['enabled'] = bool(payload['weixin'].get('enabled', True))
+
+def enabled_ids(channels):
+    ids = []
+    for cid, cv in (channels or {}).items():
+        if isinstance(cv, dict):
+            if cv.get('enabled', True):
+                ids.append(cid)
+        else:
+            ids.append(cid)
+    return ids
+
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
+channels_obj = (cfg.get('channels') or {})
 out = {
   'configPath': cfg_path, 'configExists': True,
-  'configuredChannelIds': list((cfg.get('channels') or {}).keys()),
-  'feishu': (cfg.get('channels') or {}).get('feishu') or {},
-  'wecom': (cfg.get('channels') or {}).get('wecom') or {},
-  'dingtalk': (cfg.get('channels') or {}).get('dingtalk') or {},
-  'qqbot': (cfg.get('channels') or {}).get('qqbot') or {},
-  'weixin': (cfg.get('channels') or {}).get('weixin') or {}
+  'configuredChannelIds': enabled_ids(channels_obj),
+  'feishu': channels_obj.get('feishu') or {},
+  'wecom': channels_obj.get('wecom') or {},
+  'dingtalk': channels_obj.get('dingtalk') or {},
+  'qqbot': channels_obj.get('qqbot') or {},
+  'weixin': channels_obj.get('weixin') or {}
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -425,19 +451,34 @@ except Exception:
     cfg = {}
 ch = cfg.setdefault('channels', {})
 if cid and cid in ch:
-    del ch[cid]
+    if isinstance(ch.get(cid), dict):
+        ch[cid]['enabled'] = False
+    else:
+        ch[cid] = {'enabled': False}
+
+def enabled_ids(channels):
+    ids = []
+    for k, v in (channels or {}).items():
+        if isinstance(v, dict):
+            if v.get('enabled', True):
+                ids.append(k)
+        else:
+            ids.append(k)
+    return ids
+
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
+channels_obj = (cfg.get('channels') or {})
 out = {
   'configPath': cfg_path, 'configExists': True,
-  'configuredChannelIds': list((cfg.get('channels') or {}).keys()),
-  'feishu': (cfg.get('channels') or {}).get('feishu') or {},
-  'wecom': (cfg.get('channels') or {}).get('wecom') or {},
-  'dingtalk': (cfg.get('channels') or {}).get('dingtalk') or {},
-  'qqbot': (cfg.get('channels') or {}).get('qqbot') or {},
-  'weixin': (cfg.get('channels') or {}).get('weixin') or {}
+  'configuredChannelIds': enabled_ids(channels_obj),
+  'feishu': channels_obj.get('feishu') or {},
+  'wecom': channels_obj.get('wecom') or {},
+  'dingtalk': channels_obj.get('dingtalk') or {},
+  'qqbot': channels_obj.get('qqbot') or {},
+  'weixin': channels_obj.get('weixin') or {}
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -542,6 +583,22 @@ cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--c
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
     text = (p.stdout or b'').decode('utf-8', 'ignore')
+    # 同步禁用配置中的 weixin 渠道（若存在）
+    try:
+        cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
+    except Exception:
+        cfg = {}
+    ch = cfg.setdefault('channels', {})
+    for key in ('openclaw-weixin', 'weixin'):
+        if key in ch:
+            if isinstance(ch[key], dict):
+                ch[key]['enabled'] = False
+            else:
+                ch[key] = {'enabled': False}
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+    with open(cfg_path, 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+        f.write('\n')
     print(json.dumps({'supported': True, 'ok': p.returncode == 0, 'message': '已断开' if p.returncode == 0 else '断开失败', 'raw': text[-300:]}, ensure_ascii=False))
 except Exception as e:
     print(json.dumps({'supported': False, 'ok': False, 'message': str(e)}, ensure_ascii=False))
@@ -745,6 +802,32 @@ PY
             printf '{"log":"%s","source":"%s"}' "$logs_json" "$src_json"
             exit 0
             ;;
+        weixin_qr_proxy)
+            qr_encoded=$(urldecode "$(get_param url "$QUERY")")
+            if [ -z "$qr_encoded" ]; then
+                printf 'Status: 400 Bad Request\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nmissing url'
+                exit 0
+            fi
+            python3 - <<'PY' "$qr_encoded"
+import sys, urllib.request
+url = sys.argv[1]
+req = urllib.request.Request(url, headers={
+    'User-Agent': 'Mozilla/5.0',
+    'Referer': 'https://liteapp.weixin.qq.com/'
+})
+try:
+    with urllib.request.urlopen(req, timeout=20) as r:
+        ctype = r.headers.get('Content-Type') or 'image/png'
+        data = r.read()
+    sys.stdout.write(f'Content-Type: {ctype}\\r\\nCache-Control: no-store\\r\\n\\r\\n')
+    sys.stdout.flush()
+    sys.stdout.buffer.write(data)
+except Exception as e:
+    sys.stdout.write('Status: 502 Bad Gateway\\r\\nContent-Type: text/plain; charset=UTF-8\\r\\n\\r\\n')
+    sys.stdout.write('qr proxy failed: ' + str(e))
+PY
+            exit 0
+            ;;
         *)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             printf '{"error":"unknown action"}'
@@ -798,8 +881,8 @@ cat <<'HTML'
     .item-meta { font-size:12px; color:#667085; margin-bottom:8px; }
     .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:12px; }
-    .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:flex-start; justify-content:center; z-index:9999; overflow:hidden; padding:32px 0; }
-    .modal { width:min(700px,90vw); max-height:none; overflow:visible; background:#fff; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:9999; overflow:hidden; padding:16px; }
+    .modal { width:min(700px,90vw); max-height:calc(100vh - 32px); overflow:auto; background:#fff; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
     .modal h3 { margin:0 0 14px; font-size:18px; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   </style>
@@ -932,14 +1015,14 @@ cat <<'HTML'
             + '  <button class="btn" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
-            + '  <button class="btn" onclick="openUserSettingsDialog()">用户设置</button>'
+            + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>'
             + '<div class="modal-mask" id="userSettingsMask">'
             + '  <div class="modal">'
-            + '    <h3>用户设置</h3>'
-            + '    <div class="field"><label>Workspace</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/docker/openclaw') + '" placeholder="/volume1/docker/openclaw"></div>'
+            + '    <h3>用户目录设置</h3>'
+            + '    <div class="field"><label>用户目录</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/docker/openclaw') + '" placeholder="/volume1/docker/openclaw"></div>'
             + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="closeUserSettingsDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveWorkspaceQuick();closeUserSettingsDialog();">保存</button>'
@@ -1314,8 +1397,7 @@ cat <<'HTML'
         if (!clientId || !clientSecret) { setMsg('钉钉 Client ID / Client Secret 不能为空', 'err'); return; }
         payload = { dingtalk: { clientId, clientSecret } };
       } else {
-        setMsg('微信渠道请使用扫码按钮完成登录。', 'ok');
-        return;
+        payload = { weixin: { enabled: true } };
       }
       try {
         await api('channels_save', 'POST', payload);
@@ -1339,7 +1421,8 @@ cat <<'HTML'
           return;
         }
         if (data && data.qrUrl) {
-          qrEl.innerHTML = '<img src="' + esc(data.qrUrl) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" />';
+          const qrProxy = API_BASE + 'weixin_qr_proxy&url=' + encodeURIComponent(data.qrUrl);
+          qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><img src="' + esc(qrProxy) + '" style="max-width:220px;border:1px solid #e5e7eb;border-radius:8px;padding:6px;background:#fff;" /><a class="btn" target="_blank" rel="noopener" href="' + esc(data.qrUrl) + '">新窗口打开二维码</a></div>';
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
           setMsg('二维码已生成，请扫码登录。', 'ok');

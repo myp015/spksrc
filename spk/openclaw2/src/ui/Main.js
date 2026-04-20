@@ -13,7 +13,7 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
     constructor: function(cfg) {
         this.appInstance = cfg.appInstance;
 
-        // Fallback ui launcher: open panel directly on 18700.
+        // Launch via DSM 3rdparty proxy entry.
         var monitorUrl = '/webman/3rdparty/openclaw2/index.cgi';
 
         var config = Ext.apply({
