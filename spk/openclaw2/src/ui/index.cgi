@@ -840,6 +840,47 @@ cat <<'HTML'
     let currentTab = 'status';
     let statusLine = '';
     let logsTimer = null;
+    window.__openclaw2ClientErrors = [];
+
+    function captureClientError(type, payload) {
+      try {
+        const rec = {
+          ts: new Date().toISOString(),
+          type,
+          payload: payload || {}
+        };
+        window.__openclaw2ClientErrors.push(rec);
+        if (window.__openclaw2ClientErrors.length > 50) window.__openclaw2ClientErrors.shift();
+        const text = JSON.stringify(rec);
+        if (console && console.error) console.error('[openclaw2-ui-error]', text);
+        const merged = (rec.payload && (rec.payload.message || '')) + '\n' + (rec.payload && (rec.payload.stack || ''));
+        if (/flexcroll|document\.write|asynchronously-loaded external script/i.test(merged)) {
+          setMsg('检测到 DSM 内置 flexcroll 脚本兼容报错（document.write 异步限制）。已记录错误详情，可继续使用当前页面功能。', 'err');
+        }
+      } catch (_) {}
+    }
+
+    window.openclaw2ClientErrors = function () {
+      return (window.__openclaw2ClientErrors || []).slice();
+    };
+
+    window.addEventListener('error', function (ev) {
+      captureClientError('error', {
+        message: ev && ev.message,
+        filename: ev && ev.filename,
+        lineno: ev && ev.lineno,
+        colno: ev && ev.colno,
+        stack: ev && ev.error && ev.error.stack ? String(ev.error.stack) : ''
+      });
+    });
+
+    window.addEventListener('unhandledrejection', function (ev) {
+      const reason = ev && ev.reason;
+      captureClientError('unhandledrejection', {
+        message: reason && reason.message ? String(reason.message) : String(reason || ''),
+        stack: reason && reason.stack ? String(reason.stack) : ''
+      });
+    });
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
