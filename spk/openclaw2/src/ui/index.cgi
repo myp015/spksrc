@@ -803,21 +803,30 @@ PY
             exit 0
             ;;
         weixin_qr_proxy)
+            body=$(read_body)
             qr_encoded=$(urldecode "$(get_param url "$QUERY")")
-            if [ -z "$qr_encoded" ]; then
-                printf 'Status: 400 Bad Request\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nmissing url'
-                exit 0
-            fi
-            python3 - <<'PY' "$qr_encoded"
-import sys, urllib.request
-url = sys.argv[1]
+            python3 - <<'PY' "$body" "$qr_encoded"
+import sys, json, urllib.request
+raw = sys.argv[1] if len(sys.argv) > 1 else ''
+query_url = sys.argv[2] if len(sys.argv) > 2 else ''
+url = query_url
+if raw:
+    try:
+        payload = json.loads(raw)
+        if isinstance(payload, dict) and payload.get('url'):
+            url = str(payload.get('url'))
+    except Exception:
+        pass
+if not url:
+    sys.stdout.write('Status: 400 Bad Request\\r\\nContent-Type: text/plain; charset=UTF-8\\r\\n\\r\\nmissing url')
+    raise SystemExit
 req = urllib.request.Request(url, headers={
     'User-Agent': 'Mozilla/5.0',
     'Referer': 'https://liteapp.weixin.qq.com/'
 })
 try:
     with urllib.request.urlopen(req, timeout=20) as r:
-        ctype = r.headers.get('Content-Type') or 'image/png'
+        ctype = (r.headers.get('Content-Type') or 'image/png').split(';')[0]
         data = r.read()
     sys.stdout.write(f'Content-Type: {ctype}\\r\\nCache-Control: no-store\\r\\n\\r\\n')
     sys.stdout.flush()
@@ -1421,9 +1430,13 @@ cat <<'HTML'
       }
     }
     async function renderWeixinQr(qrUrl, qrEl) {
-      const qrProxy = API_BASE + 'weixin_qr_proxy&url=' + encodeURIComponent(qrUrl);
       try {
-        const resp = await fetch(qrProxy, { cache: 'no-store' });
+        const resp = await fetch(API_BASE + 'weixin_qr_proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: qrUrl }),
+          cache: 'no-store'
+        });
         const ctype = (resp.headers.get('content-type') || '').toLowerCase();
         if (!resp.ok || !ctype.startsWith('image/')) {
           const t = await resp.text();
