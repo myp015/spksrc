@@ -513,16 +513,9 @@ env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 log('weixin_login_start begin')
-# 先确保插件已启用，避免 Unsupported channel（超时不阻断扫码流程）
-bootstrap_log = ''
-bootstrap_begin = time.time()
-try:
-    pp = subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'plugins', 'enable', 'openclaw-weixin'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
-    bootstrap_log = (pp.stdout or b'').decode('utf-8', 'ignore')
-    log(f'plugin_enable_ms={int((time.time()-bootstrap_begin)*1000)} rc={pp.returncode}')
-except Exception as e:
-    bootstrap_log = f'plugins enable skipped: {e}'
-    log(f'plugin_enable_error_ms={int((time.time()-bootstrap_begin)*1000)} err={e}')
+# 插件启用已在安装/现网阶段完成；这里不再每次阻塞执行 enable，避免固定多卡 10 秒。
+bootstrap_log = 'plugin enable skipped (assume already enabled)'
+log('plugin_enable_skipped=1')
 
 cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
 text = ''
