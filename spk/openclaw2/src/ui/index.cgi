@@ -1033,19 +1033,6 @@ fin = open(fifo, 'rb', buffering=0)
 fout = open(log, 'ab', buffering=0)
 # 使用非 login 交互 shell，保留注入 PATH，避免 profile 覆盖导致 openclaw 不可用。
 shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=env['HOME'], env=env, start_new_session=True)
-# 会话内增加 openclaw 回退函数：PATH 失效时自动尝试 sudo + 绝对路径。
-try:
-    init = (
-      'openclaw(){ '
-      'if command -v openclaw >/dev/null 2>&1; then command openclaw "$@"; '
-      'elif [ -x /var/packages/openclaw2/target/bin/openclaw ]; then sudo -n /var/packages/openclaw2/target/bin/openclaw "$@" || /var/packages/openclaw2/target/bin/openclaw "$@"; '
-      'elif [ -x /var/packages/openclaw/target/bin/openclaw ]; then sudo -n /var/packages/openclaw/target/bin/openclaw "$@" || /var/packages/openclaw/target/bin/openclaw "$@"; '
-      'else echo "openclaw: command not found"; fi; }; export -f openclaw\n'
-    )
-    with open(fifo, 'wb', buffering=0) as wf:
-        wf.write(init.encode('utf-8', 'ignore'))
-except Exception:
-    pass
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
