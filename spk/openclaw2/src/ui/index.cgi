@@ -1110,7 +1110,14 @@ try:
       alive = True
 except Exception:
     alive = False
-print(json.dumps({'ok': True, 'output': data.decode('utf-8', 'ignore'), 'nextOffset': next_offset, 'alive': alive}, ensure_ascii=False))
+cwd = ''
+try:
+    if os.path.exists(pid_file):
+        pid = int((open(pid_file, 'r', encoding='utf-8').read() or '0').strip() or '0')
+        cwd = os.path.realpath(f'/proc/{pid}/cwd') if pid > 0 else ''
+except Exception:
+    cwd = ''
+print(json.dumps({'ok': True, 'output': data.decode('utf-8', 'ignore'), 'nextOffset': next_offset, 'alive': alive, 'cwd': cwd}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -1826,6 +1833,7 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
+            + '  <div id="terminal_cwd" style="font-size:13px;color:#667085;">当前目录：-</div>'
             + '  <div style="display:flex;gap:8px;align-items:center;">'
             + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
             + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
@@ -2770,6 +2778,8 @@ cat <<'HTML'
           pre.textContent += sanitizeTerminalText(ret.output);
           pre.scrollTop = pre.scrollHeight;
         }
+        const cwdEl = document.getElementById('terminal_cwd');
+        if (cwdEl && ret.cwd) cwdEl.textContent = '当前目录：' + ret.cwd;
         if (ret.alive === false && terminalPollTimer) {
           clearInterval(terminalPollTimer);
           terminalPollTimer = null;
