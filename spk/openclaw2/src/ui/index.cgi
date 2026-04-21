@@ -513,11 +513,27 @@ env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 log('weixin_login_start begin')
-# 插件启用已在安装/现网阶段完成；这里不再每次阻塞执行 enable，避免固定多卡 10 秒。
-bootstrap_log = 'plugin enable skipped (assume already enabled)'
-log('plugin_enable_skipped=1')
+# 后台默认启用 openclaw-weixin，避免首次登录前还要额外 enable 导致慢启动。
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
+except Exception:
+    cfg = {}
+chs = cfg.setdefault('channels', {})
+for key in ('weixin', 'openclaw-weixin'):
+    wx = chs.get(key)
+    if not isinstance(wx, dict):
+        wx = {}
+    wx['enabled'] = True
+    chs[key] = wx
+os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+with open(cfg_path, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+    f.write('\n')
+bootstrap_log = 'plugin enable skipped; openclaw-weixin forced enabled in config'
+log('plugin_enable_skipped=1 weixin_forced_enabled=1')
 
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
+# 新版 openclaw CLI 使用 weixin；保留旧键兼容在状态解析中处理。
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'weixin', '--verbose']
 text = ''
 url = None
 login_begin = time.time()
@@ -616,8 +632,10 @@ connected = False
 message = '等待扫码确认'
 try:
     j = json.loads(text)
-    ch = (j.get('channels') or {}).get('openclaw-weixin') or {}
-    accs = (j.get('channelAccounts') or {}).get('openclaw-weixin') or []
+    channels = (j.get('channels') or {})
+    account_map = (j.get('channelAccounts') or {})
+    ch = channels.get('weixin') or channels.get('openclaw-weixin') or {}
+    accs = account_map.get('weixin') or account_map.get('openclaw-weixin') or []
     connected = bool(ch.get('configured')) or any(bool((a or {}).get('configured')) for a in accs)
     message = '已连接' if connected else '等待扫码确认'
 except Exception:
@@ -638,7 +656,7 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'weixin']
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
     text = (p.stdout or b'').decode('utf-8', 'ignore')
@@ -1554,21 +1572,20 @@ cat <<'HTML'
     }
     async function renderWeixinQr(qrUrl, qrEl) {
       try {
-        const resp = await fetch(API_BASE + 'weixin_qr_data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: qrUrl }),
-          cache: 'no-store'
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data || !data.ok || !data.dataUrl) {
-          throw new Error((data && data.error) || ('二维码生成失败：HTTP ' + resp.status));
-        }
-        const dataUrl = data.dataUrl;
-        window.__weixinQrDataUrl = dataUrl;
+        // 方案改为与固定测试二维码一致：直接内嵌微信返回的二维码页面 URL，避免本地二维码算法报错。
+        window.__weixinQrDataUrl = '';
         window.__weixinQrUrl = qrUrl;
-        console.info('[channels:weixin:inline-qr]', { hasDataUrl: !!dataUrl, qrUrl: qrUrl });
-        renderWeixinQrInline(window.__weixinQrDataUrl, window.__weixinQrUrl, qrEl, '请使用微信扫码完成登录');
+        console.info('[channels:weixin:inline-qr:url-embed]', { qrUrl: qrUrl });
+        qrEl.innerHTML = ''
+          + '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">'
+          + '  <div style="font-size:12px;color:#667085;">请使用微信扫码完成登录（页面内嵌）</div>'
+          + '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px;">'
+          + '    <iframe src="' + esc(qrUrl) + '" style="width:320px;height:420px;border:0;display:block;background:#fff;" referrerpolicy="no-referrer"></iframe>'
+          + '  </div>'
+          + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+          + '    <a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>'
+          + '  </div>'
+          + '</div>';
       } catch (e) {
         console.error('[channels:weixin:inline-qr:error]', e);
         qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码生成失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
