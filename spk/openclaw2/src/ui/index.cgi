@@ -988,7 +988,7 @@ PY
         terminal_session_start)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "${APP_VAR_DIR}"
-import json, os, signal, subprocess, sys, time
+import json, os, signal, socket, subprocess, sys, time
 base = (sys.argv[1] if len(sys.argv) > 1 else '/tmp').rstrip('/')
 term_root = os.path.join(base, 'terminal-sessions')
 os.makedirs(term_root, exist_ok=True)
@@ -1055,7 +1055,11 @@ try:
     user = subprocess.check_output(['id','-un'], text=True).strip()
 except Exception:
     user = ''
-print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'cwd': workspace_dir}, ensure_ascii=False))
+try:
+    host = socket.gethostname()
+except Exception:
+    host = ''
+print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'host': host, 'cwd': workspace_dir}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -2776,7 +2780,9 @@ cat <<'HTML'
         terminalSessionId = ret.sessionId || '';
         terminalOffset = Number(ret.offset || 0);
         const initCwd = (ret.cwd || '/volume1/@appdata/openclaw2/data/home');
-        pre.textContent = '[cwd] ' + initCwd + '\n';
+        const initUser = (ret.user || 'root');
+        const initHost = (ret.host || 'localhost');
+        pre.textContent = initUser + '@' + initHost + ':' + initCwd + '$\n';
         const cwdEl = document.getElementById('terminal_cwd');
         if (cwdEl) cwdEl.textContent = '当前目录：' + initCwd;
       }
