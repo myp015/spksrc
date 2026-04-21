@@ -1008,11 +1008,13 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-env['PS1'] = '$ '
+env['PS1'] = '\\w$ '
 # 确保 openclaw 原生命令任意目录可用
-env['PATH'] = '/var/packages/openclaw2/target/bin:/usr/local/bin:' + env.get('PATH', '')
+env['PATH'] = '/var/packages/openclaw2/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH', '')
 try:
     cli = '/var/packages/openclaw2/target/bin/openclaw'
+    if not os.path.exists(cli):
+        cli = '/var/packages/openclaw/target/bin/openclaw'
     link = '/usr/local/bin/openclaw'
     if os.path.exists(cli):
         if os.path.islink(link) or os.path.exists(link):
@@ -1031,6 +1033,19 @@ fin = open(fifo, 'rb', buffering=0)
 fout = open(log, 'ab', buffering=0)
 # 使用非 login 交互 shell，保留注入 PATH，避免 profile 覆盖导致 openclaw 不可用。
 shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=env['HOME'], env=env, start_new_session=True)
+# 会话内增加 openclaw 回退函数：PATH 失效时自动尝试 sudo + 绝对路径。
+try:
+    init = (
+      'openclaw(){ '
+      'if command -v openclaw >/dev/null 2>&1; then command openclaw "$@"; '
+      'elif [ -x /var/packages/openclaw2/target/bin/openclaw ]; then sudo -n /var/packages/openclaw2/target/bin/openclaw "$@" || /var/packages/openclaw2/target/bin/openclaw "$@"; '
+      'elif [ -x /var/packages/openclaw/target/bin/openclaw ]; then sudo -n /var/packages/openclaw/target/bin/openclaw "$@" || /var/packages/openclaw/target/bin/openclaw "$@"; '
+      'else echo "openclaw: command not found"; fi; }; export -f openclaw\n'
+    )
+    with open(fifo, 'wb', buffering=0) as wf:
+        wf.write(init.encode('utf-8', 'ignore'))
+except Exception:
+    pass
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
@@ -1650,8 +1665,7 @@ cat <<'HTML'
     let terminalOffset = 0;
     let terminalPollTimer = null;
     let terminalInputBuffer = '';
-    let terminalSuggest = ['/var/packages/openclaw2/target/bin/openclaw doctor', '/var/packages/openclaw2/target/bin/openclaw gateway status', '/var/packages/openclaw2/target/bin/openclaw gateway restart', '/var/packages/openclaw2/target/bin/openclaw config validate'];
-    let terminalSuggestIndex = -1;
+    let terminalSuggest = ['openclaw doctor', 'openclaw gateway status', 'openclaw gateway restart', 'openclaw config validate'];
     window.__openclaw2ClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -2792,24 +2806,14 @@ cat <<'HTML'
       if (!pre) return;
       if (ev.key === 'Tab') {
         ev.preventDefault();
-        const s = terminalSuggest || [];
-        if (!s.length) return;
-        const prefix = terminalInputBuffer || '';
-        const candidates = s.filter(x => x.startsWith(prefix));
-        if (!candidates.length) return;
-        // Tab 仅补全当前前缀，不再整行替换为固定命令。
-        const picked = candidates[0];
-        const append = picked.slice(prefix.length);
-        terminalInputBuffer += append;
-        pre.textContent += append;
-        pre.scrollTop = pre.scrollHeight;
+        // 交给 bash 原生补全（路径/命令/文件名），行为对齐 SSH。
+        await sendTerminalText('\t');
         return;
       }
       if (ev.key === 'Enter') {
         ev.preventDefault();
         const line = terminalInputBuffer;
         terminalInputBuffer = '';
-        terminalSuggestIndex = -1;
         pre.textContent += '\n';
         pre.scrollTop = pre.scrollHeight;
         await sendTerminalText(line + '\n');
@@ -2817,7 +2821,6 @@ cat <<'HTML'
       }
       if (ev.key === 'Backspace') {
         ev.preventDefault();
-        terminalSuggestIndex = -1;
         if (!terminalInputBuffer.length) return;
         terminalInputBuffer = terminalInputBuffer.slice(0, -1);
         pre.textContent = pre.textContent.slice(0, -1);
@@ -2827,7 +2830,6 @@ cat <<'HTML'
       if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
       if (ev.key && ev.key.length === 1) {
         ev.preventDefault();
-        terminalSuggestIndex = -1;
         terminalInputBuffer += ev.key;
         pre.textContent += ev.key;
         pre.scrollTop = pre.scrollHeight;
