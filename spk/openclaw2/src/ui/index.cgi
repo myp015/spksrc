@@ -403,6 +403,24 @@ if isinstance(payload.get('qqbot'), dict):
 if isinstance(payload.get('weixin'), dict):
     w = ch.setdefault('openclaw-weixin', {})
     w['enabled'] = bool(payload['weixin'].get('enabled', True))
+    # 保存微信渠道时，强制保持插件启用状态，避免后续被覆盖为仅 browser。
+    plugins = cfg.setdefault('plugins', {})
+    plugins['enabled'] = True
+    allow = plugins.get('allow')
+    if not isinstance(allow, list):
+        allow = []
+    if 'openclaw-weixin' not in allow:
+        allow.append('openclaw-weixin')
+    plugins['allow'] = allow
+    entries = plugins.get('entries')
+    if not isinstance(entries, dict):
+        entries = {}
+    e = entries.get('openclaw-weixin')
+    if not isinstance(e, dict):
+        e = {}
+    e['enabled'] = True
+    entries['openclaw-weixin'] = e
+    plugins['entries'] = entries
 
 def enabled_ids(channels):
     ids = []
@@ -456,6 +474,38 @@ if cid and cid in ch:
     else:
         ch[cid] = {'enabled': False}
 
+# 微信渠道删除需要“立刻生效”：同时关闭 openclaw-weixin 键、插件开关。
+need_restart = False
+if cid in ('openclaw-weixin', 'weixin'):
+    need_restart = True
+    wx = ch.get('openclaw-weixin')
+    if not isinstance(wx, dict):
+        wx = {}
+    wx['enabled'] = False
+    ch['openclaw-weixin'] = wx
+
+    # 兼容旧键
+    old = ch.get('weixin')
+    if isinstance(old, dict):
+        old['enabled'] = False
+        ch['weixin'] = old
+
+    plugs = cfg.setdefault('plugins', {})
+    ents = plugs.get('entries')
+    if not isinstance(ents, dict):
+        ents = {}
+    pe = ents.get('openclaw-weixin')
+    if not isinstance(pe, dict):
+        pe = {}
+    pe['enabled'] = False
+    ents['openclaw-weixin'] = pe
+    plugs['entries'] = ents
+
+    allow = plugs.get('allow')
+    if isinstance(allow, list):
+        plugs['allow'] = [x for x in allow if x != 'openclaw-weixin']
+
+
 def enabled_ids(channels):
     ids = []
     for k, v in (channels or {}).items():
@@ -480,6 +530,19 @@ out = {
   'qqbot': channels_obj.get('qqbot') or {},
   'weixin': channels_obj.get('weixin') or {}
 }
+
+# 删除微信渠道后，强制重启 openclaw2，确保旧 webhook/monitor 立即停止。
+if need_restart:
+    try:
+        import subprocess
+        pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+        out['restartTriggered'] = True
+        out['restartRc'] = pr.returncode
+        out['restartOutTail'] = ((pr.stdout or b'').decode('utf-8', 'ignore'))[-180:]
+    except Exception as e:
+        out['restartTriggered'] = False
+        out['restartErr'] = str(e)
+
 print(json.dumps(out, ensure_ascii=False))
 PY
             exit 0
@@ -759,6 +822,26 @@ try:
                 wx['defaultAccount'] = aid
                 wx['accounts'] = {aid: {'enabled': True}}
                 chs['openclaw-weixin'] = wx
+
+                # 同步强制插件 allow/entries，避免网关重启后只剩 browser。
+                plugs = ocfg.setdefault('plugins', {})
+                plugs['enabled'] = True
+                allow = plugs.get('allow')
+                if not isinstance(allow, list):
+                    allow = []
+                if 'openclaw-weixin' not in allow:
+                    allow.append('openclaw-weixin')
+                plugs['allow'] = allow
+                ents = plugs.get('entries')
+                if not isinstance(ents, dict):
+                    ents = {}
+                pe = ents.get('openclaw-weixin')
+                if not isinstance(pe, dict):
+                    pe = {}
+                pe['enabled'] = True
+                ents['openclaw-weixin'] = pe
+                plugs['entries'] = ents
+
                 with open(ocfg_path, 'w', encoding='utf-8') as cf:
                     json.dump(ocfg, cf, ensure_ascii=False, indent=2)
                     cf.write('\n')
