@@ -1738,7 +1738,7 @@ cat <<'HTML'
           content.innerHTML = ''
             + '<div class="card" style="margin-bottom:12px;">'
             + '  <h3>已配置渠道</h3>'
-            + (configured.length ? ('<div class="list-grid">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
+            + (configured.length ? ('<div class="list-grid" style="max-height:16.7vh;min-height:120px;overflow-y:auto;overflow-x:hidden;align-content:start;">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
             + '  <div style="display:flex;gap:8px;margin-top:10px;">'
             + '    <button class="btn primary" onclick="openChannelDialog()">添加渠道</button>'
             + '  </div>'
@@ -2253,7 +2253,8 @@ cat <<'HTML'
       }
       syncChannelSaveButtonState();
     }
-    async function saveChannelDialog() {
+    async function saveChannelDialog(opts) {
+      const fastAutoSave = !!(opts && opts.fastAutoSave);
       const t = document.getElementById('dlg_channel_type').value;
       let payload = {};
       if (t === 'feishu') {
@@ -2294,8 +2295,16 @@ cat <<'HTML'
         setMsg('渠道保存失败：' + (e.message || e), 'err');
       } finally {
         if (hotReloadTriggered) {
-          await waitHotReloadSettled(30000);
-          setHotReloadBusy(false);
+          // 微信扫码自动保存走快速模式：不阻塞等待重启完成，减少“已连接后还要等10秒”。
+          if (fastAutoSave) {
+            setTimeout(async () => {
+              await waitHotReloadSettled(30000);
+              setHotReloadBusy(false);
+            }, 0);
+          } else {
+            await waitHotReloadSettled(30000);
+            setHotReloadBusy(false);
+          }
         }
         if (btn) { btn.disabled = false; btn.textContent = oldText || '保存'; }
       }
@@ -2428,7 +2437,7 @@ cat <<'HTML'
           window.__weixinRoundId = data.roundId || '';
           window.__weixinAutoSaveArmed = true;
           setMsg('二维码已生成，请扫码登录。', 'ok');
-          __weixinPollTimer = setInterval(() => { pollWeixinLogin({ silent: true }); }, 3000);
+          __weixinPollTimer = setInterval(() => { pollWeixinLogin({ silent: true }); }, 1000);
         } else {
           statusEl.textContent = data.message || data.error || '当前版本不支持微信扫码登录';
           const extra = data && data.debugLog ? ('（调试日志：' + data.debugLog + '）') : '';
@@ -2449,7 +2458,7 @@ cat <<'HTML'
           return;
         }
         if (!silent) statusEl.textContent = '正在查询登录状态...';
-        const data = await api('weixin_login_wait', 'POST', { sessionKey, roundId, timeoutMs: 1000 });
+        const data = await api('weixin_login_wait', 'POST', { sessionKey, roundId, timeoutMs: 300 });
         console.info('[channels:weixin:poll]', data);
         const msg = data.message || data.status || '未知状态';
         statusEl.textContent = msg;
@@ -2473,8 +2482,9 @@ cat <<'HTML'
             __weixinPollTimer = null;
           }
           try {
-            await saveChannelDialog();
-            await load('channels');
+            setMsg('微信已连接，正在自动保存...', 'ok');
+            if (statusEl) statusEl.textContent = '已连接，正在自动保存...';
+            await saveChannelDialog({ fastAutoSave: true });
           } catch {}
           setMsg('微信已连接（已自动保存）', 'ok');
         }
