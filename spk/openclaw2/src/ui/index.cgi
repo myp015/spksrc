@@ -26,23 +26,6 @@ read_body() {
 action=$(urldecode "$(get_param action "$QUERY")")
 native_api=$(urldecode "$(get_param native_api "$QUERY")")
 
-# 安全收敛：仅允许从 DSM 套件后台入口进入，拒绝直接 URL 打开。
-ref="${HTTP_REFERER:-}"
-allow_from_dsm=0
-case "$ref" in
-  *"/webman/index.cgi"*|*"/webman/3rdparty/openclaw2/"*) allow_from_dsm=1 ;;
-esac
-if [ "$allow_from_dsm" != "1" ]; then
-  if [ "$native_api" = "1" ]; then
-    printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-    printf '{"ok":false,"error":"forbidden: open from DSM package center only"}'
-  else
-    printf 'Status: 403 Forbidden\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
-    printf 'Forbidden: please open from DSM package center.'
-  fi
-  exit 0
-fi
-
 if [ "$native_api" = "1" ]; then
     case "$action" in
         status)
