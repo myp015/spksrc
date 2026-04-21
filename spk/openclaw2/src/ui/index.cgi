@@ -566,117 +566,52 @@ log('openclaw_weixin_config_repaired=1')
 bootstrap_log = 'openclaw-weixin config repaired (fast path)'
 log('openclaw_weixin_ensure_enabled=1 fast_path=1')
 
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
-log(f'login_spawn_prepare round={round_id}')
-text = ''
+# 直接调用微信二维码接口（对齐 trim.openclaw_v0.0.10 的“秒出码”路径），避免走 CLI login 阻塞。
+import urllib.request, urllib.error
+base_url = 'https://ilinkai.weixin.qq.com'
+bot_type = '3'
+qrcode = None
 url = None
+err_text = ''
 login_begin = time.time()
-proc = None
 try:
-    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', bufsize=1)
-    first_output_logged = False
-    deadline = time.time() + 75
-    lines = []
-    while time.time() < deadline:
-        if proc.stdout is None:
-            break
-        r, _, _ = select.select([proc.stdout], [], [], 0.5)
-        if not r:
-            if proc.poll() is not None:
-                break
-            continue
-        line = proc.stdout.readline()
-        if not line:
-            if proc.poll() is not None:
-                break
-            continue
-        if not first_output_logged:
-            log(f'login_first_output_ms={int((time.time()-login_begin)*1000)} round={round_id}')
-            first_output_logged = True
-        lines.append(line)
-        if len(lines) > 400:
-            lines = lines[-400:]
-        text = ''.join(lines)
-        m = re.search(r'https://liteapp\.weixin\.qq\.com/q/\S+', line)
-        if not m:
-            m = re.search(r'https://[^\s\"]*weixin[^\s\"]*', line, re.I)
-        if m:
-            url = m.group(0)
-            log(f'qr_url_detected_ms={int((time.time()-login_begin)*1000)} round={round_id} url={url}')
-            break
-    if not url and proc.stdout is not None:
-        rest = proc.stdout.read() or ''
-        lines.append(rest)
-        text = ''.join(lines)
-        m = re.search(r'https://liteapp\.weixin\.qq\.com/q/\S+', text)
-        if not m:
-            m = re.search(r'https://[^\s\"]*weixin[^\s\"]*', text, re.I)
-        if m:
-            url = m.group(0)
-            log(f'qr_url_detected_after_drain_ms={int((time.time()-login_begin)*1000)} round={round_id} url={url}')
+    req = urllib.request.Request(f"{base_url}/ilink/bot/get_bot_qrcode?bot_type={bot_type}", headers={'iLink-App-ClientVersion': '1'})
+    with urllib.request.urlopen(req, timeout=12) as r:
+        body = (r.read() or b'').decode('utf-8', 'ignore')
+    j = json.loads(body or '{}')
+    qrcode = str(j.get('qrcode') or '')
+    url = str(j.get('qrcode_img_content') or '')
+    if qrcode and url:
+        log(f'qr_url_detected_ms={int((time.time()-login_begin)*1000)} round={round_id} url={url}')
+    else:
+        err_text = body[-500:]
 except Exception as e:
-    text = str(e)
-    log(f'login_exception_ms={int((time.time()-login_begin)*1000)} err={e}')
-finally:
-    if proc and proc.poll() is None:
-        try:
-            proc.kill()
-            log(f'login_proc_killed_ms={int((time.time()-login_begin)*1000)}')
-        except Exception:
-            pass
+    err_text = str(e)
+    log(f'weixin_direct_qr_err_ms={int((time.time()-login_begin)*1000)} round={round_id} err={e}')
 
-if url:
-    # 关键：启动独立 worker 持续执行 login，等待扫码确认完成，不再只拿二维码就结束。
+if url and qrcode:
     try:
-        alive = False
-        old_pid = None
-        if os.path.exists(worker_pid_file):
-            try:
-                old_pid = int((open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip() or '0')
-            except Exception:
-                old_pid = None
-        if old_pid:
-            try:
-                os.kill(old_pid, 0)
-                alive = True
-            except Exception:
-                alive = False
-        # 每次新的登录轮次都替换旧 worker，避免“新二维码 + 旧worker会话”错配导致永远等待扫码确认。
-        if alive and old_pid:
-            try:
-                os.kill(old_pid, signal.SIGTERM)
-                time.sleep(0.25)
-            except Exception:
-                pass
-            alive = False
-            log(f'login_worker_replaced old_pid={old_pid} round={round_id} force={1 if force_new else 0}')
-        if not alive:
-            wf = open(debug_log, 'a', encoding='utf-8')
-            worker = subprocess.Popen(
-                ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose'],
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=wf,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-                text=True,
-                encoding='utf-8',
-                errors='ignore'
-            )
-            with open(worker_pid_file, 'w', encoding='utf-8') as pf:
-                pf.write(str(worker.pid))
-            log(f'login_worker_started pid={worker.pid} round={round_id}')
-        else:
-            log(f'login_worker_already_running pid={old_pid} round={round_id}')
+        state = {
+            'roundId': round_id,
+            'sessionKey': 'openclaw-weixin',
+            'qrcode': qrcode,
+            'qrUrl': url,
+            'baseUrl': base_url,
+            'startedAt': int(time.time()),
+            'force': bool(force_new)
+        }
+        with open('/tmp/openclaw2-weixin-login-state.json', 'w', encoding='utf-8') as sf:
+            json.dump(state, sf, ensure_ascii=False)
+        log(f'weixin_state_saved round={round_id} qrcode_len={len(qrcode)}')
     except Exception as e:
-        log(f'login_worker_start_failed err={e}')
+        log(f'weixin_state_save_err round={round_id} err={e}')
 
     log(f'return_ms={int((time.time()-start_ts)*1000)} round={round_id} success=1')
-    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'roundId': round_id, 'message': '请用微信扫码完成登录（后台已启动持续登录任务）', 'debugLog': debug_log}, ensure_ascii=False))
+    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'roundId': round_id, 'message': '请用微信扫码完成登录', 'debugLog': debug_log}, ensure_ascii=False))
 else:
-    snippet = (bootstrap_log + '\n' + text)[-600:].replace('\n', ' | ')
-    log(f'return_ms={int((time.time()-start_ts)*1000)} success=0 output_snippet={snippet}')
-    print(json.dumps({'supported': False, 'message': '未获取到二维码，请重试并确认 openclaw-weixin 已启用', 'raw': (bootstrap_log + '\n' + text)[-2000:], 'debugLog': debug_log}, ensure_ascii=False))
+    snippet = (bootstrap_log + '\n' + err_text)[-600:].replace('\n', ' | ')
+    log(f'return_ms={int((time.time()-start_ts)*1000)} round={round_id} success=0 output_snippet={snippet}')
+    print(json.dumps({'supported': False, 'message': '未获取到二维码，请重试', 'raw': snippet, 'debugLog': debug_log}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -722,69 +657,99 @@ if raw.strip().startswith('202') and '\n{' in raw:
 connected = False
 message = '等待扫码确认'
 
-# 重要：不能把 channels.status 的 configured 当作“已扫码连接”依据。
-# configured 在历史登录成功后会长期为 true，会导致误判。
-# 这里按 roundId 精确匹配当前登录轮次日志；若没传 roundId，再退化到最后一次 start 段。
-try:
-    import re
-    if os.path.exists(debug_log):
-        tail = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-400000:]
-        seg = tail
-        if round_id:
-            mark = f'weixin_login_start begin round={round_id}'
-            idx = tail.rfind(mark)
-            if idx >= 0:
-                seg = tail[idx:]
-            else:
-                connected = False
-                message = '等待扫码确认'
-                seg = ''
-        else:
-            idx = tail.rfind('weixin_login_start begin')
-            seg = tail[idx:] if idx >= 0 else tail
-
-        if seg:
-            if '✅ 与微信连接成功！' in seg:
-                connected = True
-                message = '已连接'
-            elif ('登录超时：二维码多次过期' in seg) or ('Channel login failed' in seg):
-                connected = False
-                message = '二维码已过期，请点“重新生成”'
-            else:
-                connected = False
-                message = '等待扫码确认'
-except Exception:
-    connected = False
-if connected:
-    # 登录成功后清理后台 login worker（不在 wait 接口内重启整个包，避免前端体验抖动）。
+# 新实现：直接轮询二维码状态接口（对齐 trim.openclaw_v0.0.10），不再依赖日志关键字判定连接。
+import urllib.request, urllib.error
+state_file = '/tmp/openclaw2-weixin-login-state.json'
+state = {}
+if os.path.exists(state_file):
     try:
-        if os.path.exists(worker_pid_file):
-            pid_txt = (open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip()
-            if pid_txt:
-                try:
-                    os.kill(int(pid_txt), 15)
-                    log(f'login_worker_stopped pid={pid_txt}')
-                except Exception:
-                    pass
-            try:
-                os.remove(worker_pid_file)
-            except Exception:
-                pass
+        state = json.load(open(state_file, 'r', encoding='utf-8'))
     except Exception:
-        pass
+        state = {}
+state_round = str(state.get('roundId') or '').strip()
+if round_id and state_round and round_id != state_round:
+    connected = False
+    message = '等待扫码确认'
+    qr_url = str(state.get('qrUrl') or '')
+    print(json.dumps({'supported': True, 'connected': False, 'status': 'pending', 'message': message, 'qrUrl': qr_url, 'raw': raw[-300:]}, ensure_ascii=False))
+    raise SystemExit
 
-log(f'weixin_login_wait connected={bool(connected)} message={message}')
-# 尝试返回当前活跃二维码，便于前端在二维码过期后自动刷新显示。
-qr_url = None
+qrcode = str(state.get('qrcode') or '')
+base_url = str(state.get('baseUrl') or 'https://ilinkai.weixin.qq.com')
+qr_url = str(state.get('qrUrl') or '')
+if not qrcode:
+    print(json.dumps({'supported': True, 'connected': False, 'status': 'idle', 'message': '请先点击“开始微信登录”生成二维码', 'qrUrl': qr_url, 'raw': raw[-300:]}, ensure_ascii=False))
+    raise SystemExit
+
+connected = False
+status = 'pending'
+message = '等待扫码确认'
 try:
-    if os.path.exists(debug_log):
-        txt2 = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-200000:]
-        ms = __import__('re').findall(r'https://liteapp\.weixin\.qq\.com/q/\S+', txt2)
-        if ms:
-            qr_url = ms[-1]
-except Exception:
-    qr_url = None
-print(json.dumps({'supported': True, 'connected': bool(connected), 'status': 'connected' if connected else 'pending', 'message': message, 'qrUrl': qr_url, 'raw': raw[-500:]}, ensure_ascii=False))
+    req = urllib.request.Request(f"{base_url}/ilink/bot/get_qrcode_status?qrcode={qrcode}", headers={'iLink-App-ClientVersion': '1'})
+    with urllib.request.urlopen(req, timeout=12) as r:
+        body = (r.read() or b'').decode('utf-8', 'ignore')
+    st = json.loads(body or '{}')
+    s = str(st.get('status') or 'wait')
+    if s == 'confirmed' and st.get('bot_token') and st.get('ilink_bot_id'):
+        connected = True
+        status = 'connected'
+        message = '已连接'
+        # 落盘账号，供渠道实际收发使用
+        try:
+            import re
+            aid_raw = str(st.get('ilink_bot_id') or '').strip()
+            aid = re.sub(r'[^a-zA-Z0-9_-]+', '-', aid_raw).strip('-')
+            if not aid:
+                aid = aid_raw.replace('@', '-').replace('.', '-')
+            acc_dir = '/volume1/docker/openclaw/.openclaw/openclaw-weixin/accounts'
+            os.makedirs(acc_dir, exist_ok=True)
+            acc_path = os.path.join(acc_dir, f'{aid}.json')
+            acc = {
+                'token': str(st.get('bot_token') or ''),
+                'savedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                'baseUrl': str(st.get('baseurl') or base_url),
+                'userId': str(st.get('ilink_user_id') or '')
+            }
+            with open(acc_path, 'w', encoding='utf-8') as af:
+                json.dump(acc, af, ensure_ascii=False, indent=2)
+                af.write('\n')
+            ids_path = '/volume1/docker/openclaw/.openclaw/openclaw-weixin/accounts.json'
+            ids = []
+            if os.path.exists(ids_path):
+                try:
+                    ids = json.load(open(ids_path, 'r', encoding='utf-8'))
+                except Exception:
+                    ids = []
+            if not isinstance(ids, list):
+                ids = []
+            if aid not in ids:
+                ids.append(aid)
+            with open(ids_path, 'w', encoding='utf-8') as idf:
+                json.dump(ids, idf, ensure_ascii=False, indent=2)
+                idf.write('\n')
+            log(f'weixin_account_saved aid={aid} round={state_round or round_id}')
+        except Exception as e:
+            log(f'weixin_account_save_err={e}')
+    elif s == 'scaned':
+        connected = False
+        status = 'scaned'
+        message = '已扫码，请在微信里确认授权'
+    elif s == 'expired':
+        connected = False
+        status = 'expired'
+        message = '二维码已过期，请点“重新生成”'
+    else:
+        connected = False
+        status = 'pending'
+        message = '等待扫码确认'
+except Exception as e:
+    connected = False
+    status = 'pending'
+    message = '等待扫码确认'
+    log(f'weixin_qr_status_poll_err={e}')
+
+log(f'weixin_login_wait connected={bool(connected)} status={status} message={message}')
+print(json.dumps({'supported': True, 'connected': bool(connected), 'status': status, 'message': message, 'qrUrl': qr_url, 'raw': raw[-300:]}, ensure_ascii=False))
 PY
             exit 0
             ;;
