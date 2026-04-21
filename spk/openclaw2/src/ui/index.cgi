@@ -1013,6 +1013,10 @@ env['OPENCLAW_DATA_DIR']='/volume1/@appdata/openclaw2/data'
 env['HOME']='/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH']=cfg
 env['OPENCLAW_STATE_DIR']='/volume1/docker/openclaw/.openclaw'
+env['OPENCLAW_TOOLS_PROFILE']='full'
+env['OPENCLAW_TOOLS_ELEVATED_ENABLED']='1'
+env['OPENCLAW_ELEVATED_DEFAULT']='full'
+env['OPENCLAW_EXEC_SECURITY_DEFAULT']='full'
 
 # 强制保持 LAN 可访问（44539）
 try:
@@ -1030,6 +1034,29 @@ cu['allowedOrigins'] = ['*']
 defs = c.setdefault('agents', {}).setdefault('defaults', {})
 if isinstance(defs, dict) and 'fallbackModels' in defs:
     defs.pop('fallbackModels', None)
+# 外部命令权限：默认开启 full + elevated（用户要求“完整权限”）
+if isinstance(defs, dict):
+    defs['elevatedDefault'] = 'full'
+
+tools = c.setdefault('tools', {})
+if not isinstance(tools, dict):
+    tools = {}
+    c['tools'] = tools
+tools['profile'] = 'full'
+elev = tools.setdefault('elevated', {})
+if not isinstance(elev, dict):
+    elev = {}
+    tools['elevated'] = elev
+elev['enabled'] = True
+allow_from = elev.get('allowFrom')
+if not isinstance(allow_from, dict):
+    allow_from = {}
+for k in ['webchat', 'feishu', 'dingtalk', 'qqbot', 'wecom', 'telegram', 'discord', 'slack']:
+    v = allow_from.get(k)
+    if not isinstance(v, list) or not v:
+        allow_from[k] = ['*']
+elev['allowFrom'] = allow_from
+
 os.makedirs(os.path.dirname(cfg), exist_ok=True)
 with open(cfg,'w',encoding='utf-8') as f:
     json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
@@ -1470,6 +1497,8 @@ cat <<'HTML'
     let statusLine = '';
     let logsTimer = null;
     let statusTimer = null;
+    let installBusy = false;
+    let installBusyAction = '';
     window.__openclaw2ClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -1537,6 +1566,11 @@ cat <<'HTML'
       currentTab = tab;
       if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
       if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+      // 离开概览页时，重置操作按钮状态，避免“重启中”残留。
+      if (tab !== 'status') {
+        installBusy = false;
+        installBusyAction = '';
+      }
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     }
     async function api(action, method='GET', payload=null) {
@@ -1595,6 +1629,11 @@ cat <<'HTML'
             + '  </div>'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          if (installBusy) {
+            setInstallButtonsBusy(installBusyAction, true);
+          } else {
+            setInstallButtonsBusy('', false);
+          }
           statusTimer = setInterval(async () => {
             try {
               if (currentTab !== 'status') return;
@@ -1661,7 +1700,7 @@ cat <<'HTML'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>模型列表</label>'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
-            + '      <div id="dlg_model_selected_line" onclick="openModelDropdown()" onmousedown="openModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
+            + '      <div id="dlg_model_selected_line" onclick="openModelDropdown(event)" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
             + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
             + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:nowrap;">'
             + '        <input id="dlg_model_manual_input" style="flex:1;min-width:0;" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
@@ -1734,6 +1773,8 @@ cat <<'HTML'
       }
     }
     function setInstallButtonsBusy(actionName, busy) {
+      installBusy = !!busy;
+      installBusyAction = busy ? String(actionName || '') : '';
       const startBtn = document.getElementById('btn_oc_start');
       const stopBtn = document.getElementById('btn_oc_stop');
       const restartBtn = document.getElementById('btn_oc_restart');
@@ -1888,7 +1929,18 @@ cat <<'HTML'
       const next = curr.filter(x => x !== id);
       setModelSelectOptions(Array.from(new Set(all.concat([id]))), next);
     }
-    function openModelDropdown() {
+    function openModelDropdown(ev) {
+      const line = document.getElementById('dlg_model_selected_line');
+      // 点击滚动条区域时不展开下拉（避免拖动滚动条误触）。
+      if (line && ev) {
+        const hScroll = line.scrollWidth > line.clientWidth;
+        const vScroll = line.scrollHeight > line.clientHeight;
+        const x = typeof ev.offsetX === 'number' ? ev.offsetX : -1;
+        const y = typeof ev.offsetY === 'number' ? ev.offsetY : -1;
+        const nearBottom = hScroll && y >= (line.clientHeight - 14);
+        const nearRight = vScroll && x >= (line.clientWidth - 14);
+        if (nearBottom || nearRight) return;
+      }
       const el = document.getElementById('dlg_model_dropdown');
       if (!el) return;
       window.__suppressModelDropdownAutoCloseUntil = Date.now() + 250;
