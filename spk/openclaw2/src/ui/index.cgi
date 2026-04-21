@@ -26,6 +26,22 @@ read_body() {
 action=$(urldecode "$(get_param action "$QUERY")")
 native_api=$(urldecode "$(get_param native_api "$QUERY")")
 
+# 安全收敛：禁止直接 URL 暴露，需从 DSM 套件中心入口访问。
+# 注意：native_api 请求需放行，否则前端交互（含终端输入）会失效。
+ref="${HTTP_REFERER:-}"
+if [ "$native_api" = "1" ]; then
+    :
+else
+    case "$ref" in
+      *"/webman/index.cgi"*|*"/webman/desktop"*|*"/webman/launch"*) : ;;
+      *)
+        printf 'Status: 403 Forbidden\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
+        printf 'Forbidden: open from DSM package center only.'
+        exit 0
+        ;;
+    esac
+fi
+
 if [ "$native_api" = "1" ]; then
     case "$action" in
         status)
@@ -1835,6 +1851,8 @@ cat <<'HTML'
         if (tab === 'status') {
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
+          const mappedDashboard = String(data.dashboardUrl || '').replace(/127\.0\.0\.1|localhost/g, hostFix);
+          const mappedTokenized = String(data.dashboardTokenizedUrl || '').replace(/127\.0\.0\.1|localhost/g, hostFix);
           const rows = [
             ['实例 ID', data.instanceId || '-'],
             ['显示名', data.displayName || '-'],
@@ -1844,6 +1862,8 @@ cat <<'HTML'
             ['版本', data.version || '-'],
             ['端口', data.port || '-'],
             ['代理路径', data.proxyBasePath || '-'],
+            ['Gateway 地址', mappedDashboard || '-'],
+            ['Gateway 地址(含token)', mappedTokenized || '-'],
             ['用户文件夹路径', data.workspaceDir || '/volume1/docker/openclaw'],
             ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-']
