@@ -1460,7 +1460,7 @@ cat <<'HTML'
             + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
-            + '  <button class="btn primary" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
+            + '  <button class="btn primary" id="btn_open_web" disabled title="仅在 WebChat 界面可点击" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>'
             + '<div class="modal-mask" id="userSettingsMask">'
@@ -1474,6 +1474,7 @@ cat <<'HTML'
             + '  </div>'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          refreshOpenWebButtonState();
           return;
         }
         if (tab === 'logs') {
@@ -1615,6 +1616,13 @@ cat <<'HTML'
       } catch (e) {
         setMsg('操作失败：' + (e.message || e), 'err');
       }
+    }
+    function refreshOpenWebButtonState() {
+      const btn = document.getElementById('btn_open_web');
+      if (!btn) return;
+      const isWebChat = (window.location.pathname || '').includes('/chat');
+      btn.disabled = !isWebChat;
+      btn.title = isWebChat ? '' : '仅在 WebChat 界面可点击';
     }
     function openOpenclawWeb(url) {
       let u = (url || '').trim();
