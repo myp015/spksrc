@@ -1605,7 +1605,7 @@ cat <<'HTML'
         // 方案改为与固定测试二维码一致：直接内嵌微信返回的二维码页面 URL，避免本地二维码算法报错。
         window.__weixinQrDataUrl = '';
         window.__weixinQrUrl = qrUrl;
-        const proxiedUrl = '/webman/3rdparty/openclaw2/index.cgi?native_api=1&action=weixin_qr_proxy&url=' + encodeURIComponent(qrUrl);
+        const proxiedUrl = (window.location.pathname || '/webman/3rdparty/openclaw2/index.cgi') + '?native_api=1&action=weixin_qr_proxy&url=' + encodeURIComponent(qrUrl);
         console.info('[channels:weixin:inline-qr:proxy-embed]', { qrUrl: qrUrl, proxiedUrl });
         qrEl.innerHTML = ''
           + '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">'
