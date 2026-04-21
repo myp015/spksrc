@@ -1145,7 +1145,8 @@ fi
 
 # Panel-first mode (as requested): keep settings panel as the primary DSM service.
 # Panel listens on package SERVICE_PORT (18700). Gateway remains independent (default 18789).
-SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data PORT=18700 BASE_PATH=/ FN_AUTH_ENABLED=0 FN_AUTH_REQUIRE_SAME_ORIGIN=0 STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
+# 禁用 trim monitor 公网/直连入口，避免出现 /app/trim-openclaw/* 暴露与 instance not found。
+SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data PORT=18700 BASE_PATH=/ FN_AUTH_ENABLED=1 FN_AUTH_REQUIRE_SAME_ORIGIN=1 STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=lan OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
 SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
 SVC_BACKGROUND=yes
 SVC_WRITE_PID=yes

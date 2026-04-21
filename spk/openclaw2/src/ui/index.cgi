@@ -5,7 +5,7 @@ if [ -d "/volume1/@appdata/openclaw2" ]; then
 fi
 
 LOG_FILE="${APP_VAR_DIR}/openclaw2.log"
-GATEWAY_PORT="44539"
+GATEWAY_PORT="18789"
 QUERY="${QUERY_STRING:-}"
 
 get_param() {
@@ -25,6 +25,23 @@ read_body() {
 
 action=$(urldecode "$(get_param action "$QUERY")")
 native_api=$(urldecode "$(get_param native_api "$QUERY")")
+
+# 安全收敛：仅允许从 DSM 套件后台入口进入，拒绝直接 URL 打开。
+ref="${HTTP_REFERER:-}"
+allow_from_dsm=0
+case "$ref" in
+  *"/webman/index.cgi"*|*"/webman/3rdparty/openclaw2/"*) allow_from_dsm=1 ;;
+esac
+if [ "$allow_from_dsm" != "1" ]; then
+  if [ "$native_api" = "1" ]; then
+    printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+    printf '{"ok":false,"error":"forbidden: open from DSM package center only"}'
+  else
+    printf 'Status: 403 Forbidden\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
+    printf 'Forbidden: please open from DSM package center.'
+  fi
+  exit 0
+fi
 
 if [ "$native_api" = "1" ]; then
     case "$action" in
@@ -1026,6 +1043,7 @@ except Exception:
 gw = c.setdefault('gateway', {})
 gw['bind'] = 'lan'
 gw['mode'] = 'local'
+gw['port'] = 18789
 cu = gw.setdefault('controlUi', {})
 cu['allowInsecureAuth'] = True
 cu['dangerouslyDisableDeviceAuth'] = True
@@ -1591,7 +1609,7 @@ cat <<'HTML'
             ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
-          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || 'http://LAN_HOST:44539/default/chat?session=main').replace('LAN_HOST', window.location.hostname);
+          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || 'http://LAN_HOST:18789/default/chat?session=main').replace('LAN_HOST', window.location.hostname);
           const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
@@ -1822,7 +1840,7 @@ cat <<'HTML'
     // 按用户要求："打开 OpenClaw Web" 按钮始终可用，不做状态检测。
     function openOpenclawWeb(url) {
       let u = (url || '').trim();
-      if (!u) u = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
+      if (!u) u = 'http://' + window.location.hostname + ':18789/default/chat?session=main';
       u = u.replace('LAN_HOST', window.location.hostname);
       if (!/[?&]token=/.test(u)) {
         const token = '123456';
