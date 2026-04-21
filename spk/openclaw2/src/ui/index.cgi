@@ -1307,23 +1307,23 @@ cat <<'HTML'
     .cellk { color:#667085; }
     textarea { width:100%; min-height:520px; resize:vertical; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:10px; padding:12px; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     pre { white-space:pre-wrap; word-break:break-word; background:#111827; color:#dbeafe; border-radius:10px; padding:14px; min-height:420px; max-height:calc(100vh - 300px); overflow-y:scroll; overflow-x:auto; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-    .msg { margin-bottom:12px; font-size:13px; color:#667085; }
+    .msg { margin-bottom:12px; font-size:14px; color:#667085; }
     .err { color:#b42318; }
     .ok { color:#067647; }
     .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-bottom:16px; }
     .card { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
     .card h3 { margin:0 0 10px; font-size:16px; }
     .field { margin-bottom:10px; }
-    .field label { display:block; font-size:12px; color:#667085; margin-bottom:4px; }
+    .field label { display:block; font-size:13px; color:#667085; margin-bottom:4px; }
     .field input, .field select, .field textarea { width:100%; box-sizing:border-box; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; }
     .field select[multiple] { min-height: 96px; max-height: 140px; overflow-y: auto; }
     .list { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
     .list-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px; margin-bottom:16px; }
     .item { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
     .item-title { font-size:16px; font-weight:600; margin-bottom:6px; }
-    .item-meta { font-size:12px; color:#667085; margin-bottom:8px; }
+    .item-meta { font-size:13px; color:#667085; margin-bottom:8px; }
     .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
-    .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:12px; }
+    .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:13px; }
     .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:9999; overflow:hidden; padding:16px; }
     .modal { width:min(700px,90vw); max-height:calc(100vh - 32px); overflow:auto; background:#fff; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
     .modal.model-modal { width:min(560px,90vw); }
@@ -1460,7 +1460,7 @@ cat <<'HTML'
             + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
-            + '  <button class="btn primary" id="btn_open_web" disabled title="仅在 WebChat 界面可点击" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
+            + '  <button class="btn primary" id="btn_open_web" disabled title="Gateway 未完全启动，暂不可点击" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>'
             + '<div class="modal-mask" id="userSettingsMask">'
@@ -1514,14 +1514,14 @@ cat <<'HTML'
             + '      <h3 id="modelModalTitle" style="margin:0;">添加模型服务器</h3>'
             + '      <button class="btn" style="padding:2px 10px;line-height:1;" onclick="closeModelDialog()" title="关闭">×</button>'
             + '    </div>'
-            + '    <div id="dlg_model_hint" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;"></div>'
+            + '    <div id="dlg_model_hint" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;font-size:13px;"></div>'
             + '    <div class="field"><label>服务商</label><select id="dlg_provider_preset" onchange="applyProviderPresetDialog()">' + options + '</select></div>'
             + '    <div class="field"><label>Provider ID（显示名与此一致）</label><input id="dlg_provider_id"></div>'
             + '    <div class="field"><label>API 类型</label><select id="dlg_api" onchange="invalidateModelDiscoverCache()"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
             + '    <div class="field"><label>Base URL</label><input id="dlg_base_url" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>模型列表</label>'
-            + '      <div style="font-size:12px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
+            + '      <div style="font-size:13px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
             + '      <div id="dlg_model_selected_line" onclick="openModelDropdown()" onmousedown="openModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
             + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
             + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:nowrap;">'
@@ -1599,13 +1599,14 @@ cat <<'HTML'
         setMsg('正在执行：' + actionName + ' ...');
         await api('install_run', 'POST', { method: 'bun', action: actionName });
         setMsg('操作已提交：' + actionName + '，正在刷新状态...', 'ok');
-        // restart/start 之后状态切换有延迟，做短轮询避免“显示已关闭直到手动刷新”。
-        if (actionName === 'start' || actionName === 'restart') {
-          for (let i = 0; i < 8; i += 1) {
+        // start/restart/stop 状态切换有延迟，轮询直到目标状态，避免按钮状态滞后。
+        if (actionName === 'start' || actionName === 'restart' || actionName === 'stop') {
+          const wantRunning = (actionName !== 'stop');
+          for (let i = 0; i < 10; i += 1) {
             await new Promise(r => setTimeout(r, 900));
             try {
               const s = await api('status');
-              if (s && s.running) {
+              if (s && !!s.running === wantRunning) {
                 await load('status');
                 return;
               }
@@ -1690,16 +1691,16 @@ cat <<'HTML'
         const checked = (selectedIds || []).includes(id) ? ' checked' : '';
         return '<label style="display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:8px;align-items:start;padding:4px 2px;width:100%;text-align:left;cursor:pointer;">'
           + '<input style="margin:0;" type="checkbox" value="' + esc(id) + '"' + checked + ' onchange="toggleModelSelection(this.value,this.checked)">'
-          + '<span title="' + esc(id) + '" style="font-size:12px;text-align:left;white-space:normal;word-break:break-all;overflow:visible;">' + esc(id) + '</span>'
+          + '<span title="' + esc(id) + '" style="font-size:13px;text-align:left;white-space:normal;word-break:break-all;overflow:visible;">' + esc(id) + '</span>'
           + '</label>';
-      }).join('') || '<div style="font-size:12px;color:#98a2b3;">暂无模型</div>';
+      }).join('') || '<div style="font-size:13px;color:#98a2b3;">暂无模型</div>';
     }
     function renderModelChips(ids) {
       const box = document.getElementById('dlg_model_selected_line');
       if (!box) return;
       const arr = ids || [];
       if (!arr.length) {
-        box.innerHTML = '<span style="font-size:12px;color:#98a2b3;">点击选择模型（可多选）</span>';
+        box.innerHTML = '<span style="font-size:13px;color:#98a2b3;">点击选择模型（可多选）</span>';
         return;
       }
       box.innerHTML = arr.map(id => {
@@ -2006,7 +2007,7 @@ cat <<'HTML'
         area.innerHTML = '<div class="field"><label>Client ID</label><input id="dlg_dd_clientId" value="'+esc(clientId)+'"></div><div class="field"><label>Client Secret</label><input id="dlg_dd_secret" type="password" value="'+esc(secret)+'"></div>';
       } else {
         window.__weixinConnected = false;
-        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin(false)">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="regenerateWeixinQr()">重新生成</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
+        area.innerHTML = '<div style="font-size:13px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin(false)">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="regenerateWeixinQr()">重新生成</button></div><div id="weixin_status" style="font-size:13px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
       }
       syncChannelSaveButtonState();
     }
@@ -2072,7 +2073,7 @@ cat <<'HTML'
     function renderWeixinQrInline(dataUrl, qrUrl, qrEl, note) {
       qrEl.innerHTML = ''
         + '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">'
-        + '  <div style="font-size:12px;color:#667085;">' + esc(note || '请使用微信扫码完成登录') + '</div>'
+        + '  <div style="font-size:13px;color:#667085;">' + esc(note || '请使用微信扫码完成登录') + '</div>'
         + '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px;">'
         + '    <img src="' + esc(dataUrl) + '" style="max-width:320px;width:100%;display:block;" />'
         + '  </div>'
@@ -2143,7 +2144,7 @@ cat <<'HTML'
         renderWeixinQrInline(dataUrl, qrUrl, qrEl, '请使用微信扫码完成登录（已在本地/服务端重绘）');
       } catch (e) {
         console.error('[channels:weixin:inline-qr:error]', e);
-        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码重绘失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
+        qrEl.innerHTML = '<div style="font-size:13px;color:#b42318;margin-bottom:8px;">二维码重绘失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
       }
     }
@@ -2167,7 +2168,7 @@ cat <<'HTML'
           return;
         }
         statusEl.textContent = '正在获取二维码...';
-        qrEl.innerHTML = '<div style="font-size:12px;color:#667085;">二维码加载中...</div>';
+        qrEl.innerHTML = '<div style="font-size:13px;color:#667085;">二维码加载中...</div>';
         console.info('[channels:weixin:start] request login start');
         const data = await api('weixin_login_start', 'POST', { force: !!force });
         console.info('[channels:weixin:start:timing]', { elapsedMs: Date.now() - startTs, force: !!force });
