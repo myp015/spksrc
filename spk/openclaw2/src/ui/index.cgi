@@ -595,7 +595,9 @@ out = {
   'wecom': channels_obj.get('wecom') or {},
   'dingtalk': channels_obj.get('dingtalk') or {},
   'qqbot': channels_obj.get('qqbot') or {},
-  'weixin': channels_obj.get('weixin') or {}
+  'weixin': channels_obj.get('weixin') or {},
+  'reloaded': False,
+  'message': 'deleted in config only, no hot restart'
 }
 
 print(json.dumps(out, ensure_ascii=False))
