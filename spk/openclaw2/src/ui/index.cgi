@@ -1737,12 +1737,14 @@ cat <<'HTML'
             + '</div>'
             + '</div>').join('');
           content.innerHTML = ''
+            + '<div style="height:100%;overflow:auto;padding-right:4px;">'
             + '<div class="card" style="margin-bottom:12px;">'
-            + '  <h3>已配置渠道</h3>'
-            + (configured.length ? ('<div class="list" style="max-height:none;min-height:0;overflow:visible;">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
-            + '  <div style="display:flex;gap:8px;margin-top:10px;">'
+            + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">'
+            + '    <h3 style="margin:0;">已配置渠道</h3>'
             + '    <button class="btn primary" onclick="openChannelDialog()">添加渠道</button>'
             + '  </div>'
+            + (configured.length ? ('<div class="list" style="max-height:none;min-height:0;overflow:visible;">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
+            + '</div>'
             + '</div>'
             + '<div class="modal-mask" id="channelModalMask">'
             + '  <div class="modal">'
