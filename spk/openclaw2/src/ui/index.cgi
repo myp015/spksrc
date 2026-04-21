@@ -1083,18 +1083,7 @@ try:
         entries[pid] = ent
     plugins['entries'] = entries
 
-    ch = c.setdefault('channels', {})
-    for cid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
-        cv = ch.get(cid)
-        if not isinstance(cv, dict):
-            cv = {}
-        cv['enabled'] = True
-        if cid in ('feishu','qqbot','dingtalk','wecom'):
-            cv['dmPolicy'] = 'open'
-            cv['groupPolicy'] = 'open'
-            cv['allowFrom'] = ['*']
-        ch[cid] = cv
-
+    # 不在启动流程里强行重建/启用 channels，避免用户删除后的渠道在重启后“复活”。
     with open(cfg,'w',encoding='utf-8') as f2:
         json.dump(c,f2,ensure_ascii=False,indent=2); f2.write('\n')
 except Exception:
@@ -1566,11 +1555,6 @@ cat <<'HTML'
       currentTab = tab;
       if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
       if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
-      // 离开概览页时，重置操作按钮状态，避免“重启中”残留。
-      if (tab !== 'status') {
-        installBusy = false;
-        installBusyAction = '';
-      }
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     }
     async function api(action, method='GET', payload=null) {
