@@ -1857,6 +1857,15 @@ cat <<'HTML'
         const idx = idxRaw === '' ? -1 : parseInt(idxRaw, 10);
         const providerId = (document.getElementById('dlg_provider_id').value || 'custom-openai').trim();
         const baseUrl = (document.getElementById('dlg_base_url').value || '').trim();
+        const selectedModelIds = getSelectedModelIdsFromHidden();
+
+        // 模型列表不能为空：禁止添加/保存，并在弹窗内提示。
+        if (!selectedModelIds.length) {
+          setModelDialogHint('添加失败：模型列表不能为空，请至少选择或手动添加一个模型', 'err');
+          setMsg('添加失败：模型列表不能为空，请至少选择或手动添加一个模型', 'err');
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
+          return;
+        }
 
         // 仅在“添加”时校验：Provider ID 或 Base URL 任一重复都禁止添加。
         if (idx < 0) {
@@ -1877,7 +1886,7 @@ cat <<'HTML'
           api: document.getElementById('dlg_api').value,
           baseUrl: baseUrl,
           apiKey: document.getElementById('dlg_api_key').value,
-          models: getSelectedModelIdsFromHidden().map(id => ({ modelId: id, id: id }))
+          models: selectedModelIds.map(id => ({ modelId: id, id: id }))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: true };
