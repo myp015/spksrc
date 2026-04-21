@@ -114,6 +114,8 @@ openclaw_copy_target:
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json
 	@install -d -m 755 $(STAGING_DIR)/app
 	@cp -rf src/app/* $(STAGING_DIR)/app/
+	@rm -f $(STAGING_DIR)/app/index.cgi
+	@ln -s ../ui/index.cgi $(STAGING_DIR)/app/index.cgi
 	@install -d -m 755 $(STAGING_DIR)/ui
 	@cp -rf src/ui/* $(STAGING_DIR)/ui/
 	@chmod 755 $(STAGING_DIR)/ui/index.cgi
