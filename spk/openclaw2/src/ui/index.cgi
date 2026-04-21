@@ -692,27 +692,29 @@ if raw.strip().startswith('202') and '\n{' in raw:
     text = raw[raw.find('\n{')+1:]
 connected = False
 message = '等待扫码确认'
+
+# 重要：不能把 channels.status 的 configured 当作“已扫码连接”依据。
+# configured 在历史登录成功后会长期为 true，会导致“点重新生成还没扫码就自动保存”。
+# 这里改为：只解析当前这轮登录（最后一次 weixin_login_start begin 之后）的日志来判定。
 try:
-    j = json.loads(text)
-    ch = (j.get('channels') or {}).get('openclaw-weixin') or {}
-    accs = (j.get('channelAccounts') or {}).get('openclaw-weixin') or []
-    connected = bool(ch.get('configured')) or any(bool((a or {}).get('configured')) for a in accs)
-    message = '已连接' if connected else '等待扫码确认'
+    import re
+    if os.path.exists(debug_log):
+        tail = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-300000:]
+        idx = tail.rfind('weixin_login_start begin')
+        seg = tail[idx:] if idx >= 0 else tail
+        if '✅ 与微信连接成功！' in seg:
+            connected = True
+            message = '已连接'
+        elif ('登录超时：二维码多次过期' in seg) or ('Channel login failed' in seg):
+            connected = False
+            message = '二维码已过期，请点“重新生成”'
+        else:
+            connected = False
+            message = '等待扫码确认'
 except Exception:
     connected = False
-
-# 状态兜底：若日志里已出现“与微信连接成功”，即视为已连接（避免 status 同步延迟导致前端一直 pending）。
-if not connected:
-    try:
-        if os.path.exists(debug_log):
-            tail = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-120000:]
-            if '✅ 与微信连接成功！' in tail and '登录超时：二维码多次过期' not in tail[-4000:]:
-                connected = True
-                message = '已连接（日志确认）'
-    except Exception:
-        pass
 if connected:
-    # 登录成功后清理后台 login worker，并触发一次渠道重启，避免 getUpdates 会话过期导致“已连接但消息无响应”。
+    # 登录成功后清理后台 login worker（不在 wait 接口内重启整个包，避免前端体验抖动）。
     try:
         if os.path.exists(worker_pid_file):
             pid_txt = (open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip()
@@ -728,30 +730,6 @@ if connected:
                 pass
     except Exception:
         pass
-    try:
-        restart_stamp = '/tmp/openclaw2-weixin-connected.restart.ts'
-        now = time.time()
-        allow_restart = True
-        if os.path.exists(restart_stamp):
-            try:
-                last = float((open(restart_stamp, 'r', encoding='utf-8').read() or '0').strip() or '0')
-                if now - last < 120:
-                    allow_restart = False
-            except Exception:
-                pass
-        if allow_restart:
-            p_restart = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=40)
-            rt = (p_restart.stdout or b'').decode('utf-8', 'ignore')
-            try:
-                with open(restart_stamp, 'w', encoding='utf-8') as sf:
-                    sf.write(str(now))
-            except Exception:
-                pass
-            log(f'openclaw2_restart_after_connect rc={p_restart.returncode} out={rt[-220:]}')
-        else:
-            log('openclaw2_restart_after_connect skipped_recently=1')
-    except Exception as e:
-        log(f'openclaw2_restart_after_connect_err={e}')
 
 log(f'weixin_login_wait connected={bool(connected)} message={message}')
 # 尝试返回当前活跃二维码，便于前端在二维码过期后自动刷新显示。
@@ -1853,6 +1831,14 @@ cat <<'HTML'
     let __weixinPollTimer = null;
     async function startWeixinLogin(force) {
       const startTs = Date.now();
+      // 新一轮登录开始：重置连接态，避免旧轮询导致“未刷新二维码就自动保存”。
+      window.__weixinConnected = false;
+      window.__weixinAutoSaveArmed = false;
+      syncChannelSaveButtonState();
+      if (__weixinPollTimer) {
+        clearInterval(__weixinPollTimer);
+        __weixinPollTimer = null;
+      }
       setWeixinBusy('start', true);
       try {
         const { statusEl, qrEl } = getWeixinUiEls();
@@ -1869,11 +1855,8 @@ cat <<'HTML'
           await renderWeixinQr(data.qrUrl, qrEl);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
+          window.__weixinAutoSaveArmed = true;
           setMsg('二维码已生成，请扫码登录。', 'ok');
-          if (__weixinPollTimer) {
-            clearInterval(__weixinPollTimer);
-            __weixinPollTimer = null;
-          }
           __weixinPollTimer = setInterval(() => { pollWeixinLogin({ silent: true }); }, 3000);
         } else {
           statusEl.textContent = data.message || data.error || '当前版本不支持微信扫码登录';
@@ -1909,8 +1892,9 @@ cat <<'HTML'
           window.__weixinQrUrl = latestQr;
           await renderWeixinQr(latestQr, qrEl);
         }
-        if (data.connected) {
+        if (data.connected && window.__weixinAutoSaveArmed) {
           window.__weixinConnected = true;
+          window.__weixinAutoSaveArmed = false;
           syncChannelSaveButtonState();
           if (__weixinPollTimer) {
             clearInterval(__weixinPollTimer);
