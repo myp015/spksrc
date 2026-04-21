@@ -1607,9 +1607,22 @@ cat <<'HTML'
           setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
           return;
         }
-        const fixedUrl = 'https://example.com/openclaw/weixin-debug-qr';
+        const fixedUrl = '#';
+        const fixedSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">'
+          + '<rect width="320" height="320" fill="#fff"/>'
+          + '<rect x="24" y="24" width="88" height="88" fill="#000"/><rect x="36" y="36" width="64" height="64" fill="#fff"/><rect x="48" y="48" width="40" height="40" fill="#000"/>'
+          + '<rect x="208" y="24" width="88" height="88" fill="#000"/><rect x="220" y="36" width="64" height="64" fill="#fff"/><rect x="232" y="48" width="40" height="40" fill="#000"/>'
+          + '<rect x="24" y="208" width="88" height="88" fill="#000"/><rect x="36" y="220" width="64" height="64" fill="#fff"/><rect x="48" y="232" width="40" height="40" fill="#000"/>'
+          + '<rect x="140" y="140" width="12" height="12" fill="#000"/><rect x="164" y="140" width="12" height="12" fill="#000"/><rect x="188" y="140" width="12" height="12" fill="#000"/>'
+          + '<rect x="140" y="164" width="12" height="12" fill="#000"/><rect x="164" y="164" width="12" height="12" fill="#000"/><rect x="188" y="164" width="12" height="12" fill="#000"/>'
+          + '<rect x="140" y="188" width="12" height="12" fill="#000"/><rect x="164" y="188" width="12" height="12" fill="#000"/><rect x="188" y="188" width="12" height="12" fill="#000"/>'
+          + '<text x="160" y="308" text-anchor="middle" font-size="14" fill="#6b7280">OpenClaw Fixed QR Test</text>'
+          + '</svg>';
+        const fixedDataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(fixedSvg)));
+        const fixedOpenUrl = fixedDataUrl;
         statusEl.textContent = '已生成固定测试二维码（仅用于验证显示链路）';
-        await renderWeixinQr(fixedUrl, qrEl);
+        renderWeixinQrInline(fixedDataUrl, fixedOpenUrl, qrEl, '固定测试二维码（本地渲染，不依赖后端二维码算法）');
+        console.info('[channels:weixin:fixed-qr] rendered local svg');
         setMsg('固定测试二维码已显示（用于验证当前窗口显示）', 'ok');
       } catch (e) {
         setMsg('固定测试二维码生成失败：' + (e.message || e), 'err');
