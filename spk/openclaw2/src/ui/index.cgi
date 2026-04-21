@@ -1133,7 +1133,7 @@ PY
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${APP_VAR_DIR}"
-import json, os, signal, sys
+import errno, json, os, signal, sys
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 base = (sys.argv[2] if len(sys.argv) > 2 else '/tmp').rstrip('/')
 try:
@@ -1154,8 +1154,16 @@ try:
     os.kill(pid, 0)
 except Exception:
     print(json.dumps({'ok': False, 'error': 'session not alive'}, ensure_ascii=False)); raise SystemExit
-with open(cmd_fifo, 'wb', buffering=0) as f:
-    f.write(text.encode('utf-8', 'ignore'))
+try:
+    fd = os.open(cmd_fifo, os.O_WRONLY | os.O_NONBLOCK)
+    try:
+        os.write(fd, text.encode('utf-8', 'ignore'))
+    finally:
+        os.close(fd)
+except OSError as e:
+    if e.errno in (errno.ENXIO, errno.EPIPE):
+        print(json.dumps({'ok': False, 'error': 'relay not alive'}, ensure_ascii=False)); raise SystemExit
+    raise
 print(json.dumps({'ok': True}, ensure_ascii=False))
 PY
             exit 0
@@ -2920,8 +2928,18 @@ cat <<'HTML'
       terminalWriteQueue = terminalWriteQueue.then(async () => {
         if (!terminalSessionId) await ensureTerminalSession();
         if (!terminalSessionId) return;
-        await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
-      }).catch(() => {});
+        const ret = await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
+        if (!ret || !ret.ok) {
+          if (String((ret && ret.error) || '').includes('relay not alive')) {
+            await restartTerminalSession();
+            await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
+          } else {
+            throw new Error((ret && (ret.error || ret.message)) || 'terminal write failed');
+          }
+        }
+      }).catch((e) => {
+        setMsg('终端输入失败：' + (e && e.message ? e.message : e), 'err');
+      });
       await terminalWriteQueue;
       // 输入按键不立即强制读回，交给定时轮询，避免输入与输出错序串扰。
     }
