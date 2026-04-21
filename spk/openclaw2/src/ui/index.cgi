@@ -495,7 +495,7 @@ if cid:
                 else:
                     ch[key] = {'enabled': False}
 
-        # 清空账号绑定，避免 runtime 继续复用旧账号。
+        # 清空账号绑定（仅配置层变更）；按用户要求不再热停会话，等待重启后生效。
         wx = ch.get('openclaw-weixin')
         if not isinstance(wx, dict):
             wx = {}
@@ -503,19 +503,6 @@ if cid:
         wx['defaultAccount'] = ''
         wx['accounts'] = {}
         ch['openclaw-weixin'] = wx
-
-        # 立即终止微信会话（热停），避免“删除后仍可互动”。
-        try:
-            import subprocess
-            env = os.environ.copy()
-            env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-            env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
-            env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
-            env['OPENCLAW_CONFIG_PATH'] = cfg_path
-            env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-            subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
-        except Exception:
-            pass
 
 
 def enabled_ids(channels):
@@ -2182,7 +2169,16 @@ cat <<'HTML'
         setMsg('正在删除渠道：' + id + ' ...');
         await api('channels_delete', 'POST', { id });
         await load('channels');
-        setMsg('渠道已删除并热生效：' + id, 'ok');
+        const descMap = {
+          feishu: '飞书',
+          wecom: '企业微信',
+          dingtalk: '钉钉',
+          qqbot: 'QQ Bot',
+          'openclaw-weixin': '微信',
+          weixin: '微信'
+        };
+        const label = descMap[id] || id;
+        setMsg('已删除' + label + '消息渠道，重启后生效', 'ok');
       } catch (e) {
         setMsg('删除渠道失败：' + (e.message || e), 'err');
       } finally {
