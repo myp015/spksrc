@@ -1597,7 +1597,20 @@ cat <<'HTML'
       try {
         setMsg('正在执行：' + actionName + ' ...');
         await api('install_run', 'POST', { method: 'bun', action: actionName });
-        setMsg('操作已提交：' + actionName, 'ok');
+        setMsg('操作已提交：' + actionName + '，正在刷新状态...', 'ok');
+        // restart/start 之后状态切换有延迟，做短轮询避免“显示已关闭直到手动刷新”。
+        if (actionName === 'start' || actionName === 'restart') {
+          for (let i = 0; i < 8; i += 1) {
+            await new Promise(r => setTimeout(r, 900));
+            try {
+              const s = await api('status');
+              if (s && s.running) {
+                await load('status');
+                return;
+              }
+            } catch {}
+          }
+        }
         await load('status');
       } catch (e) {
         setMsg('操作失败：' + (e.message || e), 'err');
@@ -1748,7 +1761,8 @@ cat <<'HTML'
       const existing = getSelectedModelIdsFromHidden();
       const pool = Array.isArray(window.__modelOptionPool) ? window.__modelOptionPool : [];
       const merged = Array.from(new Set(pool.concat(ids).concat(existing)));
-      setModelSelectOptions(merged, existing.length ? existing : ids);
+      // 保持用户当前勾选状态：即使全部取消，也不要在下次打开时自动重新选中。
+      setModelSelectOptions(merged, existing);
     }
     function setModelDialogHint(msg, type) {
       const el = document.getElementById('dlg_model_hint');
