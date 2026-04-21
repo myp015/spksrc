@@ -1548,7 +1548,7 @@ cat <<'HTML'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>模型列表</label>'
             + '      <div style="font-size:12px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
-            + '      <div id="dlg_model_selected_line" onclick="toggleModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
+            + '      <div id="dlg_model_selected_line" onclick="openModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
             + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
             + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:nowrap;">'
             + '        <input id="dlg_model_manual_input" style="flex:1;min-width:0;" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
@@ -1709,7 +1709,7 @@ cat <<'HTML'
         return;
       }
       box.innerHTML = arr.map(id => {
-        return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">'
+        return '<span class="chip" onclick="openModelDropdown()" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;">'
           + esc(id)
           + '<button class="btn" style="padding:0 6px;line-height:1;min-height:18px;" onclick="event.stopPropagation();removeModelSelection(\'' + esc(id) + '\')" title="移除">×</button>'
           + '</span>';
@@ -1733,6 +1733,14 @@ cat <<'HTML'
       const all = getAvailableModelIdsFromDropdown();
       const next = curr.filter(x => x !== id);
       setModelSelectOptions(Array.from(new Set(all.concat([id]))), next);
+    }
+    function openModelDropdown() {
+      const el = document.getElementById('dlg_model_dropdown');
+      if (!el) return;
+      if (el.style.display !== 'block') {
+        el.style.display = 'block';
+        triggerDiscoverModelsForDialog();
+      }
     }
     function toggleModelDropdown() {
       const el = document.getElementById('dlg_model_dropdown');
