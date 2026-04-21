@@ -575,7 +575,8 @@ if url:
     log(f'return_ms={int((time.time()-start_ts)*1000)} success=1')
     print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录', 'debugLog': debug_log}, ensure_ascii=False))
 else:
-    log(f'return_ms={int((time.time()-start_ts)*1000)} success=0')
+    snippet = (bootstrap_log + '\n' + text)[-600:].replace('\n', ' | ')
+    log(f'return_ms={int((time.time()-start_ts)*1000)} success=0 output_snippet={snippet}')
     print(json.dumps({'supported': False, 'message': '未获取到二维码，请重试并确认 openclaw-weixin 已启用', 'raw': (bootstrap_log + '\n' + text)[-2000:], 'debugLog': debug_log}, ensure_ascii=False))
 PY
             exit 0
@@ -1484,7 +1485,7 @@ cat <<'HTML'
         const secret = (data.dingtalk||{}).clientSecret || '';
         area.innerHTML = '<div class="field"><label>Client ID</label><input id="dlg_dd_clientId" value="'+esc(clientId)+'"></div><div class="field"><label>Client Secret</label><input id="dlg_dd_secret" type="password" value="'+esc(secret)+'"></div>';
       } else {
-        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin()">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="pollWeixinLogin()">检查状态</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
+        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin()">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="pollWeixinLogin()">检查状态</button><button id="btn_wx_fixed" class="btn" onclick="startWeixinFixedQr()">固定测试二维码</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
       }
     }
     async function saveChannelDialog() {
@@ -1598,6 +1599,21 @@ cat <<'HTML'
         }
       } catch (e) { setMsg('微信登录启动失败：' + (e.message || e), 'err'); }
       finally { setWeixinBusy('start', false); }
+    }
+    async function startWeixinFixedQr() {
+      try {
+        const { statusEl, qrEl } = getWeixinUiEls();
+        if (!statusEl || !qrEl) {
+          setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
+          return;
+        }
+        const fixedUrl = 'https://example.com/openclaw/weixin-debug-qr';
+        statusEl.textContent = '已生成固定测试二维码（仅用于验证显示链路）';
+        await renderWeixinQr(fixedUrl, qrEl);
+        setMsg('固定测试二维码已显示（用于验证当前窗口显示）', 'ok');
+      } catch (e) {
+        setMsg('固定测试二维码生成失败：' + (e.message || e), 'err');
+      }
     }
     async function pollWeixinLogin() {
       setWeixinBusy('poll', true);
