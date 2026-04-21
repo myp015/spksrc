@@ -1797,6 +1797,17 @@ cat <<'HTML'
       // 所有热重启动作统一映射到“重启中”状态展示。
       setInstallButtonsBusy('restart', !!busy);
     }
+    async function waitHotReloadSettled(timeoutMs = 30000) {
+      const end = Date.now() + timeoutMs;
+      while (Date.now() < end) {
+        try {
+          const s = await api('status');
+          if (s && s.running) return true;
+        } catch (_) {}
+        await new Promise(r => setTimeout(r, 900));
+      }
+      return false;
+    }
     async function runInstallAction(actionName) {
       setInstallButtonsBusy(actionName, true);
       try {
@@ -2140,7 +2151,10 @@ cat <<'HTML'
         setModelDialogHint('保存失败：' + (e.message || e), 'err');
         setMsg('模型服务器保存失败：' + (e.message || e), 'err');
       } finally {
-        if (hotReloadTriggered) setHotReloadBusy(false);
+        if (hotReloadTriggered) {
+          await waitHotReloadSettled(30000);
+          setHotReloadBusy(false);
+        }
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
       }
     }
@@ -2165,7 +2179,12 @@ cat <<'HTML'
         await api('models_save', 'POST', payload);
         setMsg('用户目录保存成功：' + workspaceDir, 'ok');
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
-      finally { if (hotReloadTriggered) setHotReloadBusy(false); }
+      finally {
+        if (hotReloadTriggered) {
+          await waitHotReloadSettled(30000);
+          setHotReloadBusy(false);
+        }
+      }
     }
     async function saveQQBotQuick() {}
     function openChannelDialog(editId) {
@@ -2270,12 +2289,14 @@ cat <<'HTML'
         const ret = await api('channels_save', 'POST', payload);
         closeChannelDialog();
         await load('channels');
-        if (ret && ret.reloaded) setMsg('运行状态：运行中', 'ok');
-        else setMsg('运行状态：已停止', 'err');
+        if (ret && ret.reloaded) setMsg('运行状态：正在重启', 'ok');
       } catch (e) {
         setMsg('渠道保存失败：' + (e.message || e), 'err');
       } finally {
-        if (hotReloadTriggered) setHotReloadBusy(false);
+        if (hotReloadTriggered) {
+          await waitHotReloadSettled(30000);
+          setHotReloadBusy(false);
+        }
         if (btn) { btn.disabled = false; btn.textContent = oldText || '保存'; }
       }
     }
