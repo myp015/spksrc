@@ -50,13 +50,18 @@ started_ts = None
 uptime_seconds = 0
 if running:
     try:
-        p = os.popen("ps -eo etimes,cmd | grep -E '/app/openclaw/dist/index.js gateway|openclaw gateway' | grep -v grep | head -n1")
+        # 优先按 PID 读取 etimes，避免字符串匹配误差导致一直 0 秒。
+        cmdline = "pgrep -af 'openclaw.*gateway|dist/index.js gateway' | grep -v 'fn-port/server' | head -n1"
+        p = os.popen(cmdline)
         line = (p.read() or '').strip()
         p.close()
         if line:
-            parts = line.split(None, 1)
-            if parts and parts[0].isdigit():
-                uptime_seconds = int(parts[0])
+            pid = line.split(None, 1)[0]
+            p2 = os.popen(f"ps -o etimes= -p {pid} | head -n1")
+            et = (p2.read() or '').strip()
+            p2.close()
+            if et.isdigit():
+                uptime_seconds = int(et)
                 started_ts = int(time.time()) - uptime_seconds
     except Exception:
         uptime_seconds = 0
@@ -67,6 +72,7 @@ except Exception:
     cfg = {}
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw')
 token = ((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '123456')
+binary_path = '/var/packages/openclaw2/target/bin/openclaw' if os.path.exists('/var/packages/openclaw2/target/bin/openclaw') else ''
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -79,6 +85,7 @@ out = {
   'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?session=main&token={token}',
   'workspaceDir': workspace,
   'configPath': cfg_path,
+  'binaryPath': binary_path,
   'uptimeSeconds': uptime_seconds,
   'startedAt': started_ts
 }
@@ -545,30 +552,25 @@ except Exception:
     cfg = {}
 ch = cfg.setdefault('channels', {})
 if cid:
-    # 统一删除语义：直接禁用渠道配置（不重启 gateway）。
+    # 删除语义：从配置中彻底移除该渠道，避免残留账号信息。
     if cid in ch:
-        if isinstance(ch.get(cid), dict):
-            ch[cid]['enabled'] = False
-        else:
-            ch[cid] = {'enabled': False}
+        ch.pop(cid, None)
 
-    # 微信别名联动
+    # 微信别名联动：两个 key 都清理。
     if cid in ('openclaw-weixin', 'weixin'):
-        for key in ('openclaw-weixin', 'weixin'):
-            if key in ch:
-                if isinstance(ch.get(key), dict):
-                    ch[key]['enabled'] = False
-                else:
-                    ch[key] = {'enabled': False}
+        ch.pop('openclaw-weixin', None)
+        ch.pop('weixin', None)
 
-        # 清空账号绑定（仅配置层变更）；按用户要求不再热停会话，等待重启后生效。
-        wx = ch.get('openclaw-weixin')
-        if not isinstance(wx, dict):
-            wx = {}
-        wx['enabled'] = False
-        wx['defaultAccount'] = ''
-        wx['accounts'] = {}
-        ch['openclaw-weixin'] = wx
+    # 同步清理插件启用状态，避免重启后被重新加载。
+    plugins = cfg.get('plugins') or {}
+    allow = plugins.get('allow') if isinstance(plugins, dict) else None
+    if isinstance(allow, list):
+        target = 'openclaw-weixin' if cid in ('openclaw-weixin', 'weixin') else cid
+        plugins['allow'] = [x for x in allow if x != target]
+    entries = plugins.get('entries') if isinstance(plugins, dict) else None
+    if isinstance(entries, dict):
+        target = 'openclaw-weixin' if cid in ('openclaw-weixin', 'weixin') else cid
+        entries.pop(target, None)
 
 
 def enabled_ids(channels):
