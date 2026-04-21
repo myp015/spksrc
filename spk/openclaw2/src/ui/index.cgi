@@ -490,14 +490,22 @@ PY
             exit 0
             ;;
         weixin_login_start)
+            body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid"
+            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid" "$body"
 import json, os, re, subprocess, sys, time, select, signal
 home_dir = sys.argv[1]
 cfg_path = sys.argv[2]
 debug_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-weixin-login.log'
 worker_pid_file = sys.argv[4] if len(sys.argv) > 4 else '/tmp/openclaw-weixin-login-worker.pid'
+raw_body = sys.argv[5] if len(sys.argv) > 5 else '{}'
 start_ts = time.time()
+round_id = f"r{int(start_ts*1000)}"
+try:
+    payload = json.loads(raw_body or '{}')
+except Exception:
+    payload = {}
+force_new = bool((payload or {}).get('force', False))
 
 def log(msg):
     try:
@@ -513,7 +521,7 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-log('weixin_login_start begin')
+log(f'weixin_login_start begin round={round_id} force={1 if force_new else 0}')
 
 # 关键：openclaw2 内部有并发流程会覆写 openclaw.json，导致 weixin 插件配置丢失。
 # 每次开始登录前都做一次强制修正，确保 allowlist/entries/channels 包含 openclaw-weixin。
@@ -559,12 +567,14 @@ bootstrap_log = 'openclaw-weixin config repaired (fast path)'
 log('openclaw_weixin_ensure_enabled=1 fast_path=1')
 
 cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
+log(f'login_spawn_prepare round={round_id}')
 text = ''
 url = None
 login_begin = time.time()
 proc = None
 try:
     proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', bufsize=1)
+    first_output_logged = False
     deadline = time.time() + 75
     lines = []
     while time.time() < deadline:
@@ -580,6 +590,9 @@ try:
             if proc.poll() is not None:
                 break
             continue
+        if not first_output_logged:
+            log(f'login_first_output_ms={int((time.time()-login_begin)*1000)} round={round_id}')
+            first_output_logged = True
         lines.append(line)
         if len(lines) > 400:
             lines = lines[-400:]
@@ -589,7 +602,7 @@ try:
             m = re.search(r'https://[^\s\"]*weixin[^\s\"]*', line, re.I)
         if m:
             url = m.group(0)
-            log(f'qr_url_detected_ms={int((time.time()-login_begin)*1000)} url={url}')
+            log(f'qr_url_detected_ms={int((time.time()-login_begin)*1000)} round={round_id} url={url}')
             break
     if not url and proc.stdout is not None:
         rest = proc.stdout.read() or ''
@@ -600,7 +613,7 @@ try:
             m = re.search(r'https://[^\s\"]*weixin[^\s\"]*', text, re.I)
         if m:
             url = m.group(0)
-            log(f'qr_url_detected_after_drain_ms={int((time.time()-login_begin)*1000)} url={url}')
+            log(f'qr_url_detected_after_drain_ms={int((time.time()-login_begin)*1000)} round={round_id} url={url}')
 except Exception as e:
     text = str(e)
     log(f'login_exception_ms={int((time.time()-login_begin)*1000)} err={e}')
@@ -628,6 +641,15 @@ if url:
                 alive = True
             except Exception:
                 alive = False
+        # 每次新的登录轮次都替换旧 worker，避免“新二维码 + 旧worker会话”错配导致永远等待扫码确认。
+        if alive and old_pid:
+            try:
+                os.kill(old_pid, signal.SIGTERM)
+                time.sleep(0.25)
+            except Exception:
+                pass
+            alive = False
+            log(f'login_worker_replaced old_pid={old_pid} round={round_id} force={1 if force_new else 0}')
         if not alive:
             wf = open(debug_log, 'a', encoding='utf-8')
             worker = subprocess.Popen(
@@ -643,14 +665,14 @@ if url:
             )
             with open(worker_pid_file, 'w', encoding='utf-8') as pf:
                 pf.write(str(worker.pid))
-            log(f'login_worker_started pid={worker.pid}')
+            log(f'login_worker_started pid={worker.pid} round={round_id}')
         else:
-            log(f'login_worker_already_running pid={old_pid}')
+            log(f'login_worker_already_running pid={old_pid} round={round_id}')
     except Exception as e:
         log(f'login_worker_start_failed err={e}')
 
-    log(f'return_ms={int((time.time()-start_ts)*1000)} success=1')
-    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录（后台已启动持续登录任务）', 'debugLog': debug_log}, ensure_ascii=False))
+    log(f'return_ms={int((time.time()-start_ts)*1000)} round={round_id} success=1')
+    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'roundId': round_id, 'message': '请用微信扫码完成登录（后台已启动持续登录任务）', 'debugLog': debug_log}, ensure_ascii=False))
 else:
     snippet = (bootstrap_log + '\n' + text)[-600:].replace('\n', ' | ')
     log(f'return_ms={int((time.time()-start_ts)*1000)} success=0 output_snippet={snippet}')
@@ -659,12 +681,19 @@ PY
             exit 0
             ;;
         weixin_login_wait)
+            body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid"
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid" "$body"
 import json, os, subprocess, sys, time
 cfg_path = sys.argv[1]
 debug_log = sys.argv[2] if len(sys.argv) > 2 else '/tmp/openclaw-weixin-login.log'
 worker_pid_file = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-weixin-login-worker.pid'
+raw_body = sys.argv[4] if len(sys.argv) > 4 else '{}'
+try:
+    payload = json.loads(raw_body or '{}')
+except Exception:
+    payload = {}
+round_id = str((payload or {}).get('roundId') or '').strip()
 
 def log(msg):
     try:
@@ -694,23 +723,36 @@ connected = False
 message = '等待扫码确认'
 
 # 重要：不能把 channels.status 的 configured 当作“已扫码连接”依据。
-# configured 在历史登录成功后会长期为 true，会导致“点重新生成还没扫码就自动保存”。
-# 这里改为：只解析当前这轮登录（最后一次 weixin_login_start begin 之后）的日志来判定。
+# configured 在历史登录成功后会长期为 true，会导致误判。
+# 这里按 roundId 精确匹配当前登录轮次日志；若没传 roundId，再退化到最后一次 start 段。
 try:
     import re
     if os.path.exists(debug_log):
-        tail = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-300000:]
-        idx = tail.rfind('weixin_login_start begin')
-        seg = tail[idx:] if idx >= 0 else tail
-        if '✅ 与微信连接成功！' in seg:
-            connected = True
-            message = '已连接'
-        elif ('登录超时：二维码多次过期' in seg) or ('Channel login failed' in seg):
-            connected = False
-            message = '二维码已过期，请点“重新生成”'
+        tail = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-400000:]
+        seg = tail
+        if round_id:
+            mark = f'weixin_login_start begin round={round_id}'
+            idx = tail.rfind(mark)
+            if idx >= 0:
+                seg = tail[idx:]
+            else:
+                connected = False
+                message = '等待扫码确认'
+                seg = ''
         else:
-            connected = False
-            message = '等待扫码确认'
+            idx = tail.rfind('weixin_login_start begin')
+            seg = tail[idx:] if idx >= 0 else tail
+
+        if seg:
+            if '✅ 与微信连接成功！' in seg:
+                connected = True
+                message = '已连接'
+            elif ('登录超时：二维码多次过期' in seg) or ('Channel login failed' in seg):
+                connected = False
+                message = '二维码已过期，请点“重新生成”'
+            else:
+                connected = False
+                message = '等待扫码确认'
 except Exception:
     connected = False
 if connected:
@@ -1834,6 +1876,7 @@ cat <<'HTML'
       // 新一轮登录开始：重置连接态，避免旧轮询导致“未刷新二维码就自动保存”。
       window.__weixinConnected = false;
       window.__weixinAutoSaveArmed = false;
+      window.__weixinRoundId = '';
       syncChannelSaveButtonState();
       if (__weixinPollTimer) {
         clearInterval(__weixinPollTimer);
@@ -1855,6 +1898,7 @@ cat <<'HTML'
           await renderWeixinQr(data.qrUrl, qrEl);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
+          window.__weixinRoundId = data.roundId || '';
           window.__weixinAutoSaveArmed = true;
           setMsg('二维码已生成，请扫码登录。', 'ok');
           __weixinPollTimer = setInterval(() => { pollWeixinLogin({ silent: true }); }, 3000);
@@ -1871,13 +1915,14 @@ cat <<'HTML'
       if (!silent) setWeixinBusy('poll', true);
       try {
         const sessionKey = window.__weixinSessionKey || '';
+        const roundId = window.__weixinRoundId || '';
         const { statusEl, qrEl } = getWeixinUiEls();
         if (!statusEl) {
           setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
           return;
         }
         if (!silent) statusEl.textContent = '正在查询登录状态...';
-        const data = await api('weixin_login_wait', 'POST', { sessionKey, timeoutMs: 1000 });
+        const data = await api('weixin_login_wait', 'POST', { sessionKey, roundId, timeoutMs: 1000 });
         console.info('[channels:weixin:poll]', data);
         const msg = data.message || data.status || '未知状态';
         statusEl.textContent = msg;
