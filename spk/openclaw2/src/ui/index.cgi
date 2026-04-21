@@ -1868,6 +1868,7 @@ cat <<'HTML'
             + '  </div>'
             + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
             + '  <div style="display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
+            + '    <div id="terminal_prompt_line" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
             + '    <pre id="terminal_pre" tabindex="0" onclick="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
             + '  </div>'
             + '</div>';
@@ -2789,10 +2790,14 @@ cat <<'HTML'
         }
         terminalSessionId = ret.sessionId || '';
         terminalOffset = Number(ret.offset || 0);
+        window.__terminalUser = ret.user || 'root';
+        window.__terminalHost = ret.host || 'localhost';
         const initCwd = (ret.cwd || '/volume1/@appdata/openclaw2/data/home');
         const initUser = (ret.user || 'root');
         const initHost = (ret.host || 'localhost');
-        pre.textContent = initUser + '@' + initHost + ':' + initCwd + '$\n';
+        pre.textContent = '';
+        const promptEl = document.getElementById('terminal_prompt_line');
+        if (promptEl) promptEl.textContent = initUser + '@' + initHost + ':' + initCwd + '$';
         const cwdEl = document.getElementById('terminal_cwd');
         if (cwdEl) cwdEl.textContent = '当前目录：' + initCwd;
       }
@@ -2814,6 +2819,12 @@ cat <<'HTML'
         }
         const cwdEl = document.getElementById('terminal_cwd');
         if (cwdEl && ret.cwd) cwdEl.textContent = '当前目录：' + ret.cwd;
+        const promptEl = document.getElementById('terminal_prompt_line');
+        if (promptEl && ret.cwd) {
+          const user = (window.__terminalUser || 'root');
+          const host = (window.__terminalHost || 'localhost');
+          promptEl.textContent = user + '@' + host + ':' + ret.cwd + '$';
+        }
         if (ret.alive === false && terminalPollTimer) {
           clearInterval(terminalPollTimer);
           terminalPollTimer = null;
