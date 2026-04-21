@@ -522,6 +522,22 @@ env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 log(f'weixin_login_start begin round={round_id} force={1 if force_new else 0}')
+# 清理历史遗留登录 worker，避免旧流程仍在后台运行干扰当前登录。
+try:
+    if os.path.exists(worker_pid_file):
+        pid_txt = (open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip()
+        if pid_txt:
+            try:
+                os.kill(int(pid_txt), signal.SIGTERM)
+                log(f'legacy_login_worker_stopped pid={pid_txt} round={round_id}')
+            except Exception:
+                pass
+        try:
+            os.remove(worker_pid_file)
+        except Exception:
+            pass
+except Exception:
+    pass
 
 # 关键：openclaw2 内部有并发流程会覆写 openclaw.json，导致 weixin 插件配置丢失。
 # 每次开始登录前都做一次强制修正，确保 allowlist/entries/channels 包含 openclaw-weixin。
@@ -714,20 +730,50 @@ try:
                 json.dump(acc, af, ensure_ascii=False, indent=2)
                 af.write('\n')
             ids_path = '/volume1/docker/openclaw/.openclaw/openclaw-weixin/accounts.json'
-            ids = []
-            if os.path.exists(ids_path):
-                try:
-                    ids = json.load(open(ids_path, 'r', encoding='utf-8'))
-                except Exception:
-                    ids = []
-            if not isinstance(ids, list):
-                ids = []
-            if aid not in ids:
-                ids.append(aid)
+            # 关键：仅保留当前新账号，避免网关继续用旧账号（旧账号常被 session-guard 暂停）
             with open(ids_path, 'w', encoding='utf-8') as idf:
-                json.dump(ids, idf, ensure_ascii=False, indent=2)
+                json.dump([aid], idf, ensure_ascii=False, indent=2)
                 idf.write('\n')
-            log(f'weixin_account_saved aid={aid} round={state_round or round_id}')
+            # 清理旧账号文件
+            try:
+                for fn in os.listdir(acc_dir):
+                    if not fn.endswith('.json'):
+                        continue
+                    if fn == f'{aid}.json':
+                        continue
+                    try:
+                        os.remove(os.path.join(acc_dir, fn))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # 同步重写 openclaw.json 的渠道账号配置，强制只启用当前账号
+            try:
+                ocfg_path = '/volume1/docker/openclaw/.openclaw/openclaw.json'
+                ocfg = json.load(open(ocfg_path, 'r', encoding='utf-8')) if os.path.exists(ocfg_path) else {}
+                chs = ocfg.setdefault('channels', {})
+                wx = chs.get('openclaw-weixin')
+                if not isinstance(wx, dict):
+                    wx = {}
+                wx['enabled'] = True
+                wx['defaultAccount'] = aid
+                wx['accounts'] = {aid: {'enabled': True}}
+                chs['openclaw-weixin'] = wx
+                with open(ocfg_path, 'w', encoding='utf-8') as cf:
+                    json.dump(ocfg, cf, ensure_ascii=False, indent=2)
+                    cf.write('\n')
+            except Exception as e2:
+                log(f'weixin_openclaw_json_update_err={e2}')
+
+            # 连接成功后重启一次包，使网关立刻切换到新账号
+            try:
+                pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+                rt = (pr.stdout or b'').decode('utf-8', 'ignore')
+                log(f'weixin_restart_after_confirm rc={pr.returncode} out={rt[-180:]}')
+            except Exception as e3:
+                log(f'weixin_restart_after_confirm_err={e3}')
+
+            log(f'weixin_account_saved aid={aid} round={state_round or round_id} single_account=1')
         except Exception as e:
             log(f'weixin_account_save_err={e}')
     elif s == 'scaned':
