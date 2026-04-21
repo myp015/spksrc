@@ -128,6 +128,7 @@ if workspace:
     elif isinstance(paths[0], dict):
         paths[0]['path'] = workspace
 providers_payload = payload.get('providers') or []
+apply_now = bool(payload.get('applyNow', True))
 existing_providers = ((cfg.get('models') or {}).get('providers') or {})
 providers_map = {}
 for p in providers_payload:
@@ -169,16 +170,20 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw', 'configPath': cfg_path, 'configExists': True}
-# 模型新增/编辑后立即生效：重启 openclaw2
-try:
-    import subprocess
-    pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
-    out['restartTriggered'] = True
-    out['restartRc'] = pr.returncode
-    out['restartOutTail'] = ((pr.stdout or b'').decode('utf-8', 'ignore'))[-180:]
-except Exception as e:
+# applyNow=true 时立即应用（重启）；false 时仅落配置，重启后生效。
+if apply_now:
+    try:
+        import subprocess
+        pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+        out['restartTriggered'] = True
+        out['restartRc'] = pr.returncode
+        out['restartOutTail'] = ((pr.stdout or b'').decode('utf-8', 'ignore'))[-180:]
+    except Exception as e:
+        out['restartTriggered'] = False
+        out['restartErr'] = str(e)
+else:
     out['restartTriggered'] = False
-    out['restartErr'] = str(e)
+    out['message'] = '配置已保存，重启后生效'
 print(json.dumps(out, ensure_ascii=False))
 PY
             exit 0
@@ -1832,7 +1837,7 @@ cat <<'HTML'
           models: getSelectedModelIdsFromHidden().map(id => ({ modelId: id, id: id }))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
-        const payload = { providers };
+        const payload = { providers, applyNow: true };
         await api('models_save', 'POST', payload);
         closeModelDialog();
         await load('models');
@@ -1848,16 +1853,16 @@ cat <<'HTML'
         const data = window.__modelsData || {};
         const providers = (data.configuredProviders || []).slice();
         providers.splice(index, 1);
-        await api('models_save', 'POST', { providers });
+        await api('models_save', 'POST', { providers, applyNow: false });
         await load('models');
-        setMsg('模型服务器已删除', 'ok');
+        setMsg('模型服务器已删除，重启后生效', 'ok');
       } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
     }
     async function saveWorkspaceQuick() {
       try {
         const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/docker/openclaw';
         const m = await api('models');
-        const payload = { providers: (m.configuredProviders || []), workspaceDir };
+        const payload = { providers: (m.configuredProviders || []), workspaceDir, applyNow: true };
         await api('models_save', 'POST', payload);
         setMsg('用户目录保存成功：' + workspaceDir, 'ok');
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
