@@ -1640,6 +1640,7 @@ cat <<'HTML'
     let terminalSessionId = '';
     let terminalOffset = 0;
     let terminalPollTimer = null;
+    let terminalInputBuffer = '';
     window.__openclaw2ClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -1813,19 +1814,19 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验），当前 app 用户会话，工作目录：/volume1/@appdata/openclaw2/data/home</div>'
+            + '  <div style="display:flex;gap:8px;align-items:center;">'
+            + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
+            + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
+            + '    <button class="btn" onclick="clearTerminalView()">清屏</button>'
+            + '    <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
+            + '  </div>'
+            + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
             + '  <div style="display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
-            + '    <pre id="terminal_pre" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
-            + '    <div style="display:flex;gap:8px;align-items:center;padding:8px;border-top:1px solid #1f2937;background:#111827;">'
-            + '      <input id="terminal_cmd" style="flex:1;background:#0b1220;color:#e5e7eb;border:1px solid #374151;" placeholder="输入命令后回车发送" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLine();}">'
-            + '      <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
-            + '      <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
-            + '      <button class="btn" onclick="clearTerminalView()">清屏</button>'
-            + '      <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
-            + '    </div>'
+            + '    <pre id="terminal_pre" tabindex="0" onclick="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
             + '  </div>'
             + '</div>';
           await ensureTerminalSession();
+          focusTerminal();
           setMsg('终端已加载（交互模式）', 'ok');
           return;
         }
@@ -2764,23 +2765,50 @@ cat <<'HTML'
         }
       } catch (_) {}
     }
+    function focusTerminal() {
+      const pre = document.getElementById('terminal_pre');
+      if (pre) pre.focus();
+    }
     async function sendTerminalText(text) {
       if (!terminalSessionId) await ensureTerminalSession();
       if (!terminalSessionId) return;
       await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
       await readTerminalOutput();
     }
-    async function sendTerminalLine() {
-      const input = document.getElementById('terminal_cmd');
-      if (!input) return;
-      const cmd = input.value || '';
-      input.value = '';
-      await sendTerminalText(cmd + '\n');
+    async function handleTerminalKey(ev) {
+      if (!ev) return;
+      const pre = document.getElementById('terminal_pre');
+      if (!pre) return;
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const line = terminalInputBuffer;
+        terminalInputBuffer = '';
+        pre.textContent += '\n';
+        pre.scrollTop = pre.scrollHeight;
+        await sendTerminalText(line + '\n');
+        return;
+      }
+      if (ev.key === 'Backspace') {
+        ev.preventDefault();
+        if (!terminalInputBuffer.length) return;
+        terminalInputBuffer = terminalInputBuffer.slice(0, -1);
+        pre.textContent = pre.textContent.slice(0, -1);
+        pre.scrollTop = pre.scrollHeight;
+        return;
+      }
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      if (ev.key && ev.key.length === 1) {
+        ev.preventDefault();
+        terminalInputBuffer += ev.key;
+        pre.textContent += ev.key;
+        pre.scrollTop = pre.scrollHeight;
+      }
     }
-    async function sendTerminalCtrlC() { await sendTerminalText('\u0003'); }
-    async function sendTerminalCtrlD() { await sendTerminalText('\u0004'); }
+    async function sendTerminalCtrlC() { terminalInputBuffer = ''; await sendTerminalText('\u0003'); }
+    async function sendTerminalCtrlD() { terminalInputBuffer = ''; await sendTerminalText('\u0004'); }
     function clearTerminalView() {
       const pre = document.getElementById('terminal_pre');
+      terminalInputBuffer = '';
       if (pre) pre.textContent = '';
     }
     async function restartTerminalSession() {
@@ -2789,6 +2817,7 @@ cat <<'HTML'
       } catch (_) {}
       terminalSessionId = '';
       terminalOffset = 0;
+      terminalInputBuffer = '';
       if (terminalPollTimer) { clearInterval(terminalPollTimer); terminalPollTimer = null; }
       await ensureTerminalSession();
     }
