@@ -1548,7 +1548,7 @@ cat <<'HTML'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>模型列表</label>'
             + '      <div style="font-size:12px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
-            + '      <div id="dlg_model_selected_line" onclick="openModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
+            + '      <div id="dlg_model_selected_line" onclick="openModelDropdown()" onmousedown="openModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
             + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
             + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:nowrap;">'
             + '        <input id="dlg_model_manual_input" style="flex:1;min-width:0;" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
@@ -1709,8 +1709,8 @@ cat <<'HTML'
         return;
       }
       box.innerHTML = arr.map(id => {
-        return '<span class="chip" onclick="openModelDropdown()" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;">'
-          + esc(id)
+        return '<span class="chip" onclick="openModelDropdown()" onmousedown="openModelDropdown()" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;">'
+          + '<span onclick="openModelDropdown()" onmousedown="openModelDropdown()">' + esc(id) + '</span>'
           + '<button class="btn" style="padding:0 6px;line-height:1;min-height:18px;" onclick="event.stopPropagation();removeModelSelection(\'' + esc(id) + '\')" title="移除">×</button>'
           + '</span>';
       }).join('');
@@ -1835,11 +1835,9 @@ cat <<'HTML'
           setMsg(data.error ? ('同步失败：' + data.error) : '未同步到模型', data.error ? 'err' : '');
           return;
         }
-        // 只刷新“可选模型”候选，不自动把所有候选变成已选，避免第一行被塞满。
-        const selected = getSelectedModelIdsFromHidden();
-        const merged = Array.from(new Set(selected.concat(ids)));
-        setModelSelectOptions(merged, selected);
-        setMsg('已同步候选模型，共 ' + ids.length + ' 个（已选保持不变）', 'ok');
+        // 按原逻辑：同步后全部选中
+        setModelSelectOptions(ids, ids);
+        setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
       } catch (e) { setMsg('同步失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
