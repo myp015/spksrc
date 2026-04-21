@@ -1147,23 +1147,43 @@ if not sid:
 sdir = os.path.join(base, 'terminal-sessions', sid)
 cmd_fifo = os.path.join(sdir, 'cmd.fifo')
 pid_file = os.path.join(sdir, 'shell.pid')
-if not os.path.exists(cmd_fifo) or not os.path.exists(pid_file):
+if not os.path.exists(pid_file):
     print(json.dumps({'ok': False, 'error': 'session not found'}, ensure_ascii=False)); raise SystemExit
 try:
     pid = int((open(pid_file, 'r', encoding='utf-8').read() or '0').strip() or '0')
     os.kill(pid, 0)
 except Exception:
     print(json.dumps({'ok': False, 'error': 'session not alive'}, ensure_ascii=False)); raise SystemExit
+
+# 优先直写 shell 的控制终端（更接近 syno-terminal/真实 TTY 行为）
+wrote = False
 try:
-    fd = os.open(cmd_fifo, os.O_WRONLY | os.O_NONBLOCK)
+    tty_path = os.readlink(f'/proc/{pid}/fd/0')
+    fd_tty = os.open(tty_path, os.O_WRONLY | os.O_NONBLOCK)
     try:
-        os.write(fd, text.encode('utf-8', 'ignore'))
+        os.write(fd_tty, text.encode('utf-8', 'ignore'))
+        wrote = True
     finally:
-        os.close(fd)
-except OSError as e:
-    if e.errno in (errno.ENXIO, errno.EPIPE):
-        print(json.dumps({'ok': False, 'error': 'relay not alive'}, ensure_ascii=False)); raise SystemExit
-    raise
+        os.close(fd_tty)
+except Exception:
+    wrote = False
+
+# 回退：写 cmd fifo（兼容旧会话）
+if (not wrote) and os.path.exists(cmd_fifo):
+    try:
+        fd = os.open(cmd_fifo, os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            os.write(fd, text.encode('utf-8', 'ignore'))
+            wrote = True
+        finally:
+            os.close(fd)
+    except OSError as e:
+        if e.errno not in (errno.ENXIO, errno.EPIPE):
+            raise
+
+if not wrote:
+    print(json.dumps({'ok': False, 'error': 'relay not alive'}, ensure_ascii=False)); raise SystemExit
+
 print(json.dumps({'ok': True}, ensure_ascii=False))
 PY
             exit 0
