@@ -1091,7 +1091,6 @@ def log(msg):
 try:
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
         png_path = tmp.name
-    # -m 2 中等纠错，-s 8 较清晰尺寸
     p = subprocess.run(['qrencode', '-o', png_path, '-m', '2', '-s', '8', url], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
     if p.returncode != 0:
         raise RuntimeError((p.stdout or b'').decode('utf-8', 'ignore') or 'qrencode failed')
@@ -1110,6 +1109,24 @@ finally:
             os.remove(png_path)
     except Exception:
         pass
+PY
+            exit 0
+            ;;
+        weixin_qr_latest)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "${APP_VAR_DIR}/weixin-login-debug.log"
+import json, os, re, sys
+p = sys.argv[1]
+if not os.path.exists(p):
+    print(json.dumps({'ok': False, 'error': 'debug log not found'}, ensure_ascii=False)); raise SystemExit
+try:
+    txt = open(p, 'r', encoding='utf-8', errors='ignore').read()[-200000:]
+except Exception as e:
+    print(json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False)); raise SystemExit
+matches = re.findall(r'https://liteapp\.weixin\.qq\.com/q/\S+', txt)
+if not matches:
+    print(json.dumps({'ok': False, 'error': 'no qr url found'}, ensure_ascii=False)); raise SystemExit
+print(json.dumps({'ok': True, 'qrUrl': matches[-1]}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -1664,7 +1681,7 @@ cat <<'HTML'
         area.innerHTML = '<div class="field"><label>Client ID</label><input id="dlg_dd_clientId" value="'+esc(clientId)+'"></div><div class="field"><label>Client Secret</label><input id="dlg_dd_secret" type="password" value="'+esc(secret)+'"></div>';
       } else {
         window.__weixinConnected = false;
-        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin()">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="pollWeixinLogin()">检查状态</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
+        area.innerHTML = '<div style="font-size:12px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin(false)">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="regenerateWeixinQr()">重新生成</button></div><div id="weixin_status" style="font-size:12px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
       }
       syncChannelSaveButtonState();
     }
@@ -1717,7 +1734,7 @@ cat <<'HTML'
       }
       if (pollBtn) {
         pollBtn.disabled = !!busy;
-        pollBtn.textContent = (busy && mode === 'poll') ? '查询中...' : '检查状态';
+        pollBtn.textContent = (busy && mode === 'poll') ? '生成中...' : '重新生成';
       }
     }
     function renderWeixinQrInline(dataUrl, qrUrl, qrEl, note) {
@@ -1799,7 +1816,7 @@ cat <<'HTML'
       }
     }
     let __weixinPollTimer = null;
-    async function startWeixinLogin() {
+    async function startWeixinLogin(force) {
       setWeixinBusy('start', true);
       try {
         const { statusEl, qrEl } = getWeixinUiEls();
@@ -1810,7 +1827,7 @@ cat <<'HTML'
         statusEl.textContent = '正在获取二维码...';
         qrEl.innerHTML = '<div style="font-size:12px;color:#667085;">二维码加载中...</div>';
         console.info('[channels:weixin:start] request login start');
-        const data = await api('weixin_login_start', 'POST', {});
+        const data = await api('weixin_login_start', 'POST', { force: !!force });
         if (data && data.qrUrl) {
           await renderWeixinQr(data.qrUrl, qrEl);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
@@ -1844,11 +1861,16 @@ cat <<'HTML'
         console.info('[channels:weixin:poll]', data);
         const msg = data.message || data.status || '未知状态';
         statusEl.textContent = msg;
-        if (data && data.qrUrl && qrEl) {
-          if (window.__weixinQrUrl !== data.qrUrl) {
-            window.__weixinQrUrl = data.qrUrl;
-            await renderWeixinQr(data.qrUrl, qrEl);
-          }
+        let latestQr = data && data.qrUrl ? data.qrUrl : '';
+        if (!latestQr) {
+          try {
+            const l = await api('weixin_qr_latest');
+            if (l && l.ok && l.qrUrl) latestQr = l.qrUrl;
+          } catch {}
+        }
+        if (latestQr && qrEl && window.__weixinQrUrl !== latestQr) {
+          window.__weixinQrUrl = latestQr;
+          await renderWeixinQr(latestQr, qrEl);
         }
         if (data.connected) {
           window.__weixinConnected = true;
@@ -1865,6 +1887,9 @@ cat <<'HTML'
       } finally {
         if (!silent) setWeixinBusy('poll', false);
       }
+    }
+    async function regenerateWeixinQr() {
+      await startWeixinLogin(true);
     }
     async function disconnectWeixin() {
       try {
