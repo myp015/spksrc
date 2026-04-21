@@ -993,19 +993,22 @@ PY
             printf '{"ok":true,"source":"local"}'
             exit 0
             ;;
-        terminal_exec)
-            body=$(read_body)
+        terminal_session_start)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body"
-import json, os, subprocess, sys
-raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
-try:
-    payload = json.loads(raw or '{}')
-except Exception:
-    payload = {}
-cmd = str((payload.get('cmd') or '')).strip()
-if not cmd:
-    print(json.dumps({'ok': False, 'error': 'empty command'}, ensure_ascii=False)); raise SystemExit
+            python3 - <<'PY' "${APP_VAR_DIR}"
+import json, os, signal, subprocess, sys, time
+base = (sys.argv[1] if len(sys.argv) > 1 else '/tmp').rstrip('/')
+term_root = os.path.join(base, 'terminal-sessions')
+os.makedirs(term_root, exist_ok=True)
+sid = f"t{int(time.time()*1000)}-{os.getpid()}"
+sdir = os.path.join(term_root, sid)
+os.makedirs(sdir, exist_ok=True)
+fifo = os.path.join(sdir, 'in.fifo')
+log = os.path.join(sdir, 'out.log')
+pid_file = os.path.join(sdir, 'shell.pid')
+keeper_file = os.path.join(sdir, 'keeper.pid')
+open(log, 'ab').close()
+os.mkfifo(fifo)
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
@@ -1014,19 +1017,114 @@ env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 
+keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep 3600; done'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+fin = open(fifo, 'rb', buffering=0)
+fout = open(log, 'ab', buffering=0)
+shell = subprocess.Popen(['/bin/bash','-li'], stdin=fin, stdout=fout, stderr=fout, cwd=env['HOME'], env=env, start_new_session=True)
+with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
+with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
-    user = subprocess.check_output(['id', '-un'], text=True).strip()
+    user = subprocess.check_output(['id','-un'], text=True).strip()
 except Exception:
     user = ''
+print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'cwd': env['HOME']}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        terminal_session_write)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body" "${APP_VAR_DIR}"
+import json, os, signal, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+base = (sys.argv[2] if len(sys.argv) > 2 else '/tmp').rstrip('/')
 try:
-    p = subprocess.run(['/bin/bash', '-lc', cmd], env=env, cwd=env['HOME'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
-    out = (p.stdout or b'').decode('utf-8', 'ignore')
-    print(json.dumps({'ok': p.returncode == 0, 'code': p.returncode, 'user': user, 'cwd': env['HOME'], 'output': out[-20000:]}, ensure_ascii=False))
-except subprocess.TimeoutExpired as e:
-    out = (e.stdout or b'').decode('utf-8', 'ignore') if hasattr(e, 'stdout') else ''
-    print(json.dumps({'ok': False, 'code': 124, 'user': user, 'cwd': env['HOME'], 'output': (out + '\n[timeout] command exceeded 45s')[-20000:]}, ensure_ascii=False))
-except Exception as e:
-    print(json.dumps({'ok': False, 'error': str(e), 'user': user, 'cwd': env.get('HOME', '')}, ensure_ascii=False))
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+sid = str(payload.get('sessionId') or '').strip()
+text = str(payload.get('text') or '')
+if not sid:
+    print(json.dumps({'ok': False, 'error': 'missing sessionId'}, ensure_ascii=False)); raise SystemExit
+sdir = os.path.join(base, 'terminal-sessions', sid)
+fifo = os.path.join(sdir, 'in.fifo')
+pid_file = os.path.join(sdir, 'shell.pid')
+if not os.path.exists(fifo) or not os.path.exists(pid_file):
+    print(json.dumps({'ok': False, 'error': 'session not found'}, ensure_ascii=False)); raise SystemExit
+try:
+    pid = int((open(pid_file, 'r', encoding='utf-8').read() or '0').strip() or '0')
+    os.kill(pid, 0)
+except Exception:
+    print(json.dumps({'ok': False, 'error': 'session not alive'}, ensure_ascii=False)); raise SystemExit
+with open(fifo, 'wb', buffering=0) as f:
+    f.write(text.encode('utf-8', 'ignore'))
+print(json.dumps({'ok': True}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        terminal_session_read)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body" "${APP_VAR_DIR}"
+import json, os, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+base = (sys.argv[2] if len(sys.argv) > 2 else '/tmp').rstrip('/')
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+sid = str(payload.get('sessionId') or '').strip()
+offset = int(payload.get('offset') or 0)
+if not sid:
+    print(json.dumps({'ok': False, 'error': 'missing sessionId'}, ensure_ascii=False)); raise SystemExit
+sdir = os.path.join(base, 'terminal-sessions', sid)
+log = os.path.join(sdir, 'out.log')
+pid_file = os.path.join(sdir, 'shell.pid')
+if not os.path.exists(log):
+    print(json.dumps({'ok': False, 'error': 'session not found'}, ensure_ascii=False)); raise SystemExit
+size = os.path.getsize(log)
+if offset < 0: offset = 0
+if offset > size: offset = size
+with open(log, 'rb') as f:
+    f.seek(offset)
+    data = f.read(32768)
+next_offset = offset + len(data)
+alive = False
+try:
+    if os.path.exists(pid_file):
+      pid = int((open(pid_file, 'r', encoding='utf-8').read() or '0').strip() or '0')
+      os.kill(pid, 0)
+      alive = True
+except Exception:
+    alive = False
+print(json.dumps({'ok': True, 'output': data.decode('utf-8', 'ignore'), 'nextOffset': next_offset, 'alive': alive}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        terminal_session_stop)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body" "${APP_VAR_DIR}"
+import json, os, signal, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+base = (sys.argv[2] if len(sys.argv) > 2 else '/tmp').rstrip('/')
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+sid = str(payload.get('sessionId') or '').strip()
+if not sid:
+    print(json.dumps({'ok': False, 'error': 'missing sessionId'}, ensure_ascii=False)); raise SystemExit
+sdir = os.path.join(base, 'terminal-sessions', sid)
+for fn in ('shell.pid','keeper.pid'):
+    p = os.path.join(sdir, fn)
+    if os.path.exists(p):
+        try:
+            pid = int((open(p, 'r', encoding='utf-8').read() or '0').strip() or '0')
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            pass
+print(json.dumps({'ok': True}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -1538,6 +1636,9 @@ cat <<'HTML'
     let statusTimer = null;
     let installBusy = false;
     let installBusyAction = '';
+    let terminalSessionId = '';
+    let terminalOffset = 0;
+    let terminalPollTimer = null;
     window.__openclaw2ClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -1605,6 +1706,7 @@ cat <<'HTML'
       currentTab = tab;
       if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
       if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+      if (terminalPollTimer) { clearInterval(terminalPollTimer); terminalPollTimer = null; }
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     }
     async function api(action, method='GET', payload=null) {
@@ -1711,13 +1813,17 @@ cat <<'HTML'
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
             + '  <div style="display:flex;gap:8px;align-items:center;">'
-            + '    <input id="terminal_cmd" style="flex:1;" placeholder="输入命令，例如: id && pwd && ls -la" onkeydown="if(event.key===\'Enter\'){event.preventDefault();runTerminalCmd();}">'
-            + '    <button class="btn primary" id="btn_terminal_run" onclick="runTerminalCmd()">执行</button>'
+            + '    <input id="terminal_cmd" style="flex:1;" placeholder="交互终端输入（回车发送）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLine();}">'
+            + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
+            + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
+            + '    <button class="btn" onclick="clearTerminalView()">清屏</button>'
+            + '    <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
             + '  </div>'
-            + '  <div style="font-size:13px;color:#667085;">以当前 openclaw2 运行用户执行，工作目录：/volume1/@appdata/openclaw2/data/home</div>'
-            + '  <pre id="terminal_pre" style="min-height:280px;max-height:none;flex:1;">终端已就绪，输入命令后回车执行。</pre>'
+            + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验），当前 app 用户会话，工作目录：/volume1/@appdata/openclaw2/data/home</div>'
+            + '  <pre id="terminal_pre" style="min-height:280px;max-height:none;flex:1;">终端连接中...</pre>'
             + '</div>';
-          setMsg('终端已加载', 'ok');
+          await ensureTerminalSession();
+          setMsg('终端已加载（交互模式）', 'ok');
           return;
         }
         if (tab === 'models') {
@@ -2613,28 +2719,69 @@ cat <<'HTML'
         pre.scrollTop = pre.scrollHeight;
       } catch (e) {}
     }
-    async function runTerminalCmd() {
-      const input = document.getElementById('terminal_cmd');
+    async function ensureTerminalSession() {
       const pre = document.getElementById('terminal_pre');
-      const btn = document.getElementById('btn_terminal_run');
-      if (!input || !pre || !btn) return;
-      const cmd = (input.value || '').trim();
-      if (!cmd) return;
-      const old = btn.textContent;
-      try {
-        btn.disabled = true;
-        btn.textContent = '执行中...';
-        pre.textContent = '$ ' + cmd + '\n\n执行中...';
-        const ret = await api('terminal_exec', 'POST', { cmd });
-        const header = '[user] ' + (ret.user || '-') + '   [cwd] ' + (ret.cwd || '-') + '   [code] ' + String(ret.code ?? '-') + '\n\n';
-        pre.textContent = '$ ' + cmd + '\n\n' + header + (ret.output || '');
-        pre.scrollTop = pre.scrollHeight;
-      } catch (e) {
-        pre.textContent = '$ ' + cmd + '\n\n执行失败：' + (e.message || e);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = old || '执行';
+      if (!pre) return;
+      if (!terminalSessionId) {
+        const ret = await api('terminal_session_start', 'POST', {});
+        if (!ret || !ret.ok) {
+          pre.textContent = '终端启动失败：' + ((ret && (ret.error || ret.message)) || 'unknown');
+          return;
+        }
+        terminalSessionId = ret.sessionId || '';
+        terminalOffset = Number(ret.offset || 0);
+        pre.textContent = '[connected] user=' + (ret.user || '-') + ' cwd=' + (ret.cwd || '-') + '\n';
       }
+      if (terminalPollTimer) clearInterval(terminalPollTimer);
+      terminalPollTimer = setInterval(readTerminalOutput, 500);
+      await readTerminalOutput();
+    }
+    async function readTerminalOutput() {
+      if (!terminalSessionId) return;
+      const pre = document.getElementById('terminal_pre');
+      if (!pre) return;
+      try {
+        const ret = await api('terminal_session_read', 'POST', { sessionId: terminalSessionId, offset: terminalOffset });
+        if (!ret || !ret.ok) return;
+        terminalOffset = Number(ret.nextOffset || terminalOffset);
+        if (ret.output) {
+          pre.textContent += ret.output;
+          pre.scrollTop = pre.scrollHeight;
+        }
+        if (ret.alive === false && terminalPollTimer) {
+          clearInterval(terminalPollTimer);
+          terminalPollTimer = null;
+          pre.textContent += '\n[session ended]\n';
+        }
+      } catch (_) {}
+    }
+    async function sendTerminalText(text) {
+      if (!terminalSessionId) await ensureTerminalSession();
+      if (!terminalSessionId) return;
+      await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
+      await readTerminalOutput();
+    }
+    async function sendTerminalLine() {
+      const input = document.getElementById('terminal_cmd');
+      if (!input) return;
+      const cmd = input.value || '';
+      input.value = '';
+      await sendTerminalText(cmd + '\n');
+    }
+    async function sendTerminalCtrlC() { await sendTerminalText('\u0003'); }
+    async function sendTerminalCtrlD() { await sendTerminalText('\u0004'); }
+    function clearTerminalView() {
+      const pre = document.getElementById('terminal_pre');
+      if (pre) pre.textContent = '';
+    }
+    async function restartTerminalSession() {
+      try {
+        if (terminalSessionId) await api('terminal_session_stop', 'POST', { sessionId: terminalSessionId });
+      } catch (_) {}
+      terminalSessionId = '';
+      terminalOffset = 0;
+      if (terminalPollTimer) { clearInterval(terminalPollTimer); terminalPollTimer = null; }
+      await ensureTerminalSession();
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
     load('status');
