@@ -1118,6 +1118,11 @@ if relay_pid == 0:
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(relay_pid))
 try:
+    with open(os.path.join(sdir, 'cwd.txt'), 'w', encoding='utf-8') as f:
+        f.write(workspace_dir)
+except Exception:
+    pass
+try:
     user = subprocess.check_output(['id','-un'], text=True).strip()
 except Exception:
     user = ''
@@ -1185,6 +1190,67 @@ if not wrote:
     print(json.dumps({'ok': False, 'error': 'relay not alive'}, ensure_ascii=False)); raise SystemExit
 
 print(json.dumps({'ok': True}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        terminal_exec_line)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body" "${APP_VAR_DIR}"
+import json, os, re, shlex, subprocess, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+base = (sys.argv[2] if len(sys.argv) > 2 else '/tmp').rstrip('/')
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+sid = str(payload.get('sessionId') or '').strip()
+line = str(payload.get('line') or '')
+if not sid:
+    print(json.dumps({'ok': False, 'error': 'missing sessionId'}, ensure_ascii=False)); raise SystemExit
+if not line.strip():
+    print(json.dumps({'ok': True, 'output': '', 'cwd': ''}, ensure_ascii=False)); raise SystemExit
+sdir = os.path.join(base, 'terminal-sessions', sid)
+cwd_file = os.path.join(sdir, 'cwd.txt')
+cwd = '/volume1/docker/openclaw'
+try:
+    if os.path.exists(cwd_file):
+        cwd = (open(cwd_file, 'r', encoding='utf-8').read() or '').strip() or cwd
+except Exception:
+    pass
+
+m = re.match(r'^\s*cd(?:\s+(.+))?\s*$', line)
+if m:
+    target = (m.group(1) or '~').strip()
+    if target in ('', '~'):
+        target = os.path.expanduser('~')
+    else:
+        try:
+            target = shlex.split(target)[0]
+        except Exception:
+            target = target.strip('"\'')
+        if not os.path.isabs(target):
+            target = os.path.abspath(os.path.join(cwd, target))
+    if os.path.isdir(target):
+        cwd = target
+        try:
+            with open(cwd_file, 'w', encoding='utf-8') as f: f.write(cwd)
+        except Exception:
+            pass
+        print(json.dumps({'ok': True, 'output': '', 'cwd': cwd, 'code': 0}, ensure_ascii=False)); raise SystemExit
+    print(json.dumps({'ok': True, 'output': f'bash: cd: {target}: No such file or directory\n', 'cwd': cwd, 'code': 1}, ensure_ascii=False)); raise SystemExit
+
+env = os.environ.copy()
+env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['HOME'] = '/volume1/docker/openclaw'
+env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
+env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+env['PATH'] = '/var/packages/openclaw2/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH','')
+
+p = subprocess.run(['/bin/bash', '-lc', line], cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+out = p.stdout or ''
+print(json.dumps({'ok': True, 'output': out, 'cwd': cwd, 'code': int(p.returncode)}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -3022,7 +3088,7 @@ cat <<'HTML'
       }
 
       if (ev.key === 'Tab') { ev.preventDefault(); await sendTerminalText('\t'); return; }
-      if (ev.key === 'Enter') { ev.preventDefault(); await sendTerminalText('\n'); return; }
+      if (ev.key === 'Enter') { ev.preventDefault(); await sendTerminalText('\r'); return; }
       if (ev.key === 'Backspace') { ev.preventDefault(); await sendTerminalText('\u007f'); return; }
 
       if (ev.key === 'ArrowUp') { ev.preventDefault(); await sendTerminalText('\u001b[A'); return; }
@@ -3045,10 +3111,36 @@ cat <<'HTML'
       const line = String(el.value || '');
       if (!line.trim()) return;
       el.value = '';
-      await sendTerminalText(line + '\n');
-      // 立即拉取一轮输出，避免“输入后没反应”的体感。
-      await readTerminalOutput();
-      setTimeout(() => { readTerminalOutput(); }, 150);
+
+      // 可用优先：输入框走后端命令执行通道，确保“输入后有反应”。
+      const pre = document.getElementById('terminal_pre');
+      if (pre) {
+        pre.textContent += line + '\n';
+        pre.scrollTop = pre.scrollHeight;
+      }
+      try {
+        const ret = await api('terminal_exec_line', 'POST', { sessionId: terminalSessionId, line });
+        if (ret && ret.ok) {
+          if (pre && ret.output) {
+            pre.textContent += sanitizeTerminalText(ret.output);
+            pre.scrollTop = pre.scrollHeight;
+          }
+          if (ret && ret.cwd) {
+            const cwdEl = document.getElementById('terminal_cwd');
+            if (cwdEl) cwdEl.textContent = '当前目录：' + ret.cwd;
+            const promptEl = document.getElementById('terminal_prompt_line');
+            if (promptEl) {
+              const user = (window.__terminalUser || 'root');
+              const host = (window.__terminalHost || 'localhost');
+              promptEl.textContent = user + '@' + host + ':' + ret.cwd + '$';
+            }
+          }
+        } else {
+          setMsg('终端执行失败：' + ((ret && (ret.error || ret.message)) || 'unknown'), 'err');
+        }
+      } catch (e) {
+        setMsg('终端执行失败：' + (e && e.message ? e.message : e), 'err');
+      }
     }
     function clearTerminalView() {
       const pre = document.getElementById('terminal_pre');
