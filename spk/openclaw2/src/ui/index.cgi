@@ -26,21 +26,8 @@ read_body() {
 action=$(urldecode "$(get_param action "$QUERY")")
 native_api=$(urldecode "$(get_param native_api "$QUERY")")
 
-# 安全收敛：禁止直接 URL 暴露，需从 DSM 套件中心入口访问。
-# 注意：native_api 请求需放行，否则前端交互（含终端输入）会失效。
-ref="${HTTP_REFERER:-}"
-if [ "$native_api" = "1" ]; then
-    :
-else
-    case "$ref" in
-      *"/webman/index.cgi"*|*"/webman/desktop"*|*"/webman/launch"*) : ;;
-      *)
-        printf 'Status: 403 Forbidden\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
-        printf 'Forbidden: open from DSM package center only.'
-        exit 0
-        ;;
-    esac
-fi
+# 入口访问放宽：避免误伤 DSM 套件中心打开链路。
+# 如需公网防护，请在网关/反向代理层做来源限制。
 
 if [ "$native_api" = "1" ]; then
     case "$action" in
