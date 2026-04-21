@@ -1818,21 +1818,30 @@ cat <<'HTML'
         // 仅保留“运行状态”提示，不显示其它文案。
         if (actionName === 'start' || actionName === 'restart' || actionName === 'stop') {
           const wantRunning = (actionName !== 'stop');
-          for (let i = 0; i < 10; i += 1) {
+          const maxTries = 40; // 最多约 36s，覆盖重启后端口恢复慢的场景
+          for (let i = 0; i < maxTries; i += 1) {
             await new Promise(r => setTimeout(r, 900));
             try {
               const s = await api('status');
-              if (s && !!s.running === wantRunning) {
-                if (actionName === 'restart') {
-                  setMsg('运行状态：正在重启', 'ok');
-                } else {
-                  setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
+              if (actionName === 'restart') {
+                // 重启期间保持“正在重启”，直到真正 running 才结束
+                setMsg('运行状态：正在重启', 'ok');
+                if (s && s.running) {
+                  await load('status');
+                  return;
                 }
-                await load('status');
-                return;
+              } else {
+                if (s && !!s.running === wantRunning) {
+                  setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
+                  await load('status');
+                  return;
+                }
               }
             } catch {}
           }
+          // 超时后再拉一次真实状态，避免停留在旧显示。
+          await load('status');
+          return;
         }
         await load('status');
       } catch (e) {
