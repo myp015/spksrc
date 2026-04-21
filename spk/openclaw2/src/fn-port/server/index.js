@@ -12482,12 +12482,18 @@ async function fetchWeixinQRCode(apiBaseUrl, routeTag) {
   if (routeTag) {
     headers.SKRouteTag = routeTag;
   }
+  console.log(`[weixin:qr] requesting qrcode base=${base} routeTag=${routeTag || ""}`);
   const response = await fetch(url.toString(), { headers });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(`\u5FAE\u4FE1\u4E8C\u7EF4\u7801\u83B7\u53D6\u5931\u8D25: ${response.status} ${response.statusText}${text ? ` - ${text}` : ""}`);
   }
-  return await response.json();
+  const payload = await response.json();
+  const qrRaw = payload?.qrcode_img_content;
+  const qrLength = typeof qrRaw === "string" ? qrRaw.length : 0;
+  const qrSample = typeof qrRaw === "string" ? qrRaw.slice(0, 48) : "";
+  console.log(`[weixin:qr] qrcode received hasQrcode=${!!payload?.qrcode} imgLen=${qrLength} imgPrefix=${qrSample}`);
+  return payload;
 }
 async function pollWeixinQRCodeStatus(apiBaseUrl, qrcode, routeTag, timeoutMs = QR_LONG_POLL_TIMEOUT_MS) {
   const base = apiBaseUrl.endsWith("/") ? apiBaseUrl : `${apiBaseUrl}/`;
@@ -12567,6 +12573,7 @@ async function disconnectWeixinAccount(instance, accountId) {
 }
 async function startWeixinQrLogin(instance, options) {
   purgeExpiredLogins();
+  console.log(`[weixin:login] start requested force=${!!options?.force} accountId=${options?.accountId || ""}`);
   const normalizedAccountId = options?.accountId ? normalizeAccountId(options.accountId) : null;
   const sessionKey = normalizedAccountId || crypto.randomUUID();
   const existing = activeLogins.get(sessionKey);
@@ -12593,6 +12600,7 @@ async function startWeixinQrLogin(instance, options) {
     refreshCount: 1
   };
   activeLogins.set(sessionKey, nextLogin);
+  console.log(`[weixin:login] start ok sessionKey=${sessionKey} routeTag=${routeTag || ""} baseUrl=${baseUrl} refreshCount=${nextLogin.refreshCount}`);
   return {
     sessionKey,
     qrUrl: nextLogin.qrcodeUrl,
@@ -12602,6 +12610,7 @@ async function startWeixinQrLogin(instance, options) {
 }
 async function waitForWeixinQrLogin(instance, params) {
   const sessionKey = params.sessionKey.trim();
+  console.log(`[weixin:login] wait requested sessionKey=${sessionKey} timeoutMs=${params.timeoutMs || ""}`);
   if (!sessionKey) {
     return {
       connected: false,
@@ -12636,6 +12645,7 @@ async function waitForWeixinQrLogin(instance, params) {
     }
     const statusResponse = await pollWeixinQRCodeStatus(login.baseUrl, login.qrcode, login.routeTag, remainingMs);
     login.status = statusResponse.status;
+    console.log(`[weixin:login] wait status sessionKey=${sessionKey} status=${statusResponse.status} remainingMs=${remainingMs}`);
     if (statusResponse.status === "wait") {
       continue;
     }
@@ -12666,6 +12676,7 @@ async function waitForWeixinQrLogin(instance, params) {
       login.qrcodeUrl = refreshed.qrcode_img_content;
       login.startedAt = Date.now();
       login.refreshCount += 1;
+      console.log(`[weixin:login] qrcode refreshed sessionKey=${sessionKey} refreshCount=${login.refreshCount}`);
       return {
         connected: false,
         status: "expired",
@@ -12701,6 +12712,7 @@ async function waitForWeixinQrLogin(instance, params) {
       });
       registerStoredWeixinAccountId(instance, normalizedAccountId);
       activeLogins.delete(sessionKey);
+      console.log(`[weixin:login] confirmed sessionKey=${sessionKey} accountId=${normalizedAccountId} sessionConfigUpdated=${sessionConfigUpdated}`);
       return {
         connected: true,
         status: "confirmed",
