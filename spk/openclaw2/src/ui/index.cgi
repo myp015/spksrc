@@ -1546,12 +1546,14 @@ cat <<'HTML'
             + '    <div class="field"><label>API 类型</label><select id="dlg_api" onchange="invalidateModelDiscoverCache()"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
             + '    <div class="field"><label>Base URL</label><input id="dlg_base_url" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
-            + '    <div class="field"><label>可选模型</label>'
-            + '      <details id="dlg_model_dropdown_wrap" style="margin-top:4px;">'
-            + '        <summary style="cursor:pointer;color:#475467;">点开选择模型（可多选）</summary>'
-            + '        <div id="dlg_model_dropdown" style="max-height:220px;overflow:auto;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;"></div>'
-            + '      </details>'
-            + '      <div id="dlg_model_chips" class="chips" style="margin-top:8px;display:flex;gap:6px;flex-wrap:nowrap;overflow:auto;"></div>'
+            + '    <div class="field"><label>模型列表</label>'
+            + '      <div style="font-size:12px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
+            + '      <div id="dlg_model_selected_line" onclick="toggleModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
+            + '      <div id="dlg_model_dropdown" style="display:none;max-height:220px;overflow:auto;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;"></div>'
+            + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">'
+            + '        <input id="dlg_model_manual_input" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
+            + '        <button class="btn" onclick="addManualModelFromInput()">添加</button>'
+            + '      </div>'
             + '      <input id="dlg_model_ids" type="hidden">'
             + '    </div>'
             + '    <div class="modal-actions">'
@@ -1671,7 +1673,6 @@ cat <<'HTML'
       document.getElementById('dlg_api').value = preset.api || 'openai-completions';
       const builtin = (preset.models || []).filter(Boolean);
       setModelSelectOptions(builtin, builtin);
-      document.getElementById('dlg_model_ids').value = builtin.join('\n');
       setMsg('已按内置模板填充服务商模型列表（不联网拉取）', 'ok');
     }
     function getSelectedModelIdsFromHidden() {
@@ -1695,12 +1696,17 @@ cat <<'HTML'
       }).join('') || '<div style="font-size:12px;color:#98a2b3;">暂无模型</div>';
     }
     function renderModelChips(ids) {
-      const box = document.getElementById('dlg_model_chips');
+      const box = document.getElementById('dlg_model_selected_line');
       if (!box) return;
-      box.innerHTML = (ids || []).map(id => {
+      const arr = ids || [];
+      if (!arr.length) {
+        box.innerHTML = '<span style="font-size:12px;color:#98a2b3;">点击选择模型（可多选）</span>';
+        return;
+      }
+      box.innerHTML = arr.map(id => {
         return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">'
           + esc(id)
-          + '<button class="btn" style="padding:0 6px;line-height:1;min-height:18px;" onclick="removeModelSelection(\'' + esc(id) + '\')" title="移除">×</button>'
+          + '<button class="btn" style="padding:0 6px;line-height:1;min-height:18px;" onclick="event.stopPropagation();removeModelSelection(\'' + esc(id) + '\')" title="移除">×</button>'
           + '</span>';
       }).join('');
     }
@@ -1720,6 +1726,22 @@ cat <<'HTML'
       const curr = getSelectedModelIdsFromHidden();
       const next = curr.filter(x => x !== id);
       setModelSelectOptions(curr, next);
+    }
+    function toggleModelDropdown() {
+      const el = document.getElementById('dlg_model_dropdown');
+      if (!el) return;
+      el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+      if (el.style.display === 'block') triggerDiscoverModelsForDialog();
+    }
+    function addManualModelFromInput() {
+      const inp = document.getElementById('dlg_model_manual_input');
+      if (!inp) return;
+      const v = (inp.value || '').trim();
+      if (!v) return;
+      const curr = getSelectedModelIdsFromHidden();
+      const next = Array.from(new Set(curr.concat([v])));
+      setModelSelectOptions(next, next);
+      inp.value = '';
     }
     function syncModelTextareaFromSelect() {}
     function syncModelSelectFromTextarea() {}
@@ -1757,6 +1779,8 @@ cat <<'HTML'
       document.getElementById('modelModalMask').style.display = 'flex';
       document.body.classList.add('modal-open');
       document.getElementById('modelModalMask').dataset.editIndex = editing ? String(index) : '';
+      const dd = document.getElementById('dlg_model_dropdown');
+      if (dd) dd.style.display = 'none';
     }
     function closeModelDialog() {
       document.getElementById('modelModalMask').style.display = 'none';
