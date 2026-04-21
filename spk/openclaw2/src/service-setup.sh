@@ -353,6 +353,38 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 
 service_postinst() {
     ensure_openclaw_in_path
+
+    # Install DSM nginx alias for bundled terminal entry (root context during postinst/upgrade).
+    mkdir -p "${SYNOPKG_PKGDEST}/var" 2>/dev/null || true
+    cat > "${SYNOPKG_PKGDEST}/var/alias.openclaw2-terminal.conf" <<'NGINX_EOF'
+location ~ ^/openclaw2-terminal(.*)$ {
+    proxy_http_version      1.1;
+    proxy_set_header        Host $host;
+    proxy_set_header        Upgrade $http_upgrade;
+    proxy_set_header        Connection "upgrade";
+    proxy_set_header        X-Real-IP $remote_addr;
+    proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header        X-Forwarded-Proto $scheme;
+    proxy_set_header        X-Forwarded-Host $host;
+    proxy_set_header        Cookie "";
+    proxy_read_timeout      3600s;
+    proxy_send_timeout      3600s;
+    proxy_connect_timeout   60s;
+    add_header              'Access-Control-Allow-Origin' '*' always;
+    add_header              'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+    add_header              'Access-Control-Allow-Headers' 'Authorization,Content-Type,Accept,Origin,User-Agent,DNT,Cache-Control,X-Mx-ReqToken,Keep-Alive,X-Requested-With,If-Modified-Since';
+    add_header              'Access-Control-Allow-Credentials' 'true';
+    add_header              'Cross-Origin-Embedder-Policy' 'require-corp';
+    add_header              'Cross-Origin-Opener-Policy' 'same-origin';
+    add_header              'Cross-Origin-Resource-Policy' 'same-site';
+    proxy_pass              http://127.0.0.1:17682;
+    proxy_buffering         off;
+}
+NGINX_EOF
+    ln -sf "${SYNOPKG_PKGDEST}/var/alias.openclaw2-terminal.conf" /etc/nginx/conf.d/alias.openclaw2-terminal.conf
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1 || true
+    fi
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
         mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
@@ -589,6 +621,23 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
 service_prestart() {
     mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
+
+    # OpenClaw2 bundled terminal (ttyd) integration (no dependency on external terminal package).
+    # nginx alias is prepared in service_postinst (root context); here we only ensure ttyd process.
+    if [ -x "${SYNOPKG_PKGDEST}/bin/ttyd" ]; then
+        if [ ! -f "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" ] || ! kill -0 "$(cat "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" 2>/dev/null)" 2>/dev/null; then
+            local ttyd_bin="${SYNOPKG_PKGDEST}/bin/ttyd"
+            local ttyd_args="-p 17682 -6 -a -W --base-path /openclaw2-terminal/ -t titleFixed=OpenClaw2 -t allow-clipboard-read=true -t allow-clipboard-write=true -t rendererType=canvas"
+            local shell_cmd="/bin/sh"
+            [ -x /bin/bash ] && shell_cmd="/bin/bash"
+            local terminfo_root="${SYNOPKG_PKGDEST}/share/terminfo"
+            [ -d "${terminfo_root}" ] || terminfo_root="/usr/share/terminfo"
+            LD_LIBRARY_PATH="${SYNOPKG_PKGDEST}/lib:${LD_LIBRARY_PATH}" TERMINFO="${terminfo_root}" \
+                nohup "${ttyd_bin}" ${ttyd_args} ${shell_cmd} -l >"${LOG_FILE}" 2>&1 &
+            echo "[openclaw2] terminal proxy up via ${ttyd_bin} at /openclaw2-terminal/" >> "${LOG_FILE}"
+            echo $! > "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid"
+        fi
+    fi
 
     # Ensure bootstrap config exists at fixed base path.
     if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
@@ -1127,6 +1176,25 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     fi
 }
 
+service_poststop() {
+    # stop bundled ttyd if still alive
+    if [ -f "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" ]; then
+        local tpid
+        tpid="$(cat "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" 2>/dev/null)"
+        if [ -n "${tpid}" ]; then
+            kill -TERM "${tpid}" >/dev/null 2>&1 || true
+            sleep 1
+            kill -KILL "${tpid}" >/dev/null 2>&1 || true
+        fi
+        rm -f "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" >/dev/null 2>&1 || true
+    fi
+
+    rm -f /etc/nginx/conf.d/alias.openclaw2-terminal.conf >/dev/null 2>&1 || true
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+}
+
 # Default exports before prestart recalculates runtime paths.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
@@ -1146,7 +1214,7 @@ fi
 
 # 仅保留 DSM 套件后台 UI（index.cgi），不再启动 trim monitor 页面服务。
 # 使用稳定的 sleep 前台进程维持套件 running 状态。
-SERVICE_COMMAND="/bin/sleep 99999999"
-SVC_CWD="${SYNOPKG_PKGDEST}"
+SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data PORT=${SERVICE_PORT} BASE_PATH=/ FN_AUTH_ENABLED=0 FN_AUTH_REQUIRE_SAME_ORIGIN=0 STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
+SVC_CWD="${SYNOPKG_PKGDEST}/fn-port/server"
 SVC_BACKGROUND=yes
 SVC_WRITE_PID=yes

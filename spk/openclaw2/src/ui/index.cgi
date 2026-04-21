@@ -2022,9 +2022,9 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">已对齐 syno-terminal 方案：优先使用 DSM 内嵌终端（/terminal/，无需外部端口）；不可用时回退内置终端。</div>'
+            + '  <div style="font-size:13px;color:#667085;">优先使用 OpenClaw2 内嵌终端（/openclaw2-terminal/，无需额外安装 terminal 套件）；不可用时回退内置终端。</div>'
             + '  <div id="terminal_iframe_wrap" style="display:none;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
-            + '    <iframe src="/terminal/" style="width:100%;height:100%;border:none;"></iframe>'
+            + '    <iframe src="/openclaw2-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
             + '  </div>'
             + '  <div id="terminal_native_wrap" style="display:flex;flex-direction:column;flex:1;min-height:0;gap:8px;">'
             + '    <div id="terminal_cwd" style="font-size:13px;color:#667085;">当前目录：-</div>'
@@ -2058,7 +2058,7 @@ cat <<'HTML'
           await ensureTerminalSession();
           hookTerminalGlobalKeys();
           focusTerminal();
-          setMsg('未检测到 /terminal/，已回退内置终端', 'ok');
+          setMsg('未检测到 /openclaw2-terminal/，已回退内置终端', 'ok');
           return;
         }
         if (tab === 'models') {
@@ -2975,7 +2975,7 @@ cat <<'HTML'
     }
     async function probeDsmTerminal() {
       try {
-        const r = await fetch('/terminal/', { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
+        const r = await fetch('/openclaw2-terminal/', { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
         return !!(r && r.ok);
       } catch (_) {
         return false;

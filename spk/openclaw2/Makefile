@@ -53,9 +53,11 @@ ARCH_PREFIX := $(word 1,$(subst -, ,$(ARCH)))
 ifeq ($(ARCH_PREFIX),x64)
 NODE_DIST_ARCH = x64
 BUN_DIST_ARCH = x64
+TTYD_DIST_ARCH = x86_64
 else ifeq ($(ARCH_PREFIX),aarch64)
 NODE_DIST_ARCH = arm64
 BUN_DIST_ARCH = aarch64
+TTYD_DIST_ARCH = aarch64
 endif
 
 include ../../mk/spksrc.spk.mk
@@ -90,6 +92,9 @@ openclaw_prepare_bundle:
 		curl -fsSL -o bun-linux-$(BUN_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(BUN_DIST_ARCH).zip
 	@cd $(WORK_DIR)/bun-runtime && unzip -q $(WORK_DIR)/bun-linux-$(BUN_DIST_ARCH).zip
 	@cd $(WORK_DIR)/bun-runtime && mv bun-linux-$(BUN_DIST_ARCH)/bun bun && rm -rf bun-linux-$(BUN_DIST_ARCH)
+	@cd $(WORK_DIR) && \
+		curl -fsSL -o ttyd.$(TTYD_DIST_ARCH) https://github.com/tsl0922/ttyd/releases/download/1.7.4/ttyd.$(TTYD_DIST_ARCH)
+	@chmod +x $(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH)
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
@@ -102,6 +107,8 @@ openclaw_copy_target:
 	@cp -f $(WORK_DIR)/node-runtime/bin/node $(STAGING_DIR)/bin/node
 	@cp -f $(WORK_DIR)/bun-runtime/bun $(STAGING_DIR)/bin/bun
 	@chmod 755 $(STAGING_DIR)/bin/bun
+	@cp -f $(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH) $(STAGING_DIR)/bin/ttyd
+	@chmod 755 $(STAGING_DIR)/bin/ttyd
 	@cp -rf $(WORK_DIR)/openclaw-bundle/* $(STAGING_DIR)/app/openclaw/
 	@install -d -m 755 $(STAGING_DIR)/app/openclaw/config
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json

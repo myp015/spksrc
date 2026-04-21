@@ -14,98 +14,104 @@ if [ -r "${SVC_SETUP}" ]; then
     . "${SVC_SETUP}"
 fi
 
-log() {
-    mkdir -p "${SYNOPKG_PKGVAR}" >/dev/null 2>&1 || true
-    echo "$(date '+%F %T') $*" >> "${LOG_FILE}"
-}
-
-docker_cmd() {
-    if command -v docker >/dev/null 2>&1; then
-        docker "$@"
-    elif [ -x /usr/local/bin/docker ]; then
-        /usr/local/bin/docker "$@"
-    else
-        return 127
+call_func() {
+    FUNC="$1"
+    if type "${FUNC}" 2>/dev/null | grep -q 'function' 2>/dev/null; then
+        echo "Begin ${FUNC}" >> "${LOG_FILE}"
+        eval "${FUNC}" >> "${LOG_FILE}" 2>&1
+        echo "End ${FUNC}" >> "${LOG_FILE}"
     fi
 }
 
-container_exists() {
-    docker_cmd container inspect "${CONTAINER_NAME}" >/dev/null 2>&1
-}
-
-container_running() {
-    [ "$(docker_cmd inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]
-}
-
-start_service() {
-    service_prestart >/dev/null 2>&1 || true
-
-    if ! docker_cmd info >/dev/null 2>&1; then
-        log "docker is not available; cannot start ${CONTAINER_NAME}"
-        return 1
-    fi
-
-    log "pulling image ${OPENCLAW_IMAGE}"
-    docker_cmd pull "${OPENCLAW_IMAGE}" >/dev/null 2>&1 || true
-
-    if container_exists; then
-        if container_running; then
-            log "container already running"
+is_running() {
+    # 1) PID file check
+    if [ -n "${PID_FILE}" ] && [ -f "${PID_FILE}" ]; then
+        pid="$(cat "${PID_FILE}" 2>/dev/null)"
+        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
             return 0
         fi
-        log "starting existing container ${CONTAINER_NAME}"
-        docker_cmd start "${CONTAINER_NAME}" >/dev/null
-        return $?
     fi
 
-    log "creating container ${CONTAINER_NAME}"
-    docker_cmd run -d \
-      --name "${CONTAINER_NAME}" \
-      --restart unless-stopped \
-      -e HOME=/home/node \
-      -e TERM=xterm-256color \
-      -v "${STATE_DIR}:/home/node/.openclaw" \
-      -v "${WORKSPACE_DIR}:/home/node/.openclaw/workspace" \
-      -p "${HOST_GATEWAY_PORT}:18789" \
-      -p "${HOST_BRIDGE_PORT}:18790" \
-      "${OPENCLAW_IMAGE}" \
-      node dist/index.js gateway --bind lan --port 18789 >/dev/null
+    # 2) fallback process check for monitor entry
+    pgrep -f '/var/packages/openclaw2/target/fn-port/server/index.cjs|/volume1/@appstore/openclaw2/fn-port/server/index.cjs' >/dev/null 2>&1
 }
 
-stop_service() {
-    if ! container_exists; then
+start_daemon() {
+    if [ -z "${SVC_QUIET}" ]; then
+        if [ -z "${SVC_KEEP_LOG}" ]; then
+            date > "${LOG_FILE}"
+        else
+            date >> "${LOG_FILE}"
+        fi
+    fi
+
+    call_func "service_prestart"
+
+    if is_running; then
         return 0
     fi
-    if container_running; then
-        log "stopping container ${CONTAINER_NAME}"
-        docker_cmd stop "${CONTAINER_NAME}" >/dev/null
+
+    if [ -n "${SVC_CWD}" ]; then
+        cd "${SVC_CWD}" || true
     fi
+
+    nohup /bin/sh -c "${SERVICE_COMMAND}" >> "${LOG_FILE}" 2>&1 &
+    echo $! > "${PID_FILE}"
+
+    sleep 1
+    is_running
 }
 
-status_service() {
-    if container_running; then
-        echo "${SYNOPKG_PKGNAME} is running"
-        return 0
+stop_daemon() {
+    if [ -f "${PID_FILE}" ]; then
+        pid="$(cat "${PID_FILE}" 2>/dev/null)"
+        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            kill -TERM "${pid}" >> "${LOG_FILE}" 2>&1 || true
+            sleep 1
+            kill -KILL "${pid}" >> "${LOG_FILE}" 2>&1 || true
+        fi
+        rm -f "${PID_FILE}" >/dev/null 2>&1 || true
     fi
-    echo "${SYNOPKG_PKGNAME} is not running"
-    return 3
+
+    pkill -f '/var/packages/openclaw2/target/fn-port/server/index.cjs|/volume1/@appstore/openclaw2/fn-port/server/index.cjs' >/dev/null 2>&1 || true
+
+    call_func "service_poststop"
 }
 
 case "$1" in
     start)
-        start_service
+        if is_running; then
+            echo "${SYNOPKG_PKGNAME} is already running" >> "${LOG_FILE}"
+            exit 0
+        fi
+        echo "Starting ${SYNOPKG_PKGNAME} ..." >> "${LOG_FILE}"
+        start_daemon
         exit $?
         ;;
     stop)
-        stop_service
-        exit $?
+        if is_running; then
+            echo "Stopping ${SYNOPKG_PKGNAME} ..." >> "${LOG_FILE}"
+            stop_daemon
+            exit $?
+        fi
+        echo "${SYNOPKG_PKGNAME} is not running" >> "${LOG_FILE}"
+        exit 0
         ;;
     status)
-        status_service
-        exit $?
+        if is_running; then
+            echo "${SYNOPKG_PKGNAME} is running"
+            exit 0
+        fi
+        echo "${SYNOPKG_PKGNAME} is not running"
+        exit 3
         ;;
     log)
-        echo "${LOG_FILE}"
+        if [ -n "${LOG_FILE}" ] && [ -r "${LOG_FILE}" ]; then
+            TEMP_LOG_FILE="${SYNOPKG_PKGVAR}/${SYNOPKG_PKGNAME}_temp.log"
+            echo "Full log: ${LOG_FILE}" > "${TEMP_LOG_FILE}"
+            tail -n100 "${LOG_FILE}" >> "${TEMP_LOG_FILE}"
+            echo "${TEMP_LOG_FILE}"
+        fi
         exit 0
         ;;
     *)
