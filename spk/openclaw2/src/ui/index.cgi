@@ -35,15 +35,22 @@ import json, os, socket, sys, time
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 running = False
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.settimeout(0.6)
-try:
-    s.connect(('127.0.0.1', port))
-    running = True
-except Exception:
-    running = False
-finally:
-    s.close()
+# 避免单次探测抖动导致“已停止 -> 运行中”闪烁：做短重试。
+for _ in range(3):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.6)
+    try:
+        s.connect(('127.0.0.1', port))
+        running = True
+        s.close()
+        break
+    except Exception:
+        running = False
+        try:
+            s.close()
+        except Exception:
+            pass
+        time.sleep(0.15)
 
 # 计算 gateway 运行时长（秒）
 started_ts = None
