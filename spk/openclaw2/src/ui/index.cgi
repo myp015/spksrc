@@ -1513,6 +1513,7 @@ cat <<'HTML'
             + '      <h3 id="modelModalTitle" style="margin:0;">添加模型服务器</h3>'
             + '      <button class="btn" style="padding:2px 10px;line-height:1;" onclick="closeModelDialog()" title="关闭">×</button>'
             + '    </div>'
+            + '    <div id="dlg_model_hint" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;"></div>'
             + '    <div class="field"><label>服务商</label><select id="dlg_provider_preset" onchange="applyProviderPresetDialog()">' + options + '</select></div>'
             + '    <div class="field"><label>Provider ID（显示名与此一致）</label><input id="dlg_provider_id"></div>'
             + '    <div class="field"><label>API 类型</label><select id="dlg_api" onchange="invalidateModelDiscoverCache()"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
@@ -1749,6 +1750,28 @@ cat <<'HTML'
       const merged = Array.from(new Set(pool.concat(ids).concat(existing)));
       setModelSelectOptions(merged, existing.length ? existing : ids);
     }
+    function setModelDialogHint(msg, type) {
+      const el = document.getElementById('dlg_model_hint');
+      if (!el) return;
+      const text = (msg || '').trim();
+      if (!text) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+      }
+      el.style.display = 'block';
+      if (type === 'err') {
+        el.style.background = '#fef3f2';
+        el.style.color = '#b42318';
+        el.style.border = '1px solid #fecdca';
+      } else {
+        el.style.background = '#ecfdf3';
+        el.style.color = '#027a48';
+        el.style.border = '1px solid #abefc6';
+      }
+      el.textContent = text;
+    }
+
     function openModelDialog(index) {
       const data = window.__modelsData || {};
       const providers = data.configuredProviders || [];
@@ -1771,6 +1794,7 @@ cat <<'HTML'
       window.__modelsDiscoveredKey = '';
       document.getElementById('modelModalMask').style.display = 'flex';
       document.body.classList.add('modal-open');
+      setModelDialogHint('', 'ok');
       document.getElementById('modelModalMask').dataset.editIndex = editing ? String(index) : '';
       const dd = document.getElementById('dlg_model_dropdown');
       if (dd) dd.style.display = 'none';
@@ -1810,13 +1834,16 @@ cat <<'HTML'
         const data = await api('models_sync_provider', 'POST', payload);
         const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
         if (!ids.length) {
-          setMsg(data.error ? ('同步失败：' + data.error) : '未同步到模型', data.error ? 'err' : '');
+          const msg = data.error ? ('同步失败：' + data.error) : '未同步到模型';
+          setModelDialogHint(msg, data.error ? 'err' : 'ok');
+          setMsg(msg, data.error ? 'err' : '');
           return;
         }
         // 按原逻辑：同步后全部选中
         setModelSelectOptions(ids, ids);
+        setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
         setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
-      } catch (e) { setMsg('同步失败：' + (e.message || e), 'err'); }
+      } catch (e) { setModelDialogHint('同步失败：' + (e.message || e), 'err'); setMsg('同步失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
       const btns = Array.from(document.querySelectorAll('#modelModalMask .modal-actions .btn.primary'));
@@ -1837,6 +1864,7 @@ cat <<'HTML'
           const duplicatedBase = baseUrl && providers.some(p => ((p && p.baseUrl) || '').trim() === baseUrl);
           if (duplicatedId || duplicatedBase) {
             const reason = duplicatedId ? 'Provider ID 已存在' : 'Base URL 已存在';
+            setModelDialogHint('添加失败：' + reason + '，请修改后重试', 'err');
             setMsg('添加失败：' + reason + '，请修改后重试', 'err');
             if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
             return;
@@ -1854,10 +1882,12 @@ cat <<'HTML'
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: true };
         await api('models_save', 'POST', payload);
+        setModelDialogHint('保存成功，正在刷新列表...', 'ok');
         closeModelDialog();
         await load('models');
         setMsg('模型服务器保存成功', 'ok');
       } catch (e) {
+        setModelDialogHint('保存失败：' + (e.message || e), 'err');
         setMsg('模型服务器保存失败：' + (e.message || e), 'err');
       } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
