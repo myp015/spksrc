@@ -1827,8 +1827,11 @@ cat <<'HTML'
           setMsg(data.error ? ('同步失败：' + data.error) : '未同步到模型', data.error ? 'err' : '');
           return;
         }
-        setModelSelectOptions(ids, ids);
-        setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
+        // 只刷新“可选模型”候选，不自动把所有候选变成已选，避免第一行被塞满。
+        const selected = getSelectedModelIdsFromHidden();
+        const merged = Array.from(new Set(selected.concat(ids)));
+        setModelSelectOptions(merged, selected);
+        setMsg('已同步候选模型，共 ' + ids.length + ' 个（已选保持不变）', 'ok');
       } catch (e) { setMsg('同步失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
