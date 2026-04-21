@@ -1716,7 +1716,9 @@ cat <<'HTML'
       }).join('');
     }
     function setModelSelectOptions(ids, selectedIds) {
-      const all = Array.from(new Set((ids || []).concat(selectedIds || []))).filter(Boolean);
+      const pool = Array.isArray(window.__modelOptionPool) ? window.__modelOptionPool : [];
+      const all = Array.from(new Set((pool || []).concat(ids || []).concat(selectedIds || []))).filter(Boolean);
+      window.__modelOptionPool = all.slice();
       const selected = Array.from(new Set(selectedIds || [])).filter(Boolean);
       setSelectedModelIdsToHidden(selected);
       renderModelDropdown(all, selected);
@@ -1737,6 +1739,7 @@ cat <<'HTML'
     function openModelDropdown() {
       const el = document.getElementById('dlg_model_dropdown');
       if (!el) return;
+      window.__suppressModelDropdownAutoCloseUntil = Date.now() + 250;
       if (el.style.display !== 'block') {
         el.style.display = 'block';
         triggerDiscoverModelsForDialog();
@@ -1770,7 +1773,8 @@ cat <<'HTML'
       const preset = PROVIDER_PRESETS[presetId];
       const ids = (preset && Array.isArray(preset.models)) ? preset.models : [];
       const existing = getSelectedModelIdsFromHidden();
-      const merged = Array.from(new Set(ids.concat(existing)));
+      const pool = Array.isArray(window.__modelOptionPool) ? window.__modelOptionPool : [];
+      const merged = Array.from(new Set(pool.concat(ids).concat(existing)));
       setModelSelectOptions(merged, existing.length ? existing : ids);
     }
     function openModelDialog(index) {
@@ -1790,6 +1794,7 @@ cat <<'HTML'
       if (!editing) {
         applyProviderPresetDialog();
       }
+      window.__modelOptionPool = Array.isArray(currentIds) ? currentIds.slice() : [];
       window.__modelsDiscovering = false;
       window.__modelsDiscoveredKey = '';
       document.getElementById('modelModalMask').style.display = 'flex';
@@ -1805,6 +1810,7 @@ cat <<'HTML'
       const line = document.getElementById('dlg_model_selected_line');
       if (!dd || !line) return;
       if (dd.style.display !== 'block') return;
+      if ((window.__suppressModelDropdownAutoCloseUntil || 0) > Date.now()) return;
       const t = ev.target;
       if (dd.contains(t) || line.contains(t)) return;
       dd.style.display = 'none';
