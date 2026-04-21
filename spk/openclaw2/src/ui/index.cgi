@@ -1049,6 +1049,13 @@ fin = open(fifo, 'rb', buffering=0)
 fout = open(log, 'ab', buffering=0)
 # 使用非 login 交互 shell，保留注入 PATH，避免 profile 覆盖导致 openclaw 不可用。
 shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=workspace_dir, env=env, start_new_session=True)
+# 初始化到目标目录并固定提示符样式（SSH 风格）
+try:
+    init = f"cd '{workspace_dir}'\nexport PS1='\\u@\\h:\\w$ '\n"
+    with open(fifo, 'wb', buffering=0) as wf:
+        wf.write(init.encode('utf-8', 'ignore'))
+except Exception:
+    pass
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
@@ -2766,6 +2773,9 @@ cat <<'HTML'
       let s = String(text || '');
       s = s.replace(/\x1B\[[0-9;?]*[ -\/]*[@-~]/g, '');
       s = s.replace(/\[[0-9;]{1,20}m/g, '');
+      // 非 TTY 交互 shell 常见噪声，直接过滤
+      s = s.replace(/^bash: cannot set terminal process group.*\n?/gm, '');
+      s = s.replace(/^bash: no job control in this shell\n?/gm, '');
       return s;
     }
     async function ensureTerminalSession() {
