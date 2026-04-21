@@ -974,7 +974,8 @@ const channelDefaultAgentId = {
   feishu: "main",
   dingtalk: "main",
   wecom: "main",
-  qqbot: "main"
+  qqbot: "main",
+  "openclaw-weixin": "main"
 };
 for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
   const ch = cfg.channels[channelId];
@@ -1031,7 +1032,8 @@ const legacyAliases = {
   feishu: ["feishu", "feishu-openclaw-plugin"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],
   wecom: ["wecom", "wecom-openclaw-plugin", "openclaw-wecom"],
-  qqbot: ["qqbot", "openclaw-qqbot"]
+  qqbot: ["qqbot", "openclaw-qqbot"],
+  "openclaw-weixin": ["openclaw-weixin", "weixin"]
 };
 
 const resolvePluginsForChannel = (channelId) => {
@@ -1046,6 +1048,22 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
   if (!channelCfg || typeof channelCfg !== "object") continue;
   const available = resolvePluginsForChannel(channelId);
   const aliases = legacyAliases[channelId] || [channelId];
+
+  // 微信渠道兜底保留：即使自动发现偶发失败，也不要把 openclaw-weixin 从配置里删掉。
+  if (channelId === "openclaw-weixin") {
+    const selectedId = "openclaw-weixin";
+    cfg.plugins.entries[selectedId] = cfg.plugins.entries[selectedId] || {};
+    if (cfg.plugins.entries[selectedId].enabled !== true) {
+      cfg.plugins.entries[selectedId].enabled = true;
+      changed = true;
+    }
+    if (!cfg.plugins.allow.includes(selectedId)) {
+      cfg.plugins.allow.push(selectedId);
+      changed = true;
+    }
+    continue;
+  }
+
   if (!available.length) {
     delete cfg.channels[channelId];
     for (const id of aliases) delete cfg.plugins.entries[id];
