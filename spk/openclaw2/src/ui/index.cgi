@@ -514,26 +514,30 @@ env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 log('weixin_login_start begin')
 # 后台默认启用 openclaw-weixin，避免首次登录前还要额外 enable 导致慢启动。
+# 注意：当前环境不接受 channels.weixin（会触发 Config invalid），仅保留 openclaw-weixin。
 try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
 except Exception:
     cfg = {}
 chs = cfg.setdefault('channels', {})
-for key in ('weixin', 'openclaw-weixin'):
-    wx = chs.get(key)
-    if not isinstance(wx, dict):
-        wx = {}
-    wx['enabled'] = True
-    chs[key] = wx
+wx = chs.get('openclaw-weixin')
+if not isinstance(wx, dict):
+    wx = {}
+wx['enabled'] = True
+chs['openclaw-weixin'] = wx
+if 'weixin' in chs:
+    try:
+        chs.pop('weixin', None)
+    except Exception:
+        pass
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
-bootstrap_log = 'plugin enable skipped; openclaw-weixin forced enabled in config'
-log('plugin_enable_skipped=1 weixin_forced_enabled=1')
+bootstrap_log = 'plugin enable skipped; openclaw-weixin forced enabled in config; removed invalid channels.weixin if present'
+log('plugin_enable_skipped=1 openclaw_weixin_forced_enabled=1 removed_invalid_weixin_key=1')
 
-# 新版 openclaw CLI 使用 weixin；保留旧键兼容在状态解析中处理。
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'weixin', '--verbose']
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
 text = ''
 url = None
 login_begin = time.time()
@@ -632,10 +636,8 @@ connected = False
 message = '等待扫码确认'
 try:
     j = json.loads(text)
-    channels = (j.get('channels') or {})
-    account_map = (j.get('channelAccounts') or {})
-    ch = channels.get('weixin') or channels.get('openclaw-weixin') or {}
-    accs = account_map.get('weixin') or account_map.get('openclaw-weixin') or []
+    ch = (j.get('channels') or {}).get('openclaw-weixin') or {}
+    accs = (j.get('channelAccounts') or {}).get('openclaw-weixin') or []
     connected = bool(ch.get('configured')) or any(bool((a or {}).get('configured')) for a in accs)
     message = '已连接' if connected else '等待扫码确认'
 except Exception:
@@ -656,7 +658,7 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'weixin']
+cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
     text = (p.stdout or b'').decode('utf-8', 'ignore')
