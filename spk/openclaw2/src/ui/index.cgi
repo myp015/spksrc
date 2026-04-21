@@ -1044,6 +1044,8 @@ try:
 except Exception:
     pass
 
+# 保持 FIFO 写端常驻，避免脚本会话因 stdin EOF 立刻退出。
+keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep 3600; done'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 fin = open(fifo, 'rb', buffering=0)
 # 使用 script 分配 PTY，解决退格/补全等行编辑异常。
 shell = subprocess.Popen(['/usr/bin/script','-qfec','/bin/bash --noprofile --norc -i',log], stdin=fin, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=workspace_dir, env=env, start_new_session=True)
@@ -1055,7 +1057,7 @@ try:
 except Exception:
     pass
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
-with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
+with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
     user = subprocess.check_output(['id','-un'], text=True).strip()
 except Exception:
