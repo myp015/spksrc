@@ -1834,6 +1834,7 @@ cat <<'HTML'
         const data = await api(tab);
         if (tab === 'status') {
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
+          const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
           const rows = [
             ['实例 ID', data.instanceId || '-'],
             ['显示名', data.displayName || '-'],
@@ -1857,7 +1858,10 @@ cat <<'HTML'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
             + '  <button class="btn primary" id="btn_open_web" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
-            + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>'
+            + '<div class="grid">' + rows.map(([k,v]) => {
+                const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
+                return '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(vv)+'</div>';
+              }).join('') + '</div>'
             + '<div class="modal-mask" id="userSettingsMask">'
             + '  <div class="modal">'
             + '    <h3>用户目录设置</h3>'
@@ -1924,13 +1928,16 @@ cat <<'HTML'
             + '    <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
             + '  </div>'
             + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
-            + '  <div style="display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
-            + '    <div id="terminal_prompt_line" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
+            + '  <div id="terminal_box" onclick="focusTerminal()" style="display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
+            + '    <div id="terminal_prompt_line" onclick="focusTerminal()" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
             + '    <pre id="terminal_pre" tabindex="0" onclick="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
+            + '    <textarea id="terminal_hidden_input" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;"></textarea>'
             + '  </div>'
             + '</div>';
           await ensureTerminalSession();
           focusTerminal();
+          const hidden = document.getElementById('terminal_hidden_input');
+          if (hidden) hidden.addEventListener('keydown', handleTerminalKey);
           setMsg('终端已加载（交互模式）', 'ok');
           return;
         }
@@ -2900,6 +2907,8 @@ cat <<'HTML'
       } catch (_) {}
     }
     function focusTerminal() {
+      const hidden = document.getElementById('terminal_hidden_input');
+      if (hidden) { hidden.focus(); return; }
       const pre = document.getElementById('terminal_pre');
       if (pre) pre.focus();
     }
