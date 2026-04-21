@@ -1664,7 +1664,6 @@ cat <<'HTML'
     let terminalSessionId = '';
     let terminalOffset = 0;
     let terminalPollTimer = null;
-    let terminalInputBuffer = '';
     let terminalSuggest = ['openclaw doctor', 'openclaw gateway status', 'openclaw gateway restart', 'openclaw config validate'];
     window.__openclaw2ClientErrors = [];
 
@@ -2804,42 +2803,33 @@ cat <<'HTML'
       if (!ev) return;
       const pre = document.getElementById('terminal_pre');
       if (!pre) return;
-      if (ev.key === 'Tab') {
-        ev.preventDefault();
-        // 交给 bash 原生补全（路径/命令/文件名），行为对齐 SSH。
-        await sendTerminalText('\t');
-        return;
+
+      // 全部按键直通 shell，确保 TAB/历史/路径补全与 SSH 一致。
+      if (ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+        if (ev.key === 'c' || ev.key === 'C') { ev.preventDefault(); await sendTerminalText('\u0003'); return; }
+        if (ev.key === 'd' || ev.key === 'D') { ev.preventDefault(); await sendTerminalText('\u0004'); return; }
       }
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        const line = terminalInputBuffer;
-        terminalInputBuffer = '';
-        pre.textContent += '\n';
-        pre.scrollTop = pre.scrollHeight;
-        await sendTerminalText(line + '\n');
-        return;
-      }
-      if (ev.key === 'Backspace') {
-        ev.preventDefault();
-        if (!terminalInputBuffer.length) return;
-        terminalInputBuffer = terminalInputBuffer.slice(0, -1);
-        pre.textContent = pre.textContent.slice(0, -1);
-        pre.scrollTop = pre.scrollHeight;
-        return;
-      }
+
+      if (ev.key === 'Tab') { ev.preventDefault(); await sendTerminalText('\t'); return; }
+      if (ev.key === 'Enter') { ev.preventDefault(); await sendTerminalText('\n'); return; }
+      if (ev.key === 'Backspace') { ev.preventDefault(); await sendTerminalText('\u007f'); return; }
+
+      if (ev.key === 'ArrowUp') { ev.preventDefault(); await sendTerminalText('\u001b[A'); return; }
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); await sendTerminalText('\u001b[B'); return; }
+      if (ev.key === 'ArrowRight') { ev.preventDefault(); await sendTerminalText('\u001b[C'); return; }
+      if (ev.key === 'ArrowLeft') { ev.preventDefault(); await sendTerminalText('\u001b[D'); return; }
+
       if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
       if (ev.key && ev.key.length === 1) {
         ev.preventDefault();
-        terminalInputBuffer += ev.key;
-        pre.textContent += ev.key;
+        await sendTerminalText(ev.key);
         pre.scrollTop = pre.scrollHeight;
       }
     }
-    async function sendTerminalCtrlC() { terminalInputBuffer = ''; await sendTerminalText('\u0003'); }
-    async function sendTerminalCtrlD() { terminalInputBuffer = ''; await sendTerminalText('\u0004'); }
+    async function sendTerminalCtrlC() { await sendTerminalText('\u0003'); }
+    async function sendTerminalCtrlD() { await sendTerminalText('\u0004'); }
     function clearTerminalView() {
       const pre = document.getElementById('terminal_pre');
-      terminalInputBuffer = '';
       if (pre) pre.textContent = '';
     }
     async function restartTerminalSession() {
@@ -2848,7 +2838,6 @@ cat <<'HTML'
       } catch (_) {}
       terminalSessionId = '';
       terminalOffset = 0;
-      terminalInputBuffer = '';
       if (terminalPollTimer) { clearInterval(terminalPollTimer); terminalPollTimer = null; }
       await ensureTerminalSession();
     }
