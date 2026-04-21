@@ -1008,8 +1008,8 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-# 用简洁无颜色提示符，前端可稳定显示当前目录。
-env['PS1'] = '$ '
+# 提示符直接显示当前目录（由 shell 原生渲染）。
+env['PS1'] = '\\w$ '
 # 确保 openclaw 原生命令任意目录可用
 env['PATH'] = '/var/packages/openclaw2/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH', '')
 try:
@@ -1034,16 +1034,6 @@ fin = open(fifo, 'rb', buffering=0)
 fout = open(log, 'ab', buffering=0)
 # 使用非 login 交互 shell，保留注入 PATH，避免 profile 覆盖导致 openclaw 不可用。
 shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=env['HOME'], env=env, start_new_session=True)
-# 通过 shell 自身机制输出当前目录提示，避免前端拼接误差。
-try:
-    init = (
-      'PROMPT_COMMAND='"'"'printf "\\r%s$ " "$(pwd)"'"'"'\n'
-      'export PS1=""\n'
-    )
-    with open(fifo, 'wb', buffering=0) as wf:
-        wf.write(init.encode('utf-8', 'ignore'))
-except Exception:
-    pass
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
@@ -2795,7 +2785,7 @@ cat <<'HTML'
       if (!terminalSessionId) await ensureTerminalSession();
       if (!terminalSessionId) return;
       await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
-      await readTerminalOutput();
+      // 输入按键不立即强制读回，交给定时轮询，避免输入与输出错序串扰。
     }
     async function handleTerminalKey(ev) {
       if (!ev) return;
