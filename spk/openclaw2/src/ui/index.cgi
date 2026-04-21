@@ -1612,7 +1612,11 @@ cat <<'HTML'
             + '    </div>'
             + '  </div>'
             + '</div>';
-          setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          if (installBusy && installBusyAction === 'restart') {
+            setMsg('运行状态：正在重启', 'ok');
+          } else {
+            setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          }
           if (installBusy) {
             setInstallButtonsBusy(installBusyAction, true);
           } else {
@@ -1627,8 +1631,13 @@ cat <<'HTML'
               const nextUptime = nextRunning ? formatUptime((s && s.uptimeSeconds) || 0) : '-';
               const msgEl = document.getElementById('msg');
               if (msgEl) {
-                msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
-                msgEl.textContent = '运行状态：' + nextText;
+                if (installBusy && installBusyAction === 'restart') {
+                  msgEl.className = 'msg ok';
+                  msgEl.textContent = '运行状态：正在重启';
+                } else {
+                  msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
+                  msgEl.textContent = '运行状态：' + nextText;
+                }
               }
               const gridVals = document.querySelectorAll('.grid .cellv');
               if (gridVals && gridVals.length >= 5) {
@@ -1791,7 +1800,11 @@ cat <<'HTML'
             try {
               const s = await api('status');
               if (s && !!s.running === wantRunning) {
-                setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
+                if (actionName === 'restart') {
+                  setMsg('运行状态：正在重启', 'ok');
+                } else {
+                  setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
+                }
                 await load('status');
                 return;
               }
