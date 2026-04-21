@@ -1474,7 +1474,7 @@ cat <<'HTML'
             + '  </div>'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
-          refreshOpenWebButtonState(!!data.running);
+          refreshOpenWebButtonState({ installed: !!data.installed, running: !!data.running, webUrl: webUrl });
           return;
         }
         if (tab === 'logs') {
@@ -1618,12 +1618,20 @@ cat <<'HTML'
         setMsg('操作失败：' + (e.message || e), 'err');
       }
     }
-    function refreshOpenWebButtonState(isGatewayReady) {
+    function refreshOpenWebButtonState(state) {
       const btn = document.getElementById('btn_open_web');
       if (!btn) return;
-      const ready = !!isGatewayReady;
+      const installed = !!(state && state.installed);
+      const running = !!(state && state.running);
+      const webUrl = String((state && state.webUrl) || '').trim();
+      const hasWebUrl = !!webUrl && webUrl !== '#';
+      // 对齐 trim.openclaw_v0.0.10：installed && running && gatewayUrl 可用 时才允许打开。
+      const ready = installed && running && hasWebUrl;
       btn.disabled = !ready;
-      btn.title = ready ? '' : 'Gateway 未完全启动，暂不可点击';
+      if (!installed) btn.title = 'OpenClaw 尚未安装';
+      else if (!running) btn.title = 'Gateway 未运行，暂不可点击';
+      else if (!hasWebUrl) btn.title = '尚未获取到可用入口地址';
+      else btn.title = '';
     }
     function openOpenclawWeb(url) {
       let u = (url || '').trim();
