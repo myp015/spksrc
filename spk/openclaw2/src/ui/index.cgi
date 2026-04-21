@@ -582,9 +582,19 @@ PY
             ;;
         weixin_login_wait)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
-import json, os, subprocess, sys
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log"
+import json, os, subprocess, sys, time
 cfg_path = sys.argv[1]
+debug_log = sys.argv[2] if len(sys.argv) > 2 else '/tmp/openclaw-weixin-login.log'
+
+def log(msg):
+    try:
+        os.makedirs(os.path.dirname(debug_log), exist_ok=True)
+        with open(debug_log, 'a', encoding='utf-8') as f:
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+    except Exception:
+        pass
+
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
@@ -611,6 +621,7 @@ try:
     message = '已连接' if connected else '等待扫码确认'
 except Exception:
     connected = False
+log(f'weixin_login_wait connected={bool(connected)} message={message}')
 print(json.dumps({'supported': True, 'connected': bool(connected), 'status': 'connected' if connected else 'pending', 'message': message, 'raw': raw[-500:]}, ensure_ascii=False))
 PY
             exit 0
@@ -887,6 +898,10 @@ PY
         weixin_qr_data)
             body=$(read_body)
             qr_encoded=$(urldecode "$(get_param url "$QUERY")")
+            DEBUG_LOG="${APP_VAR_DIR}/weixin-login-debug.log"
+            {
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] weixin_qr_data requested url_prefix=${qr_encoded%%\?*}"
+            } >> "$DEBUG_LOG" 2>/dev/null || true
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             /var/packages/openclaw2/target/bin/node - <<'NODE' "$body" "$qr_encoded"
 const fs = require('fs');
@@ -1524,49 +1539,17 @@ cat <<'HTML'
         pollBtn.textContent = (busy && mode === 'poll') ? '查询中...' : '检查状态';
       }
     }
-    function ensureWeixinQrModal() {
-      let mask = document.getElementById('weixinQrMask');
-      if (mask) return mask;
-      mask = document.createElement('div');
-      mask.id = 'weixinQrMask';
-      mask.className = 'modal-mask';
-      mask.innerHTML = ''
-        + '<div class="modal" style="width:min(460px,92vw);">'
-        + '  <h3 id="weixinQrTitle">微信扫码登录</h3>'
-        + '  <div id="weixinQrHint" style="font-size:12px;color:#667085;margin-bottom:8px;">请使用微信扫码</div>'
-        + '  <div id="weixinQrBody" style="text-align:center;"></div>'
-        + '  <div class="modal-actions">'
-        + '    <a id="weixinQrLink" class="btn" target="_blank" rel="noopener" href="#">新窗口打开二维码</a>'
-        + '    <button class="btn" onclick="closeWeixinQrModal()">关闭</button>'
+    function renderWeixinQrInline(dataUrl, qrUrl, qrEl, note) {
+      qrEl.innerHTML = ''
+        + '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">'
+        + '  <div style="font-size:12px;color:#667085;">' + esc(note || '请使用微信扫码完成登录') + '</div>'
+        + '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px;">'
+        + '    <img src="' + esc(dataUrl) + '" style="max-width:320px;width:100%;display:block;" />'
+        + '  </div>'
+        + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+        + '    <a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>'
         + '  </div>'
         + '</div>';
-      document.body.appendChild(mask);
-      return mask;
-    }
-    function closeWeixinQrModal() {
-      const mask = document.getElementById('weixinQrMask');
-      if (!mask) return;
-      mask.style.display = 'none';
-      document.body.classList.remove('modal-open');
-    }
-    function openWeixinQrModal(title, dataUrl, qrUrl, note) {
-      const mask = ensureWeixinQrModal();
-      const titleEl = document.getElementById('weixinQrTitle');
-      const hintEl = document.getElementById('weixinQrHint');
-      const bodyEl = document.getElementById('weixinQrBody');
-      const linkEl = document.getElementById('weixinQrLink');
-      if (titleEl) titleEl.textContent = title || '微信扫码登录';
-      if (hintEl) hintEl.textContent = note || '请使用微信扫码';
-      if (bodyEl) {
-        if (dataUrl) {
-          bodyEl.innerHTML = '<img src="' + esc(dataUrl) + '" style="max-width:320px;width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;box-sizing:border-box;" />';
-        } else {
-          bodyEl.innerHTML = '<div style="font-size:12px;color:#667085;">二维码加载中...</div>';
-        }
-      }
-      if (linkEl) linkEl.href = qrUrl || '#';
-      mask.style.display = 'flex';
-      document.body.classList.add('modal-open');
     }
     async function renderWeixinQr(qrUrl, qrEl) {
       try {
@@ -1583,9 +1566,10 @@ cat <<'HTML'
         const dataUrl = data.dataUrl;
         window.__weixinQrDataUrl = dataUrl;
         window.__weixinQrUrl = qrUrl;
-        openWeixinQrModal('微信扫码登录', window.__weixinQrDataUrl, window.__weixinQrUrl, '请使用微信扫码完成登录');
-        qrEl.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><button class="btn" onclick="openWeixinQrModal(\'微信扫码登录\', window.__weixinQrDataUrl, window.__weixinQrUrl, \'请使用微信扫码完成登录\')">在当前页弹窗显示</button><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a></div>';
+        console.info('[channels:weixin:inline-qr]', { hasDataUrl: !!dataUrl, qrUrl: qrUrl });
+        renderWeixinQrInline(window.__weixinQrDataUrl, window.__weixinQrUrl, qrEl, '请使用微信扫码完成登录');
       } catch (e) {
+        console.error('[channels:weixin:inline-qr:error]', e);
         qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码生成失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
       }
@@ -1599,7 +1583,8 @@ cat <<'HTML'
           return;
         }
         statusEl.textContent = '正在获取二维码...';
-        openWeixinQrModal('微信扫码登录', '', '#', '正在获取二维码...');
+        qrEl.innerHTML = '<div style="font-size:12px;color:#667085;">二维码加载中...</div>';
+        console.info('[channels:weixin:start] request login start');
         const data = await api('weixin_login_start', 'POST', {});
         if (data && data.qrUrl) {
           await renderWeixinQr(data.qrUrl, qrEl);
@@ -1625,6 +1610,7 @@ cat <<'HTML'
         }
         statusEl.textContent = '正在查询登录状态...';
         const data = await api('weixin_login_wait', 'POST', { sessionKey, timeoutMs: 1000 });
+        console.info('[channels:weixin:poll]', data);
         const msg = data.message || data.status || '未知状态';
         statusEl.textContent = msg;
         if (data.connected) setMsg('微信已连接', 'ok');
