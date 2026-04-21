@@ -1501,9 +1501,9 @@ cat <<'HTML'
           const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
-            + '  <button class="btn" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
-            + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
-            + '  <button class="btn" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
+            + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
+            + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
+            + '  <button class="btn" id="btn_oc_restart" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
             + '  <button class="btn primary" id="btn_open_web" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
@@ -1638,7 +1638,29 @@ cat <<'HTML'
         setMsg('加载失败：' + (e.message || e), 'err');
       }
     }
+    function setInstallButtonsBusy(actionName, busy) {
+      const startBtn = document.getElementById('btn_oc_start');
+      const stopBtn = document.getElementById('btn_oc_stop');
+      const restartBtn = document.getElementById('btn_oc_restart');
+      if (!startBtn || !stopBtn || !restartBtn) return;
+      if (busy) {
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+        restartBtn.disabled = true;
+        startBtn.textContent = actionName === 'start' ? '启动中...' : '启动 OpenClaw';
+        stopBtn.textContent = actionName === 'stop' ? '停止中...' : '停止 OpenClaw';
+        restartBtn.textContent = actionName === 'restart' ? '重启中...' : '重启 OpenClaw';
+        return;
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = false;
+      restartBtn.disabled = false;
+      startBtn.textContent = '启动 OpenClaw';
+      stopBtn.textContent = '停止 OpenClaw';
+      restartBtn.textContent = '重启 OpenClaw';
+    }
     async function runInstallAction(actionName) {
+      setInstallButtonsBusy(actionName, true);
       try {
         await api('install_run', 'POST', { method: 'bun', action: actionName });
         // 仅保留“运行状态”提示，不显示其它文案。
@@ -1660,6 +1682,8 @@ cat <<'HTML'
       } catch (e) {
         // 概览页按要求不展示其它提示。
         await load('status');
+      } finally {
+        setInstallButtonsBusy('', false);
       }
     }
     // 按用户要求："打开 OpenClaw Web" 按钮始终可用，不做状态检测。
