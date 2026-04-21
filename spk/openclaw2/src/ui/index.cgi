@@ -1605,12 +1605,13 @@ cat <<'HTML'
         // 方案改为与固定测试二维码一致：直接内嵌微信返回的二维码页面 URL，避免本地二维码算法报错。
         window.__weixinQrDataUrl = '';
         window.__weixinQrUrl = qrUrl;
-        console.info('[channels:weixin:inline-qr:url-embed]', { qrUrl: qrUrl });
+        const proxiedUrl = API_BASE + 'weixin_qr_proxy&url=' + encodeURIComponent(qrUrl);
+        console.info('[channels:weixin:inline-qr:proxy-embed]', { qrUrl: qrUrl, proxiedUrl });
         qrEl.innerHTML = ''
           + '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">'
-          + '  <div style="font-size:12px;color:#667085;">请使用微信扫码完成登录（页面内嵌）</div>'
+          + '  <div style="font-size:12px;color:#667085;">请使用微信扫码完成登录（当前页代理内嵌）</div>'
           + '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px;">'
-          + '    <iframe src="' + esc(qrUrl) + '" style="width:320px;height:420px;border:0;display:block;background:#fff;" referrerpolicy="no-referrer"></iframe>'
+          + '    <iframe src="' + esc(proxiedUrl) + '" style="width:320px;height:420px;border:0;display:block;background:#fff;" referrerpolicy="no-referrer"></iframe>'
           + '  </div>'
           + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
           + '    <a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>'
