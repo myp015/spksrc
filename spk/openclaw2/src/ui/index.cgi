@@ -722,11 +722,11 @@ log(f'weixin_login_wait connected={bool(connected)} message={message}')
 # 尝试返回当前活跃二维码，便于前端在二维码过期后自动刷新显示。
 qr_url = None
 try:
-    p2 = subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=6)
-    txt = (p2.stdout or b'').decode('utf-8', 'ignore')
-    m = __import__('re').search(r'https://liteapp\.weixin\.qq\.com/q/\S+', txt)
-    if m:
-        qr_url = m.group(0)
+    if os.path.exists(debug_log):
+        txt2 = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-200000:]
+        ms = __import__('re').findall(r'https://liteapp\.weixin\.qq\.com/q/\S+', txt2)
+        if ms:
+            qr_url = ms[-1]
 except Exception:
     qr_url = None
 print(json.dumps({'supported': True, 'connected': bool(connected), 'status': 'connected' if connected else 'pending', 'message': message, 'qrUrl': qr_url, 'raw': raw[-500:]}, ensure_ascii=False))
@@ -1817,6 +1817,7 @@ cat <<'HTML'
     }
     let __weixinPollTimer = null;
     async function startWeixinLogin(force) {
+      const startTs = Date.now();
       setWeixinBusy('start', true);
       try {
         const { statusEl, qrEl } = getWeixinUiEls();
@@ -1828,6 +1829,7 @@ cat <<'HTML'
         qrEl.innerHTML = '<div style="font-size:12px;color:#667085;">二维码加载中...</div>';
         console.info('[channels:weixin:start] request login start');
         const data = await api('weixin_login_start', 'POST', { force: !!force });
+        console.info('[channels:weixin:start:timing]', { elapsedMs: Date.now() - startTs, force: !!force });
         if (data && data.qrUrl) {
           await renderWeixinQr(data.qrUrl, qrEl);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
@@ -1879,7 +1881,10 @@ cat <<'HTML'
             clearInterval(__weixinPollTimer);
             __weixinPollTimer = null;
           }
-          try { await saveChannelDialog(); } catch {}
+          try {
+            await saveChannelDialog();
+            await load('channels');
+          } catch {}
           setMsg('微信已连接（已自动保存）', 'ok');
         }
       } catch (e) {
