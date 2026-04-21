@@ -1044,20 +1044,18 @@ try:
 except Exception:
     pass
 
-keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep 3600; done'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 fin = open(fifo, 'rb', buffering=0)
-fout = open(log, 'ab', buffering=0)
-# 使用非 login 交互 shell，保留注入 PATH，避免 profile 覆盖导致 openclaw 不可用。
-shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=workspace_dir, env=env, start_new_session=True)
+# 使用 script 分配 PTY，解决退格/补全等行编辑异常。
+shell = subprocess.Popen(['/usr/bin/script','-qfec','/bin/bash --noprofile --norc -i',log], stdin=fin, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=workspace_dir, env=env, start_new_session=True)
+
 # 初始化到目标目录并固定提示符样式（SSH 风格）
 try:
-    init = f"cd '{workspace_dir}'\nexport PS1='\\u@\\h:\\w$ '\n"
     with open(fifo, 'wb', buffering=0) as wf:
-        wf.write(init.encode('utf-8', 'ignore'))
+        wf.write((f"cd '{workspace_dir}'\nexport PS1='\\u@\\h:\\w$ '\n").encode('utf-8', 'ignore'))
 except Exception:
     pass
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
-with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
+with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 try:
     user = subprocess.check_output(['id','-un'], text=True).strip()
 except Exception:
