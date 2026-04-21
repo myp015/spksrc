@@ -1793,6 +1793,10 @@ cat <<'HTML'
       stopBtn.textContent = '停止 OpenClaw';
       restartBtn.textContent = '重启 OpenClaw';
     }
+    function setHotReloadBusy(busy) {
+      // 所有热重启动作统一映射到“重启中”状态展示。
+      setInstallButtonsBusy('restart', !!busy);
+    }
     async function runInstallAction(actionName) {
       setInstallButtonsBusy(actionName, true);
       try {
@@ -2083,6 +2087,7 @@ cat <<'HTML'
       const btns = Array.from(document.querySelectorAll('#modelModalMask .modal-actions .btn.primary'));
       const saveBtn = btns.find(b => (b.textContent || '').includes('保存')) || btns[0] || null;
       const oldText = saveBtn ? saveBtn.textContent : '';
+      let hotReloadTriggered = false;
       try {
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '正在应用模型...'; }
         const data = window.__modelsData || {};
@@ -2124,6 +2129,8 @@ cat <<'HTML'
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: true };
+        hotReloadTriggered = true;
+        setHotReloadBusy(true);
         await api('models_save', 'POST', payload);
         setModelDialogHint('保存成功，正在刷新列表...', 'ok');
         closeModelDialog();
@@ -2133,6 +2140,7 @@ cat <<'HTML'
         setModelDialogHint('保存失败：' + (e.message || e), 'err');
         setMsg('模型服务器保存失败：' + (e.message || e), 'err');
       } finally {
+        if (hotReloadTriggered) setHotReloadBusy(false);
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
       }
     }
@@ -2147,13 +2155,17 @@ cat <<'HTML'
       } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
     }
     async function saveWorkspaceQuick() {
+      let hotReloadTriggered = false;
       try {
         const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/docker/openclaw';
         const m = await api('models');
         const payload = { providers: (m.configuredProviders || []), workspaceDir, applyNow: true };
+        hotReloadTriggered = true;
+        setHotReloadBusy(true);
         await api('models_save', 'POST', payload);
         setMsg('用户目录保存成功：' + workspaceDir, 'ok');
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
+      finally { if (hotReloadTriggered) setHotReloadBusy(false); }
     }
     async function saveQQBotQuick() {}
     function openChannelDialog(editId) {
@@ -2250,8 +2262,11 @@ cat <<'HTML'
       }
       const btn = document.getElementById('btn_channel_save');
       const oldText = btn ? btn.textContent : '';
+      let hotReloadTriggered = false;
       try {
         if (btn) { btn.disabled = true; btn.textContent = '正在添加...'; }
+        hotReloadTriggered = true;
+        setHotReloadBusy(true);
         const ret = await api('channels_save', 'POST', payload);
         closeChannelDialog();
         await load('channels');
@@ -2260,6 +2275,7 @@ cat <<'HTML'
       } catch (e) {
         setMsg('渠道保存失败：' + (e.message || e), 'err');
       } finally {
+        if (hotReloadTriggered) setHotReloadBusy(false);
         if (btn) { btn.disabled = false; btn.textContent = oldText || '保存'; }
       }
     }
