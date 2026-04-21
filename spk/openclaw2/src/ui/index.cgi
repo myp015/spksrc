@@ -1727,7 +1727,8 @@ cat <<'HTML'
             'openclaw-weixin': '微信（openclaw-weixin）',
             weixin: '微信（weixin）'
           };
-          const rows = configured.map(id => '<div class="item">'
+          const ordered = configured.slice(); // 保持配置内插入顺序（即添加顺序）
+          const rows = ordered.map(id => '<div class="item" style="margin-bottom:8px;">'
             + '<div class="item-title">' + esc(descMap[id] || id) + '</div>'
             + '<div class="item-meta">channelId=' + esc(id) + '</div>'
             + '<div style="display:flex;gap:8px;">'
@@ -1738,7 +1739,7 @@ cat <<'HTML'
           content.innerHTML = ''
             + '<div class="card" style="margin-bottom:12px;">'
             + '  <h3>已配置渠道</h3>'
-            + (configured.length ? ('<div class="list-grid" style="max-height:16.7vh;min-height:120px;overflow-y:auto;overflow-x:hidden;align-content:start;">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
+            + (configured.length ? ('<div class="list" style="max-height:16.7vh;min-height:120px;overflow-y:auto;overflow-x:hidden;">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
             + '  <div style="display:flex;gap:8px;margin-top:10px;">'
             + '    <button class="btn primary" onclick="openChannelDialog()">添加渠道</button>'
             + '  </div>'
