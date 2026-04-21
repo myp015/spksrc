@@ -31,7 +31,7 @@ if [ "$native_api" = "1" ]; then
         status)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$GATEWAY_PORT" "/volume1/docker/openclaw/.openclaw/openclaw.json"
-import json, os, socket, sys
+import json, os, socket, sys, time
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 running = False
@@ -44,6 +44,23 @@ except Exception:
     running = False
 finally:
     s.close()
+
+# 计算 gateway 运行时长（秒）
+started_ts = None
+uptime_seconds = 0
+if running:
+    try:
+        p = os.popen("ps -eo etimes,cmd | grep -E '/app/openclaw/dist/index.js gateway|openclaw gateway' | grep -v grep | head -n1")
+        line = (p.read() or '').strip()
+        p.close()
+        if line:
+            parts = line.split(None, 1)
+            if parts and parts[0].isdigit():
+                uptime_seconds = int(parts[0])
+                started_ts = int(time.time()) - uptime_seconds
+    except Exception:
+        uptime_seconds = 0
+        started_ts = None
 try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
 except Exception:
@@ -61,7 +78,9 @@ out = {
   'dashboardUrl': f'http://LAN_HOST:{port}/default/chat?session=main',
   'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?session=main&token={token}',
   'workspaceDir': workspace,
-  'configPath': cfg_path
+  'configPath': cfg_path,
+  'uptimeSeconds': uptime_seconds,
+  'startedAt': started_ts
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -1015,6 +1034,45 @@ os.makedirs(os.path.dirname(cfg), exist_ok=True)
 with open(cfg,'w',encoding='utf-8') as f:
     json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
 
+# 安装后自动补齐完整默认策略（全新可用配置）
+try:
+    plugins = c.setdefault('plugins', {})
+    plugins['enabled'] = True
+    allow = plugins.get('allow')
+    if not isinstance(allow, list):
+        allow = []
+    for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
+        if pid not in allow:
+            allow.append(pid)
+    plugins['allow'] = allow
+    entries = plugins.get('entries')
+    if not isinstance(entries, dict):
+        entries = {}
+    for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
+        ent = entries.get(pid)
+        if not isinstance(ent, dict):
+            ent = {}
+        ent['enabled'] = True
+        entries[pid] = ent
+    plugins['entries'] = entries
+
+    ch = c.setdefault('channels', {})
+    for cid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
+        cv = ch.get(cid)
+        if not isinstance(cv, dict):
+            cv = {}
+        cv['enabled'] = True
+        if cid in ('feishu','qqbot','dingtalk','wecom'):
+            cv['dmPolicy'] = 'open'
+            cv['groupPolicy'] = 'open'
+            cv['allowFrom'] = ['*']
+        ch[cid] = cv
+
+    with open(cfg,'w',encoding='utf-8') as f2:
+        json.dump(c,f2,ensure_ascii=False,indent=2); f2.write('\n')
+except Exception:
+    pass
+
 def run(cmd, timeout=20):
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
     return p.returncode, (p.stdout or b'').decode('utf-8','ignore')
@@ -1411,6 +1469,7 @@ cat <<'HTML'
     let currentTab = 'status';
     let statusLine = '';
     let logsTimer = null;
+    let statusTimer = null;
     window.__openclaw2ClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -1461,13 +1520,28 @@ cat <<'HTML'
       el.className = 'msg ' + cls;
       el.textContent = text || '';
     }
+    function formatUptime(seconds) {
+      const s = Math.max(0, Number(seconds) || 0);
+      const d = Math.floor(s / 86400);
+      const h = Math.floor((s % 86400) / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      const parts = [];
+      if (d) parts.push(d + '天');
+      if (h || d) parts.push(h + '小时');
+      if (m || h || d) parts.push(m + '分');
+      parts.push(sec + '秒');
+      return parts.join(' ');
+    }
     function setTabs(tab) {
       currentTab = tab;
       if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
+      if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     }
     async function api(action, method='GET', payload=null) {
-      const resp = await fetch(API_BASE + encodeURIComponent(action), {
+      const url = API_BASE + encodeURIComponent(action) + '&_ts=' + Date.now();
+      const resp = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: payload ? JSON.stringify(payload) : undefined,
@@ -1485,11 +1559,13 @@ cat <<'HTML'
       try {
         const data = await api(tab);
         if (tab === 'status') {
+          const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const rows = [
             ['实例 ID', data.instanceId || '-'],
             ['显示名', data.displayName || '-'],
             ['已安装', data.installed ? '是' : '否'],
             ['运行中', data.running ? '是' : '否'],
+            ['Gateway 运行时间', uptimeText],
             ['版本', data.version || '-'],
             ['端口', data.port || '-'],
             ['代理路径', data.proxyBasePath || '-'],
@@ -1519,6 +1595,25 @@ cat <<'HTML'
             + '  </div>'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          statusTimer = setInterval(async () => {
+            try {
+              if (currentTab !== 'status') return;
+              const s = await api('status');
+              const nextRunning = !!(s && s.running);
+              const nextText = nextRunning ? '运行中' : '已停止';
+              const nextUptime = nextRunning ? formatUptime((s && s.uptimeSeconds) || 0) : '-';
+              const msgEl = document.getElementById('msg');
+              if (msgEl) {
+                msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
+                msgEl.textContent = '运行状态：' + nextText;
+              }
+              const gridVals = document.querySelectorAll('.grid .cellv');
+              if (gridVals && gridVals.length >= 5) {
+                gridVals[3].textContent = nextRunning ? '是' : '否';
+                gridVals[4].textContent = nextUptime;
+              }
+            } catch (_) {}
+          }, 1500);
           return;
         }
         if (tab === 'logs') {
