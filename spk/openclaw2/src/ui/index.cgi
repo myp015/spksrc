@@ -1642,13 +1642,30 @@ cat <<'HTML'
     async function renderWeixinQr(qrUrl, qrEl) {
       try {
         window.__weixinQrUrl = qrUrl;
-        const dataUrl = await buildQrDataUrlFromText(qrUrl);
+        let dataUrl = '';
+        try {
+          dataUrl = await buildQrDataUrlFromText(qrUrl);
+          console.info('[channels:weixin:inline-qr:local-draw]', { qrUrl: qrUrl, hasDataUrl: !!dataUrl });
+        } catch (localErr) {
+          console.warn('[channels:weixin:inline-qr:local-draw:failed]', localErr);
+          const resp = await fetch(API_BASE + 'weixin_qr_data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: qrUrl }),
+            cache: 'no-store'
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data || !data.ok || !data.dataUrl) {
+            throw new Error((data && data.error) || ('二维码服务回退失败：HTTP ' + resp.status));
+          }
+          dataUrl = data.dataUrl;
+          console.info('[channels:weixin:inline-qr:server-fallback]', { qrUrl: qrUrl, hasDataUrl: !!dataUrl });
+        }
         window.__weixinQrDataUrl = dataUrl;
-        console.info('[channels:weixin:inline-qr:local-draw]', { qrUrl: qrUrl, hasDataUrl: !!dataUrl });
-        renderWeixinQrInline(dataUrl, qrUrl, qrEl, '请使用微信扫码完成登录（已按二维码内容本地重绘）');
+        renderWeixinQrInline(dataUrl, qrUrl, qrEl, '请使用微信扫码完成登录（已在本地/服务端重绘）');
       } catch (e) {
         console.error('[channels:weixin:inline-qr:error]', e);
-        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码本地重绘失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
+        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码重绘失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
       }
     }
