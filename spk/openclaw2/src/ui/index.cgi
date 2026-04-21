@@ -1968,14 +1968,15 @@ cat <<'HTML'
             + '      <button class="btn" onclick="clearTerminalView()">清屏</button>'
             + '      <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
             + '    </div>'
-            + '    <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
-            + '    <div style="display:flex;gap:8px;align-items:center;">'
-            + '      <input id="terminal_fallback_input" placeholder="兜底输入：在这里输入命令，按回车发送到终端" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}" style="flex:1;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px;" />'
-            + '      <button class="btn" onclick="sendTerminalLineFromInput()">发送</button>'
-            + '    </div>'
+            + '    <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：输入栏已放到终端内部底部。</div>'
             + '    <div id="terminal_box" tabindex="0" onclick="focusTerminal()" onmousedown="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
             + '      <div id="terminal_prompt_line" onclick="focusTerminal()" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
             + '      <pre id="terminal_pre" onclick="focusTerminal()" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
+            + '      <div style="display:flex;gap:8px;align-items:center;padding:8px;border-top:1px solid #1f2937;background:#0f172a;">'
+            + '        <span style="color:#93c5fd;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">$</span>'
+            + '        <input id="terminal_fallback_input" placeholder="输入命令后回车" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}" style="flex:1;border:1px solid #334155;border-radius:8px;padding:8px 10px;background:#020617;color:#e2e8f0;" />'
+            + '        <button class="btn" onclick="sendTerminalLineFromInput()">发送</button>'
+            + '      </div>'
             + '    </div>'
             + '  </div>'
             + '</div>';
@@ -3045,6 +3046,9 @@ cat <<'HTML'
       if (!line.trim()) return;
       el.value = '';
       await sendTerminalText(line + '\n');
+      // 立即拉取一轮输出，避免“输入后没反应”的体感。
+      await readTerminalOutput();
+      setTimeout(() => { readTerminalOutput(); }, 150);
     }
     function clearTerminalView() {
       const pre = document.getElementById('terminal_pre');
