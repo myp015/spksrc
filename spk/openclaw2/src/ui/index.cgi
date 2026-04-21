@@ -478,52 +478,44 @@ try:
 except Exception:
     cfg = {}
 ch = cfg.setdefault('channels', {})
-need_restart = False
 if cid:
-    # 渠道配置置为 disabled
+    # 统一删除语义：直接禁用渠道配置（不重启 gateway）。
     if cid in ch:
         if isinstance(ch.get(cid), dict):
             ch[cid]['enabled'] = False
         else:
             ch[cid] = {'enabled': False}
 
-    # 常见别名联动
-    if cid == 'weixin' and 'openclaw-weixin' in ch:
-        if isinstance(ch.get('openclaw-weixin'), dict):
-            ch['openclaw-weixin']['enabled'] = False
-        else:
-            ch['openclaw-weixin'] = {'enabled': False}
-    if cid == 'openclaw-weixin' and 'weixin' in ch and isinstance(ch.get('weixin'), dict):
-        ch['weixin']['enabled'] = False
+    # 微信别名联动
+    if cid in ('openclaw-weixin', 'weixin'):
+        for key in ('openclaw-weixin', 'weixin'):
+            if key in ch:
+                if isinstance(ch.get(key), dict):
+                    ch[key]['enabled'] = False
+                else:
+                    ch[key] = {'enabled': False}
 
-    # 关闭对应插件 entry/allow（按 channel->plugin 映射）
-    channel_plugins = {
-        'feishu': ['feishu', 'feishu-openclaw-plugin'],
-        'dingtalk': ['dingtalk', 'openclaw-dingtalk'],
-        'wecom': ['wecom', 'wecom-openclaw-plugin', 'openclaw-wecom'],
-        'qqbot': ['qqbot', 'openclaw-qqbot'],
-        'openclaw-weixin': ['openclaw-weixin'],
-        'weixin': ['openclaw-weixin']
-    }
-    plugs = cfg.setdefault('plugins', {})
-    ents = plugs.get('entries')
-    if not isinstance(ents, dict):
-        ents = {}
-    allow = plugs.get('allow')
-    if not isinstance(allow, list):
-        allow = []
-    for pid in channel_plugins.get(cid, [cid]):
-        pe = ents.get(pid)
-        if not isinstance(pe, dict):
-            pe = {}
-        pe['enabled'] = False
-        ents[pid] = pe
-        allow = [x for x in allow if x != pid]
-    plugs['entries'] = ents
-    plugs['allow'] = allow
+        # 清空账号绑定，避免 runtime 继续复用旧账号。
+        wx = ch.get('openclaw-weixin')
+        if not isinstance(wx, dict):
+            wx = {}
+        wx['enabled'] = False
+        wx['defaultAccount'] = ''
+        wx['accounts'] = {}
+        ch['openclaw-weixin'] = wx
 
-    # 删除后立即生效：统一重启包
-    need_restart = True
+        # 立即终止微信会话（热停），避免“删除后仍可互动”。
+        try:
+            import subprocess
+            env = os.environ.copy()
+            env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+            env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+            env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+            env['OPENCLAW_CONFIG_PATH'] = cfg_path
+            env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+            subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
+        except Exception:
+            pass
 
 
 def enabled_ids(channels):
@@ -550,18 +542,6 @@ out = {
   'qqbot': channels_obj.get('qqbot') or {},
   'weixin': channels_obj.get('weixin') or {}
 }
-
-# 删除微信渠道后，强制重启 openclaw2，确保旧 webhook/monitor 立即停止。
-if need_restart:
-    try:
-        import subprocess
-        pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
-        out['restartTriggered'] = True
-        out['restartRc'] = pr.returncode
-        out['restartOutTail'] = ((pr.stdout or b'').decode('utf-8', 'ignore'))[-180:]
-    except Exception as e:
-        out['restartTriggered'] = False
-        out['restartErr'] = str(e)
 
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -1980,12 +1960,19 @@ cat <<'HTML'
       } else {
         payload = { weixin: { enabled: true } };
       }
+      const btn = document.getElementById('btn_channel_save');
+      const oldText = btn ? btn.textContent : '';
       try {
+        if (btn) { btn.disabled = true; btn.textContent = '正在添加...'; }
         await api('channels_save', 'POST', payload);
         closeChannelDialog();
         await load('channels');
-        setMsg('渠道保存成功', 'ok');
-      } catch (e) { setMsg('渠道保存失败：' + (e.message || e), 'err'); }
+        setMsg('渠道保存成功（已热生效）', 'ok');
+      } catch (e) {
+        setMsg('渠道保存失败：' + (e.message || e), 'err');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = oldText || '保存'; }
+      }
     }
     function getWeixinUiEls() {
       return {
@@ -2187,11 +2174,20 @@ cat <<'HTML'
       } catch (e) { setMsg('断开微信失败：' + (e.message || e), 'err'); }
     }
     async function deleteChannel(id) {
+      const btns = Array.from(document.querySelectorAll('button'));
+      const targetBtn = btns.find(b => (b.textContent || '').trim() === '删除' && (b.getAttribute('onclick') || '').includes("deleteChannel('" + id + "')"));
+      const old = targetBtn ? targetBtn.textContent : '';
       try {
+        if (targetBtn) { targetBtn.disabled = true; targetBtn.textContent = '正在删除...'; }
+        setMsg('正在删除渠道：' + id + ' ...');
         await api('channels_delete', 'POST', { id });
         await load('channels');
-        setMsg('渠道已删除：' + id, 'ok');
-      } catch (e) { setMsg('删除渠道失败：' + (e.message || e), 'err'); }
+        setMsg('渠道已删除并热生效：' + id, 'ok');
+      } catch (e) {
+        setMsg('删除渠道失败：' + (e.message || e), 'err');
+      } finally {
+        if (targetBtn) { targetBtn.disabled = false; targetBtn.textContent = old || '删除'; }
+      }
     }
     async function refreshLogsNow() {
       try {
