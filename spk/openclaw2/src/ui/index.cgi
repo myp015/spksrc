@@ -491,11 +491,12 @@ PY
             ;;
         weixin_login_start)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log"
-import json, os, re, subprocess, sys, time, select
+            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid"
+import json, os, re, subprocess, sys, time, select, signal
 home_dir = sys.argv[1]
 cfg_path = sys.argv[2]
 debug_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-weixin-login.log'
+worker_pid_file = sys.argv[4] if len(sys.argv) > 4 else '/tmp/openclaw-weixin-login-worker.pid'
 start_ts = time.time()
 
 def log(msg):
@@ -620,8 +621,44 @@ finally:
             pass
 
 if url:
+    # 关键：启动独立 worker 持续执行 login，等待扫码确认完成，不再只拿二维码就结束。
+    try:
+        alive = False
+        old_pid = None
+        if os.path.exists(worker_pid_file):
+            try:
+                old_pid = int((open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip() or '0')
+            except Exception:
+                old_pid = None
+        if old_pid:
+            try:
+                os.kill(old_pid, 0)
+                alive = True
+            except Exception:
+                alive = False
+        if not alive:
+            wf = open(debug_log, 'a', encoding='utf-8')
+            worker = subprocess.Popen(
+                ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose'],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=wf,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                text=True,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            with open(worker_pid_file, 'w', encoding='utf-8') as pf:
+                pf.write(str(worker.pid))
+            log(f'login_worker_started pid={worker.pid}')
+        else:
+            log(f'login_worker_already_running pid={old_pid}')
+    except Exception as e:
+        log(f'login_worker_start_failed err={e}')
+
     log(f'return_ms={int((time.time()-start_ts)*1000)} success=1')
-    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录', 'debugLog': debug_log}, ensure_ascii=False))
+    print(json.dumps({'supported': True, 'qrUrl': url, 'sessionKey': 'openclaw-weixin', 'message': '请用微信扫码完成登录（后台已启动持续登录任务）', 'debugLog': debug_log}, ensure_ascii=False))
 else:
     snippet = (bootstrap_log + '\n' + text)[-600:].replace('\n', ' | ')
     log(f'return_ms={int((time.time()-start_ts)*1000)} success=0 output_snippet={snippet}')
@@ -631,10 +668,11 @@ PY
             ;;
         weixin_login_wait)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log"
+            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid"
 import json, os, subprocess, sys, time
 cfg_path = sys.argv[1]
 debug_log = sys.argv[2] if len(sys.argv) > 2 else '/tmp/openclaw-weixin-login.log'
+worker_pid_file = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-weixin-login-worker.pid'
 
 def log(msg):
     try:
@@ -670,6 +708,24 @@ try:
     message = '已连接' if connected else '等待扫码确认'
 except Exception:
     connected = False
+if connected:
+    # 登录成功后清理后台 login worker
+    try:
+        if os.path.exists(worker_pid_file):
+            pid_txt = (open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip()
+            if pid_txt:
+                try:
+                    os.kill(int(pid_txt), 15)
+                    log(f'login_worker_stopped pid={pid_txt}')
+                except Exception:
+                    pass
+            try:
+                os.remove(worker_pid_file)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 log(f'weixin_login_wait connected={bool(connected)} message={message}')
 print(json.dumps({'supported': True, 'connected': bool(connected), 'status': 'connected' if connected else 'pending', 'message': message, 'raw': raw[-500:]}, ensure_ascii=False))
 PY
