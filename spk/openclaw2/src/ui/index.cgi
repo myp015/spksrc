@@ -993,6 +993,43 @@ PY
             printf '{"ok":true,"source":"local"}'
             exit 0
             ;;
+        terminal_exec)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body"
+import json, os, subprocess, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+cmd = str((payload.get('cmd') or '')).strip()
+if not cmd:
+    print(json.dumps({'ok': False, 'error': 'empty command'}, ensure_ascii=False)); raise SystemExit
+
+env = os.environ.copy()
+env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
+env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+
+try:
+    user = subprocess.check_output(['id', '-un'], text=True).strip()
+except Exception:
+    user = ''
+try:
+    p = subprocess.run(['/bin/bash', '-lc', cmd], env=env, cwd=env['HOME'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+    out = (p.stdout or b'').decode('utf-8', 'ignore')
+    print(json.dumps({'ok': p.returncode == 0, 'code': p.returncode, 'user': user, 'cwd': env['HOME'], 'output': out[-20000:]}, ensure_ascii=False))
+except subprocess.TimeoutExpired as e:
+    out = (e.stdout or b'').decode('utf-8', 'ignore') if hasattr(e, 'stdout') else ''
+    print(json.dumps({'ok': False, 'code': 124, 'user': user, 'cwd': env['HOME'], 'output': (out + '\n[timeout] command exceeded 45s')[-20000:]}, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({'ok': False, 'error': str(e), 'user': user, 'cwd': env.get('HOME', '')}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
         plugin_install)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             printf '{"ok":true,"message":"builtin plugins, no install needed"}'
@@ -1468,6 +1505,7 @@ cat <<'HTML'
       <button class="tab active" data-tab="status">概览</button>
       <button class="tab" data-tab="models">模型配置</button>
       <button class="tab" data-tab="channels">渠道配置</button>
+      <button class="tab" data-tab="terminal">终端</button>
       <button class="tab" data-tab="logs">运行日志</button>
     </div>
     <div class="panel">
@@ -1667,6 +1705,19 @@ cat <<'HTML'
           if (pre) pre.scrollTop = pre.scrollHeight;
           setMsg('');
           logsTimer = setInterval(refreshLogsNow, 2000);
+          return;
+        }
+        if (tab === 'terminal') {
+          content.innerHTML = ''
+            + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
+            + '  <div style="display:flex;gap:8px;align-items:center;">'
+            + '    <input id="terminal_cmd" style="flex:1;" placeholder="输入命令，例如: id && pwd && ls -la" onkeydown="if(event.key===\'Enter\'){event.preventDefault();runTerminalCmd();}">'
+            + '    <button class="btn primary" id="btn_terminal_run" onclick="runTerminalCmd()">执行</button>'
+            + '  </div>'
+            + '  <div style="font-size:13px;color:#667085;">以当前 openclaw2 运行用户执行，工作目录：/volume1/@appdata/openclaw2/data/home</div>'
+            + '  <pre id="terminal_pre" style="min-height:280px;max-height:none;flex:1;">终端已就绪，输入命令后回车执行。</pre>'
+            + '</div>';
+          setMsg('终端已加载', 'ok');
           return;
         }
         if (tab === 'models') {
@@ -2561,6 +2612,29 @@ cat <<'HTML'
         pre.textContent = data.log || '';
         pre.scrollTop = pre.scrollHeight;
       } catch (e) {}
+    }
+    async function runTerminalCmd() {
+      const input = document.getElementById('terminal_cmd');
+      const pre = document.getElementById('terminal_pre');
+      const btn = document.getElementById('btn_terminal_run');
+      if (!input || !pre || !btn) return;
+      const cmd = (input.value || '').trim();
+      if (!cmd) return;
+      const old = btn.textContent;
+      try {
+        btn.disabled = true;
+        btn.textContent = '执行中...';
+        pre.textContent = '$ ' + cmd + '\n\n执行中...';
+        const ret = await api('terminal_exec', 'POST', { cmd });
+        const header = '[user] ' + (ret.user || '-') + '   [cwd] ' + (ret.cwd || '-') + '   [code] ' + String(ret.code ?? '-') + '\n\n';
+        pre.textContent = '$ ' + cmd + '\n\n' + header + (ret.output || '');
+        pre.scrollTop = pre.scrollHeight;
+      } catch (e) {
+        pre.textContent = '$ ' + cmd + '\n\n执行失败：' + (e.message || e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = old || '执行';
+      }
     }
     document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
     load('status');
