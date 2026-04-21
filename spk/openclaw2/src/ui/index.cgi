@@ -1724,7 +1724,7 @@ cat <<'HTML'
             wecom: '企业微信',
             dingtalk: '钉钉',
             qqbot: 'QQ Bot',
-            'openclaw-weixin': '微信（openclaw-weixin）',
+            'openclaw-weixin': '微信',
             weixin: '微信（weixin）'
           };
           const ordered = configured.slice(); // 保持配置内插入顺序（即添加顺序）
@@ -1754,7 +1754,7 @@ cat <<'HTML'
             + '      <option value="qqbot">QQ Bot</option>'
             + '      <option value="wecom">企业微信</option>'
             + '      <option value="dingtalk">钉钉</option>'
-            + '      <option value="openclaw-weixin">微信（扫码）</option>'
+            + '      <option value="openclaw-weixin">微信</option>'},{
             + '    </select></div>'
             + '    <div id="channelFormArea"></div>'
             + '    <div class="modal-actions">'
@@ -2207,7 +2207,7 @@ cat <<'HTML'
         ['qqbot','QQ Bot'],
         ['wecom','企业微信'],
         ['dingtalk','钉钉'],
-        ['openclaw-weixin','微信（扫码）']
+        ['openclaw-weixin','微信']
       ];
       const options = allOptions.filter(([id]) => editId ? (id === editId) : !configured.has(id));
       if (!options.length) { setMsg('可添加渠道为空（已全部配置）', 'ok'); return; }
