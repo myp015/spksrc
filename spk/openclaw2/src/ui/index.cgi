@@ -1936,27 +1936,42 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div id="terminal_cwd" style="font-size:13px;color:#667085;">当前目录：-</div>'
-            + '  <div style="display:flex;gap:8px;align-items:center;">'
-            + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
-            + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
-            + '    <button class="btn" onclick="clearTerminalView()">清屏</button>'
-            + '    <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
+            + '  <div style="font-size:13px;color:#667085;">已对齐 syno-terminal 方案：优先使用 DSM 内嵌终端（/terminal/，无需外部端口）；不可用时回退内置终端。</div>'
+            + '  <div id="terminal_iframe_wrap" style="display:none;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
+            + '    <iframe src="/terminal/" style="width:100%;height:100%;border:none;"></iframe>'
             + '  </div>'
-            + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
-            + '  <div style="display:flex;gap:8px;align-items:center;">'
-            + '    <input id="terminal_fallback_input" placeholder="兜底输入：在这里输入命令，按回车发送到终端" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}" style="flex:1;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px;" />'
-            + '    <button class="btn" onclick="sendTerminalLineFromInput()">发送</button>'
-            + '  </div>'
-            + '  <div id="terminal_box" tabindex="0" onclick="focusTerminal()" onmousedown="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
-            + '    <div id="terminal_prompt_line" onclick="focusTerminal()" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
-            + '    <pre id="terminal_pre" onclick="focusTerminal()" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
+            + '  <div id="terminal_native_wrap" style="display:flex;flex-direction:column;flex:1;min-height:0;gap:8px;">'
+            + '    <div id="terminal_cwd" style="font-size:13px;color:#667085;">当前目录：-</div>'
+            + '    <div style="display:flex;gap:8px;align-items:center;">'
+            + '      <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
+            + '      <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
+            + '      <button class="btn" onclick="clearTerminalView()">清屏</button>'
+            + '      <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
+            + '    </div>'
+            + '    <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
+            + '    <div style="display:flex;gap:8px;align-items:center;">'
+            + '      <input id="terminal_fallback_input" placeholder="兜底输入：在这里输入命令，按回车发送到终端" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}" style="flex:1;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px;" />'
+            + '      <button class="btn" onclick="sendTerminalLineFromInput()">发送</button>'
+            + '    </div>'
+            + '    <div id="terminal_box" tabindex="0" onclick="focusTerminal()" onmousedown="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
+            + '      <div id="terminal_prompt_line" onclick="focusTerminal()" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
+            + '      <pre id="terminal_pre" onclick="focusTerminal()" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
+            + '    </div>'
             + '  </div>'
             + '</div>';
+          const hasDsmTerminal = await probeDsmTerminal();
+          if (hasDsmTerminal) {
+            const iframeWrap = document.getElementById('terminal_iframe_wrap');
+            const nativeWrap = document.getElementById('terminal_native_wrap');
+            if (iframeWrap) iframeWrap.style.display = 'block';
+            if (nativeWrap) nativeWrap.style.display = 'none';
+            setMsg('终端已切换为 DSM 内嵌模式（syno-terminal 同款）', 'ok');
+            return;
+          }
           await ensureTerminalSession();
           hookTerminalGlobalKeys();
           focusTerminal();
-          setMsg('终端已加载（交互模式，可直接键入）', 'ok');
+          setMsg('未检测到 /terminal/，已回退内置终端', 'ok');
           return;
         }
         if (tab === 'models') {
@@ -2870,6 +2885,14 @@ cat <<'HTML'
         out.push(ch);
       }
       return out.join('');
+    }
+    async function probeDsmTerminal() {
+      try {
+        const r = await fetch('/terminal/', { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
+        return !!(r && r.ok);
+      } catch (_) {
+        return false;
+      }
     }
     async function ensureTerminalSession() {
       const pre = document.getElementById('terminal_pre');
