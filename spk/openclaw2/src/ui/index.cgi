@@ -1754,6 +1754,7 @@ cat <<'HTML'
     let terminalPollTimer = null;
     let terminalWriteQueue = Promise.resolve();
     let terminalSuggest = ['openclaw doctor', 'openclaw gateway status', 'openclaw gateway restart', 'openclaw config validate'];
+    let terminalGlobalKeyHooked = false;
     window.__openclaw2ClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -1943,14 +1944,15 @@ cat <<'HTML'
             + '    <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
             + '  </div>'
             + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
-            + '  <div id="terminal_box" tabindex="0" onclick="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
+            + '  <div id="terminal_box" tabindex="0" onclick="focusTerminal()" onmousedown="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
             + '    <div id="terminal_prompt_line" onclick="focusTerminal()" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
             + '    <pre id="terminal_pre" onclick="focusTerminal()" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
             + '  </div>'
             + '</div>';
           await ensureTerminalSession();
+          hookTerminalGlobalKeys();
           focusTerminal();
-          setMsg('终端已加载（交互模式）', 'ok');
+          setMsg('终端已加载（交互模式，可直接键入）', 'ok');
           return;
         }
         if (tab === 'models') {
@@ -2923,6 +2925,21 @@ cat <<'HTML'
       if (box) { box.focus(); return; }
       const pre = document.getElementById('terminal_pre');
       if (pre) pre.focus();
+    }
+    function hookTerminalGlobalKeys() {
+      if (terminalGlobalKeyHooked) return;
+      terminalGlobalKeyHooked = true;
+      window.addEventListener('keydown', function(ev) {
+        try {
+          if (currentTab !== 'terminal') return;
+          const t = ev && ev.target;
+          const tag = (t && t.tagName) ? String(t.tagName).toUpperCase() : '';
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+          const box = document.getElementById('terminal_box');
+          if (!box) return;
+          handleTerminalKey(ev);
+        } catch (_) {}
+      }, true);
     }
     async function sendTerminalText(text) {
       terminalWriteQueue = terminalWriteQueue.then(async () => {
