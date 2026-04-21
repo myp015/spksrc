@@ -1474,7 +1474,7 @@ cat <<'HTML'
             + '  </div>'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
-          refreshOpenWebButtonState();
+          refreshOpenWebButtonState(!!data.running);
           return;
         }
         if (tab === 'logs') {
@@ -1617,12 +1617,12 @@ cat <<'HTML'
         setMsg('操作失败：' + (e.message || e), 'err');
       }
     }
-    function refreshOpenWebButtonState() {
+    function refreshOpenWebButtonState(isGatewayReady) {
       const btn = document.getElementById('btn_open_web');
       if (!btn) return;
-      const isWebChat = (window.location.pathname || '').includes('/chat');
-      btn.disabled = !isWebChat;
-      btn.title = isWebChat ? '' : '仅在 WebChat 界面可点击';
+      const ready = !!isGatewayReady;
+      btn.disabled = !ready;
+      btn.title = ready ? '' : 'Gateway 未完全启动，暂不可点击';
     }
     function openOpenclawWeb(url) {
       let u = (url || '').trim();
