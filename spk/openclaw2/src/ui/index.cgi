@@ -1549,7 +1549,7 @@ cat <<'HTML'
             + '    <div class="field"><label>模型列表</label>'
             + '      <div style="font-size:12px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
             + '      <div id="dlg_model_selected_line" onclick="toggleModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
-            + '      <div id="dlg_model_dropdown" style="display:none;max-height:220px;overflow:auto;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;"></div>'
+            + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
             + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">'
             + '        <input id="dlg_model_manual_input" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
             + '        <button class="btn" onclick="addManualModelFromInput()">添加</button>'
@@ -1689,9 +1689,9 @@ cat <<'HTML'
       const all = Array.from(new Set((ids || []).concat(selectedIds || []))).filter(Boolean);
       wrap.innerHTML = all.map(id => {
         const checked = (selectedIds || []).includes(id) ? ' checked' : '';
-        return '<label style="display:flex;align-items:center;justify-content:flex-start;gap:8px;padding:4px 2px;width:100%;text-align:left;">'
-          + '<input type="checkbox" value="' + esc(id) + '"' + checked + ' onchange="toggleModelSelection(this.value,this.checked)">'
-          + '<span style="font-size:12px;text-align:left;">' + esc(id) + '</span>'
+        return '<label style="display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:8px;align-items:start;padding:4px 2px;width:100%;text-align:left;cursor:pointer;">'
+          + '<input style="margin:0;" type="checkbox" value="' + esc(id) + '"' + checked + ' onchange="toggleModelSelection(this.value,this.checked)">'
+          + '<span title="' + esc(id) + '" style="font-size:12px;text-align:left;white-space:normal;word-break:break-all;overflow:visible;">' + esc(id) + '</span>'
           + '</label>';
       }).join('') || '<div style="font-size:12px;color:#98a2b3;">暂无模型</div>';
     }
