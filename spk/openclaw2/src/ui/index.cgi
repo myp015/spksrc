@@ -1302,6 +1302,8 @@ cat <<'HTML'
     #content { flex:1; min-height:0; overflow:hidden; }
     .btn { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:8px 12px; cursor:pointer; }
     .btn.primary { background:#1677ff; color:#fff; border-color:#1677ff; }
+    .btn:disabled { cursor:not-allowed; color:#98a2b3; background:#f2f4f7; border-color:#d0d5dd; }
+    .btn.primary:disabled { color:#98a2b3; background:#e5e7eb; border-color:#d0d5dd; }
     .grid { display:grid; grid-template-columns:180px 1fr; border-top:1px solid #eee; }
     .cellk,.cellv { padding:10px 8px; border-bottom:1px solid #eee; }
     .cellk { color:#667085; }
