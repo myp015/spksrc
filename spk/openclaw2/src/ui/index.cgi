@@ -513,29 +513,25 @@ env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 log('weixin_login_start begin')
-# 后台默认启用 openclaw-weixin，避免首次登录前还要额外 enable 导致慢启动。
-# 注意：当前环境不接受 channels.weixin（会触发 Config invalid），仅保留 openclaw-weixin。
+# 后台默认确保 openclaw-weixin 可用：先 enable，再重启 gateway（插件启用通常需重启才生效）。
+enable_out = ''
+restart_out = ''
 try:
-    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
-except Exception:
-    cfg = {}
-chs = cfg.setdefault('channels', {})
-wx = chs.get('openclaw-weixin')
-if not isinstance(wx, dict):
-    wx = {}
-wx['enabled'] = True
-chs['openclaw-weixin'] = wx
-if 'weixin' in chs:
-    try:
-        chs.pop('weixin', None)
-    except Exception:
-        pass
-os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-with open(cfg_path, 'w', encoding='utf-8') as f:
-    json.dump(cfg, f, ensure_ascii=False, indent=2)
-    f.write('\n')
-bootstrap_log = 'plugin enable skipped; openclaw-weixin forced enabled in config; removed invalid channels.weixin if present'
-log('plugin_enable_skipped=1 openclaw_weixin_forced_enabled=1 removed_invalid_weixin_key=1')
+    p = subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'plugins', 'enable', 'openclaw-weixin'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=25)
+    enable_out = ((p.stdout or b'').decode('utf-8', 'ignore') if isinstance(p.stdout, (bytes, bytearray)) else str(p.stdout or ''))[-800:]
+except Exception as e:
+    enable_out = f'enable-exception: {e}'
+log('openclaw_weixin_enable_out=' + enable_out.replace('\n', ' | '))
+
+try:
+    p2 = subprocess.run(['/var/packages/openclaw2/target/bin/openclaw', 'gateway', 'restart'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=40)
+    restart_out = ((p2.stdout or b'').decode('utf-8', 'ignore') if isinstance(p2.stdout, (bytes, bytearray)) else str(p2.stdout or ''))[-800:]
+except Exception as e:
+    restart_out = f'restart-exception: {e}'
+log('openclaw_gateway_restart_out=' + restart_out.replace('\n', ' | '))
+
+bootstrap_log = 'openclaw-weixin ensure-enabled + gateway restart done'
+log('openclaw_weixin_ensure_enabled=1 gateway_restarted=1')
 
 cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'login', '--channel', 'openclaw-weixin', '--verbose']
 text = ''
