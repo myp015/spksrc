@@ -1044,21 +1044,66 @@ try:
 except Exception:
     pass
 
-# 保持 FIFO 写端常驻，避免会话因 stdin EOF 立刻退出。
-keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep 3600; done'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-fin = open(fifo, 'rb', buffering=0)
-fout = open(log, 'ab', buffering=0)
-# 使用 bash 交互模式（无 script 依赖，兼容 DSM 环境）。
-shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=workspace_dir, env=env, start_new_session=True)
+import pty, select
+cmd_fifo = os.path.join(sdir, 'cmd.fifo')
+os.mkfifo(cmd_fifo)
+
+master_fd, slave_fd = pty.openpty()
+# 真 PTY 交互 shell（退格/Tab/行编辑由终端驱动处理）
+shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, cwd=workspace_dir, env=env, start_new_session=True)
+os.close(slave_fd)
 
 # 初始化到目标目录并固定提示符样式（SSH 风格）
 try:
-    with open(fifo, 'wb', buffering=0) as wf:
-        wf.write((f"cd '{workspace_dir}'\nexport PS1='\\u@\\h:\\w$ '\n").encode('utf-8', 'ignore'))
+    os.write(master_fd, (f"cd '{workspace_dir}'\nexport PS1='\\u@\\h:\\w$ '\n").encode('utf-8', 'ignore'))
 except Exception:
     pass
+
+relay_pid = os.fork()
+if relay_pid == 0:
+    # 中继进程：cmd_fifo -> pty，pty -> out.log
+    try:
+        cmd_fd = os.open(cmd_fifo, os.O_RDWR | os.O_NONBLOCK)
+        with open(log, 'ab', buffering=0) as lf:
+            while True:
+                if shell.poll() is not None:
+                    # shell 退出后尽量把缓冲读完
+                    try:
+                        while True:
+                            b = os.read(master_fd, 4096)
+                            if not b:
+                                break
+                            lf.write(b)
+                    except Exception:
+                        pass
+                    break
+                r, _, _ = select.select([master_fd, cmd_fd], [], [], 0.5)
+                if master_fd in r:
+                    try:
+                        b = os.read(master_fd, 4096)
+                    except Exception:
+                        b = b''
+                    if b:
+                        lf.write(b)
+                if cmd_fd in r:
+                    try:
+                        b = os.read(cmd_fd, 4096)
+                    except Exception:
+                        b = b''
+                    if b:
+                        try:
+                            os.write(master_fd, b)
+                        except Exception:
+                            pass
+    finally:
+        try: os.close(master_fd)
+        except Exception: pass
+        try: os.close(cmd_fd)
+        except Exception: pass
+        os._exit(0)
+
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
-with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
+with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(relay_pid))
 try:
     user = subprocess.check_output(['id','-un'], text=True).strip()
 except Exception:
@@ -1087,16 +1132,16 @@ text = str(payload.get('text') or '')
 if not sid:
     print(json.dumps({'ok': False, 'error': 'missing sessionId'}, ensure_ascii=False)); raise SystemExit
 sdir = os.path.join(base, 'terminal-sessions', sid)
-fifo = os.path.join(sdir, 'in.fifo')
+cmd_fifo = os.path.join(sdir, 'cmd.fifo')
 pid_file = os.path.join(sdir, 'shell.pid')
-if not os.path.exists(fifo) or not os.path.exists(pid_file):
+if not os.path.exists(cmd_fifo) or not os.path.exists(pid_file):
     print(json.dumps({'ok': False, 'error': 'session not found'}, ensure_ascii=False)); raise SystemExit
 try:
     pid = int((open(pid_file, 'r', encoding='utf-8').read() or '0').strip() or '0')
     os.kill(pid, 0)
 except Exception:
     print(json.dumps({'ok': False, 'error': 'session not alive'}, ensure_ascii=False)); raise SystemExit
-with open(fifo, 'wb', buffering=0) as f:
+with open(cmd_fifo, 'wb', buffering=0) as f:
     f.write(text.encode('utf-8', 'ignore'))
 print(json.dumps({'ok': True}, ensure_ascii=False))
 PY
