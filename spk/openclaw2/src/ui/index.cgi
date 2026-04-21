@@ -169,6 +169,16 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw', 'configPath': cfg_path, 'configExists': True}
+# 模型新增/编辑后立即生效：重启 openclaw2
+try:
+    import subprocess
+    pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+    out['restartTriggered'] = True
+    out['restartRc'] = pr.returncode
+    out['restartOutTail'] = ((pr.stdout or b'').decode('utf-8', 'ignore'))[-180:]
+except Exception as e:
+    out['restartTriggered'] = False
+    out['restartErr'] = str(e)
 print(json.dumps(out, ensure_ascii=False))
 PY
             exit 0
@@ -468,42 +478,52 @@ try:
 except Exception:
     cfg = {}
 ch = cfg.setdefault('channels', {})
-if cid and cid in ch:
-    if isinstance(ch.get(cid), dict):
-        ch[cid]['enabled'] = False
-    else:
-        ch[cid] = {'enabled': False}
-
-# 微信渠道删除需要“立刻生效”：同时关闭 openclaw-weixin 键、插件开关。
 need_restart = False
-if cid in ('openclaw-weixin', 'weixin'):
-    need_restart = True
-    wx = ch.get('openclaw-weixin')
-    if not isinstance(wx, dict):
-        wx = {}
-    wx['enabled'] = False
-    ch['openclaw-weixin'] = wx
+if cid:
+    # 渠道配置置为 disabled
+    if cid in ch:
+        if isinstance(ch.get(cid), dict):
+            ch[cid]['enabled'] = False
+        else:
+            ch[cid] = {'enabled': False}
 
-    # 兼容旧键
-    old = ch.get('weixin')
-    if isinstance(old, dict):
-        old['enabled'] = False
-        ch['weixin'] = old
+    # 常见别名联动
+    if cid == 'weixin' and 'openclaw-weixin' in ch:
+        if isinstance(ch.get('openclaw-weixin'), dict):
+            ch['openclaw-weixin']['enabled'] = False
+        else:
+            ch['openclaw-weixin'] = {'enabled': False}
+    if cid == 'openclaw-weixin' and 'weixin' in ch and isinstance(ch.get('weixin'), dict):
+        ch['weixin']['enabled'] = False
 
+    # 关闭对应插件 entry/allow（按 channel->plugin 映射）
+    channel_plugins = {
+        'feishu': ['feishu', 'feishu-openclaw-plugin'],
+        'dingtalk': ['dingtalk', 'openclaw-dingtalk'],
+        'wecom': ['wecom', 'wecom-openclaw-plugin', 'openclaw-wecom'],
+        'qqbot': ['qqbot', 'openclaw-qqbot'],
+        'openclaw-weixin': ['openclaw-weixin'],
+        'weixin': ['openclaw-weixin']
+    }
     plugs = cfg.setdefault('plugins', {})
     ents = plugs.get('entries')
     if not isinstance(ents, dict):
         ents = {}
-    pe = ents.get('openclaw-weixin')
-    if not isinstance(pe, dict):
-        pe = {}
-    pe['enabled'] = False
-    ents['openclaw-weixin'] = pe
-    plugs['entries'] = ents
-
     allow = plugs.get('allow')
-    if isinstance(allow, list):
-        plugs['allow'] = [x for x in allow if x != 'openclaw-weixin']
+    if not isinstance(allow, list):
+        allow = []
+    for pid in channel_plugins.get(cid, [cid]):
+        pe = ents.get(pid)
+        if not isinstance(pe, dict):
+            pe = {}
+        pe['enabled'] = False
+        ents[pid] = pe
+        allow = [x for x in allow if x != pid]
+    plugs['entries'] = ents
+    plugs['allow'] = allow
+
+    # 删除后立即生效：统一重启包
+    need_restart = True
 
 
 def enabled_ids(channels):
@@ -1517,14 +1537,23 @@ cat <<'HTML'
             + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>'
             + '<div class="modal-mask" id="modelModalMask">'
             + '  <div class="modal model-modal">'
-            + '    <h3 id="modelModalTitle">添加模型服务器</h3>'
+            + '    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+            + '      <h3 id="modelModalTitle" style="margin:0;">添加模型服务器</h3>'
+            + '      <button class="btn" style="padding:2px 10px;line-height:1;" onclick="closeModelDialog()" title="关闭">×</button>'
+            + '    </div>'
             + '    <div class="field"><label>服务商</label><select id="dlg_provider_preset" onchange="applyProviderPresetDialog()">' + options + '</select></div>'
             + '    <div class="field"><label>Provider ID（显示名与此一致）</label><input id="dlg_provider_id"></div>'
             + '    <div class="field"><label>API 类型</label><select id="dlg_api" onchange="invalidateModelDiscoverCache()"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
             + '    <div class="field"><label>Base URL</label><input id="dlg_base_url" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
-            + '    <div class="field"><label>可选模型（按住 Ctrl / Command 可多选）</label><select id="dlg_model_select" multiple onchange="syncModelTextareaFromSelect()" onclick="triggerDiscoverModelsForDialog()" onfocus="triggerDiscoverModelsForDialog()"></select></div>'
-            + '    <div class="field"><label>模型列表（每行一个 modelId，可手工补充）</label><textarea id="dlg_model_ids" style="min-height:140px;" oninput="syncModelSelectFromTextarea()"></textarea></div>'
+            + '    <div class="field"><label>可选模型</label>'
+            + '      <details id="dlg_model_dropdown_wrap" style="margin-top:4px;">'
+            + '        <summary style="cursor:pointer;color:#475467;">点开选择模型（可多选）</summary>'
+            + '        <div id="dlg_model_dropdown" style="max-height:220px;overflow:auto;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;"></div>'
+            + '      </details>'
+            + '      <div id="dlg_model_chips" class="chips" style="margin-top:8px;display:flex;gap:6px;flex-wrap:nowrap;overflow:auto;"></div>'
+            + '      <input id="dlg_model_ids" type="hidden">'
+            + '    </div>'
             + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="syncProviderModelsToCache()">手动同步到本地缓存</button>'
             + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
@@ -1645,21 +1674,55 @@ cat <<'HTML'
       document.getElementById('dlg_model_ids').value = builtin.join('\n');
       setMsg('已按内置模板填充服务商模型列表（不联网拉取）', 'ok');
     }
-    function setModelSelectOptions(ids, selectedIds) {
-      const select = document.getElementById('dlg_model_select');
-      if (!select) return;
+    function getSelectedModelIdsFromHidden() {
+      const raw = (document.getElementById('dlg_model_ids').value || '').trim();
+      if (!raw) return [];
+      return raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    }
+    function setSelectedModelIdsToHidden(ids) {
+      document.getElementById('dlg_model_ids').value = (ids || []).join('\n');
+    }
+    function renderModelDropdown(ids, selectedIds) {
+      const wrap = document.getElementById('dlg_model_dropdown');
+      if (!wrap) return;
       const all = Array.from(new Set((ids || []).concat(selectedIds || []))).filter(Boolean);
-      select.innerHTML = all.map(id => '<option value="' + esc(id) + '"' + ((selectedIds || []).includes(id) ? ' selected' : '') + '>' + esc(id) + '</option>').join('');
+      wrap.innerHTML = all.map(id => {
+        const checked = (selectedIds || []).includes(id) ? ' checked' : '';
+        return '<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;">'
+          + '<input type="checkbox" value="' + esc(id) + '"' + checked + ' onchange="toggleModelSelection(this.value,this.checked)">'
+          + '<span style="font-size:12px;">' + esc(id) + '</span>'
+          + '</label>';
+      }).join('') || '<div style="font-size:12px;color:#98a2b3;">暂无模型</div>';
     }
-    function syncModelTextareaFromSelect() {
-      const select = document.getElementById('dlg_model_select');
-      const ids = Array.from(select.selectedOptions).map(o => o.value);
-      document.getElementById('dlg_model_ids').value = ids.join('\n');
+    function renderModelChips(ids) {
+      const box = document.getElementById('dlg_model_chips');
+      if (!box) return;
+      box.innerHTML = (ids || []).map(id => {
+        return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">'
+          + esc(id)
+          + '<button class="btn" style="padding:0 6px;line-height:1;min-height:18px;" onclick="removeModelSelection(\'' + esc(id) + '\')" title="移除">×</button>'
+          + '</span>';
+      }).join('');
     }
-    function syncModelSelectFromTextarea() {
-      const ids = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      setModelSelectOptions(ids, ids);
+    function setModelSelectOptions(ids, selectedIds) {
+      const all = Array.from(new Set((ids || []).concat(selectedIds || []))).filter(Boolean);
+      const selected = Array.from(new Set(selectedIds || [])).filter(Boolean);
+      setSelectedModelIdsToHidden(selected);
+      renderModelDropdown(all, selected);
+      renderModelChips(selected);
     }
+    function toggleModelSelection(id, checked) {
+      const curr = getSelectedModelIdsFromHidden();
+      const next = checked ? Array.from(new Set(curr.concat([id]))) : curr.filter(x => x !== id);
+      setModelSelectOptions(Array.from(new Set(curr.concat([id]))), next);
+    }
+    function removeModelSelection(id) {
+      const curr = getSelectedModelIdsFromHidden();
+      const next = curr.filter(x => x !== id);
+      setModelSelectOptions(curr, next);
+    }
+    function syncModelTextareaFromSelect() {}
+    function syncModelSelectFromTextarea() {}
     function getDiscoverCacheKey() {
       return '';
     }
@@ -1668,10 +1731,9 @@ cat <<'HTML'
       const presetId = document.getElementById('dlg_provider_preset').value;
       const preset = PROVIDER_PRESETS[presetId];
       const ids = (preset && Array.isArray(preset.models)) ? preset.models : [];
-      const existing = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      const existing = getSelectedModelIdsFromHidden();
       const merged = Array.from(new Set(ids.concat(existing)));
       setModelSelectOptions(merged, existing.length ? existing : ids);
-      if (!existing.length) document.getElementById('dlg_model_ids').value = merged.join('\n');
     }
     function openModelDialog(index) {
       const data = window.__modelsData || {};
@@ -1686,7 +1748,6 @@ cat <<'HTML'
       document.getElementById('dlg_base_url').value = p.baseUrl || '';
       document.getElementById('dlg_api_key').value = p.apiKeyMasked || '';
       document.getElementById('dlg_api_key').dataset.raw = p.apiKeyRaw || '';
-      document.getElementById('dlg_model_ids').value = currentIds.join('\n');
       setModelSelectOptions(currentIds, currentIds);
       if (!editing) {
         applyProviderPresetDialog();
@@ -1704,7 +1765,7 @@ cat <<'HTML'
     }
     async function discoverModelsForDialog() {
       await triggerDiscoverModelsForDialog();
-      const count = (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).length;
+      const count = getSelectedModelIdsFromHidden().length;
       setMsg('已加载内置模型列表，共 ' + count + ' 个', 'ok');
     }
     async function syncProviderModelsToCache() {
@@ -1723,7 +1784,6 @@ cat <<'HTML'
           setMsg(data.error ? ('同步失败：' + data.error) : '未同步到模型', data.error ? 'err' : '');
           return;
         }
-        document.getElementById('dlg_model_ids').value = ids.join('\n');
         setModelSelectOptions(ids, ids);
         setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
       } catch (e) { setMsg('同步失败：' + (e.message || e), 'err'); }
@@ -1740,7 +1800,7 @@ cat <<'HTML'
           api: document.getElementById('dlg_api').value,
           baseUrl: document.getElementById('dlg_base_url').value,
           apiKey: document.getElementById('dlg_api_key').value,
-          models: (document.getElementById('dlg_model_ids').value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(id => ({ modelId: id, id: id }))
+          models: getSelectedModelIdsFromHidden().map(id => ({ modelId: id, id: id }))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers };
@@ -1800,10 +1860,12 @@ cat <<'HTML'
       const btn = document.getElementById('btn_channel_save');
       if (!btn) return;
       if (t === 'openclaw-weixin') {
-        const connected = !!window.__weixinConnected;
-        btn.disabled = !connected;
-        btn.title = connected ? '' : '请先扫码并连接成功后再保存';
+        // 微信扫码流程改为“仅自动保存”，不显示手动保存按钮。
+        btn.style.display = 'none';
+        btn.disabled = true;
+        btn.title = '微信扫码后自动保存';
       } else {
+        btn.style.display = '';
         btn.disabled = false;
         btn.title = '';
       }
