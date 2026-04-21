@@ -1814,7 +1814,11 @@ cat <<'HTML'
       } catch (e) { setMsg('同步失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
+      const btns = Array.from(document.querySelectorAll('#modelModalMask .modal-actions .btn.primary'));
+      const saveBtn = btns.find(b => (b.textContent || '').includes('保存')) || btns[0] || null;
+      const oldText = saveBtn ? saveBtn.textContent : '';
       try {
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '正在应用模型...'; }
         const data = window.__modelsData || {};
         const providers = (data.configuredProviders || []).slice();
         const idxRaw = document.getElementById('modelModalMask').dataset.editIndex;
@@ -1833,7 +1837,11 @@ cat <<'HTML'
         closeModelDialog();
         await load('models');
         setMsg('模型服务器保存成功', 'ok');
-      } catch (e) { setMsg('模型服务器保存失败：' + (e.message || e), 'err'); }
+      } catch (e) {
+        setMsg('模型服务器保存失败：' + (e.message || e), 'err');
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
+      }
     }
     async function deleteModelProvider(index) {
       try {
