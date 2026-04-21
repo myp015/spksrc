@@ -400,14 +400,14 @@ if isinstance(payload.get('wecom'), dict):
     sec = (payload['wecom'].get('secret') or '').strip()
     if bot_id: w['botId'] = bot_id
     if sec: w['secret'] = sec
-    w['enabled'] = True
+    w['enabled'] = True; w['dmPolicy'] = 'open'; w['groupPolicy'] = 'open'; w['allowFrom'] = ['*']
 if isinstance(payload.get('dingtalk'), dict):
     d = ch.setdefault('dingtalk', {})
     cid = (payload['dingtalk'].get('clientId') or '').strip()
     csec = (payload['dingtalk'].get('clientSecret') or '').strip()
     if cid: d['clientId'] = cid
     if csec: d['clientSecret'] = csec
-    d['enabled'] = True
+    d['enabled'] = True; d['dmPolicy'] = 'open'; d['groupPolicy'] = 'open'; d['allowFrom'] = ['*']
 if isinstance(payload.get('qqbot'), dict):
     q = ch.setdefault('qqbot', {})
     aid = (payload['qqbot'].get('appId') or '').strip()
@@ -418,24 +418,44 @@ if isinstance(payload.get('qqbot'), dict):
 if isinstance(payload.get('weixin'), dict):
     w = ch.setdefault('openclaw-weixin', {})
     w['enabled'] = bool(payload['weixin'].get('enabled', True))
-    # 保存微信渠道时，强制保持插件启用状态，避免后续被覆盖为仅 browser。
-    plugins = cfg.setdefault('plugins', {})
-    plugins['enabled'] = True
-    allow = plugins.get('allow')
-    if not isinstance(allow, list):
-        allow = []
-    if 'openclaw-weixin' not in allow:
-        allow.append('openclaw-weixin')
-    plugins['allow'] = allow
-    entries = plugins.get('entries')
-    if not isinstance(entries, dict):
-        entries = {}
-    e = entries.get('openclaw-weixin')
+
+# 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
+plugins = cfg.setdefault('plugins', {})
+plugins['enabled'] = True
+allow = plugins.get('allow')
+if not isinstance(allow, list):
+    allow = []
+entries = plugins.get('entries')
+if not isinstance(entries, dict):
+    entries = {}
+
+channel_plugin_map = {
+    'feishu': 'feishu',
+    'qqbot': 'qqbot',
+    'dingtalk': 'dingtalk',
+    'wecom': 'wecom',
+    'openclaw-weixin': 'openclaw-weixin',
+    'weixin': 'openclaw-weixin'
+}
+for cid, cv in (ch or {}).items():
+    enabled = True
+    if isinstance(cv, dict):
+        enabled = bool(cv.get('enabled', True))
+    if not enabled:
+        continue
+    pid = channel_plugin_map.get(cid)
+    if not pid:
+        continue
+    if pid not in allow:
+        allow.append(pid)
+    e = entries.get(pid)
     if not isinstance(e, dict):
         e = {}
     e['enabled'] = True
-    entries['openclaw-weixin'] = e
-    plugins['entries'] = entries
+    entries[pid] = e
+
+plugins['allow'] = allow
+plugins['entries'] = entries
 
 def enabled_ids(channels):
     ids = []
@@ -451,6 +471,26 @@ os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
+
+# 保存渠道后自动热重载 gateway，尽量做到“保存后直接可用”。
+reload_ok = False
+reload_out = ''
+try:
+    import subprocess
+    env = os.environ.copy()
+    env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+    env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+    env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+    env['OPENCLAW_CONFIG_PATH'] = cfg_path
+    env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+    cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'gateway', 'restart', '--json']
+    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+    reload_ok = (p.returncode == 0)
+    reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-500:]
+except Exception as e:
+    reload_ok = False
+    reload_out = str(e)
+
 channels_obj = (cfg.get('channels') or {})
 out = {
   'configPath': cfg_path, 'configExists': True,
@@ -459,7 +499,9 @@ out = {
   'wecom': channels_obj.get('wecom') or {},
   'dingtalk': channels_obj.get('dingtalk') or {},
   'qqbot': channels_obj.get('qqbot') or {},
-  'weixin': channels_obj.get('weixin') or {}
+  'weixin': channels_obj.get('weixin') or {},
+  'reloaded': reload_ok,
+  'reloadOutput': reload_out
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -1436,7 +1478,8 @@ cat <<'HTML'
     }
     async function load(tab) {
       setTabs(tab);
-      setMsg('加载中…');
+      if (tab === 'status') setMsg('');
+      else setMsg('加载中…');
       const content = document.getElementById('content');
       content.innerHTML = '';
       try {
@@ -1462,7 +1505,7 @@ cat <<'HTML'
             + '  <button class="btn" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
             + '  <button class="btn" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
-            + '  <button class="btn primary" id="btn_open_web" disabled title="Gateway 未完全启动，暂不可点击" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
+            + '  <button class="btn primary" id="btn_open_web" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(v)+'</div>').join('') + '</div>'
             + '<div class="modal-mask" id="userSettingsMask">'
@@ -1476,7 +1519,6 @@ cat <<'HTML'
             + '  </div>'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
-          refreshOpenWebButtonState({ installed: !!data.installed, running: !!data.running, webUrl: webUrl });
           return;
         }
         if (tab === 'logs') {
@@ -1598,10 +1640,8 @@ cat <<'HTML'
     }
     async function runInstallAction(actionName) {
       try {
-        setMsg('正在执行：' + actionName + ' ...');
         await api('install_run', 'POST', { method: 'bun', action: actionName });
-        setMsg('操作已提交：' + actionName + '，正在刷新状态...', 'ok');
-        // start/restart/stop 状态切换有延迟，轮询直到目标状态，避免按钮状态滞后。
+        // 仅保留“运行状态”提示，不显示其它文案。
         if (actionName === 'start' || actionName === 'restart' || actionName === 'stop') {
           const wantRunning = (actionName !== 'stop');
           for (let i = 0; i < 10; i += 1) {
@@ -1609,6 +1649,7 @@ cat <<'HTML'
             try {
               const s = await api('status');
               if (s && !!s.running === wantRunning) {
+                setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
                 await load('status');
                 return;
               }
@@ -1617,24 +1658,11 @@ cat <<'HTML'
         }
         await load('status');
       } catch (e) {
-        setMsg('操作失败：' + (e.message || e), 'err');
+        // 概览页按要求不展示其它提示。
+        await load('status');
       }
     }
-    function refreshOpenWebButtonState(state) {
-      const btn = document.getElementById('btn_open_web');
-      if (!btn) return;
-      const installed = !!(state && state.installed);
-      const running = !!(state && state.running);
-      const webUrl = String((state && state.webUrl) || '').trim();
-      const hasWebUrl = !!webUrl && webUrl !== '#';
-      // 对齐 trim.openclaw_v0.0.10：installed && running && gatewayUrl 可用 时才允许打开。
-      const ready = installed && running && hasWebUrl;
-      btn.disabled = !ready;
-      if (!installed) btn.title = 'OpenClaw 尚未安装';
-      else if (!running) btn.title = 'Gateway 未运行，暂不可点击';
-      else if (!hasWebUrl) btn.title = '尚未获取到可用入口地址';
-      else btn.title = '';
-    }
+    // 按用户要求："打开 OpenClaw Web" 按钮始终可用，不做状态检测。
     function openOpenclawWeb(url) {
       let u = (url || '').trim();
       if (!u) u = 'http://' + window.location.hostname + ':44539/default/chat?session=main';
@@ -2051,10 +2079,11 @@ cat <<'HTML'
       const oldText = btn ? btn.textContent : '';
       try {
         if (btn) { btn.disabled = true; btn.textContent = '正在添加...'; }
-        await api('channels_save', 'POST', payload);
+        const ret = await api('channels_save', 'POST', payload);
         closeChannelDialog();
         await load('channels');
-        setMsg('渠道保存成功（已热生效）', 'ok');
+        if (ret && ret.reloaded) setMsg('运行状态：运行中', 'ok');
+        else setMsg('运行状态：已停止', 'err');
       } catch (e) {
         setMsg('渠道保存失败：' + (e.message || e), 'err');
       } finally {
