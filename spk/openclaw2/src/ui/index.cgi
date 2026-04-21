@@ -568,16 +568,8 @@ if cid:
         ch.pop('openclaw-weixin', None)
         ch.pop('weixin', None)
 
-    # 同步清理插件启用状态，避免重启后被重新加载。
-    plugins = cfg.get('plugins') or {}
-    allow = plugins.get('allow') if isinstance(plugins, dict) else None
-    if isinstance(allow, list):
-        target = 'openclaw-weixin' if cid in ('openclaw-weixin', 'weixin') else cid
-        plugins['allow'] = [x for x in allow if x != target]
-    entries = plugins.get('entries') if isinstance(plugins, dict) else None
-    if isinstance(entries, dict):
-        target = 'openclaw-weixin' if cid in ('openclaw-weixin', 'weixin') else cid
-        entries.pop(target, None)
+    # 删除渠道只改 channels 配置，不做插件 allow/entries 热删。
+    # 这样可避免运行中出现短暂“停止->运行”的抖动；插件层按重启后策略生效。
 
 
 def enabled_ids(channels):
@@ -1017,6 +1009,8 @@ env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 env['PS1'] = '$ '
+# 确保 openclaw 原生命令可直接使用
+env['PATH'] = '/var/packages/openclaw2/target/bin:' + env.get('PATH', '')
 
 keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep 3600; done'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 fin = open(fifo, 'rb', buffering=0)
@@ -1641,6 +1635,8 @@ cat <<'HTML'
     let terminalOffset = 0;
     let terminalPollTimer = null;
     let terminalInputBuffer = '';
+    let terminalSuggest = ['/var/packages/openclaw2/target/bin/openclaw doctor', '/var/packages/openclaw2/target/bin/openclaw gateway status', '/var/packages/openclaw2/target/bin/openclaw gateway restart', '/var/packages/openclaw2/target/bin/openclaw config validate'];
+    let terminalSuggestIndex = -1;
     window.__openclaw2ClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -2779,10 +2775,26 @@ cat <<'HTML'
       if (!ev) return;
       const pre = document.getElementById('terminal_pre');
       if (!pre) return;
+      if (ev.key === 'Tab') {
+        ev.preventDefault();
+        const s = terminalSuggest || [];
+        if (!s.length) return;
+        terminalSuggestIndex = (terminalSuggestIndex + 1) % s.length;
+        const picked = s[terminalSuggestIndex] || '';
+        while (terminalInputBuffer.length > 0) {
+          terminalInputBuffer = terminalInputBuffer.slice(0, -1);
+          pre.textContent = pre.textContent.slice(0, -1);
+        }
+        terminalInputBuffer = picked;
+        pre.textContent += picked;
+        pre.scrollTop = pre.scrollHeight;
+        return;
+      }
       if (ev.key === 'Enter') {
         ev.preventDefault();
         const line = terminalInputBuffer;
         terminalInputBuffer = '';
+        terminalSuggestIndex = -1;
         pre.textContent += '\n';
         pre.scrollTop = pre.scrollHeight;
         await sendTerminalText(line + '\n');
@@ -2790,6 +2802,7 @@ cat <<'HTML'
       }
       if (ev.key === 'Backspace') {
         ev.preventDefault();
+        terminalSuggestIndex = -1;
         if (!terminalInputBuffer.length) return;
         terminalInputBuffer = terminalInputBuffer.slice(0, -1);
         pre.textContent = pre.textContent.slice(0, -1);
@@ -2799,6 +2812,7 @@ cat <<'HTML'
       if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
       if (ev.key && ev.key.length === 1) {
         ev.preventDefault();
+        terminalSuggestIndex = -1;
         terminalInputBuffer += ev.key;
         pre.textContent += ev.key;
         pre.scrollTop = pre.scrollHeight;
