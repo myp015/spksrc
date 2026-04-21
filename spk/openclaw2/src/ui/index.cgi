@@ -1739,7 +1739,7 @@ cat <<'HTML'
           content.innerHTML = ''
             + '<div class="card" style="margin-bottom:12px;">'
             + '  <h3>已配置渠道</h3>'
-            + (configured.length ? ('<div class="list" style="max-height:16.7vh;min-height:120px;overflow-y:auto;overflow-x:hidden;">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
+            + (configured.length ? ('<div class="list" style="max-height:none;min-height:0;overflow:visible;">'+rows+'</div>') : '<span style="color:#667085;">暂无已配置渠道</span>')
             + '  <div style="display:flex;gap:8px;margin-top:10px;">'
             + '    <button class="btn primary" onclick="openChannelDialog()">添加渠道</button>'
             + '  </div>'
