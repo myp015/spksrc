@@ -1944,6 +1944,10 @@ cat <<'HTML'
             + '    <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
             + '  </div>'
             + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：点击终端区域后可直接输入命令并回车。</div>'
+            + '  <div style="display:flex;gap:8px;align-items:center;">'
+            + '    <input id="terminal_fallback_input" placeholder="兜底输入：在这里输入命令，按回车发送到终端" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}" style="flex:1;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px;" />'
+            + '    <button class="btn" onclick="sendTerminalLineFromInput()">发送</button>'
+            + '  </div>'
             + '  <div id="terminal_box" tabindex="0" onclick="focusTerminal()" onmousedown="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
             + '    <div id="terminal_prompt_line" onclick="focusTerminal()" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
             + '    <pre id="terminal_pre" onclick="focusTerminal()" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
@@ -2921,6 +2925,8 @@ cat <<'HTML'
       } catch (_) {}
     }
     function focusTerminal() {
+      const input = document.getElementById('terminal_fallback_input');
+      if (input) { input.focus(); return; }
       const box = document.getElementById('terminal_box');
       if (box) { box.focus(); return; }
       const pre = document.getElementById('terminal_pre');
@@ -2989,6 +2995,14 @@ cat <<'HTML'
     }
     async function sendTerminalCtrlC() { await sendTerminalText('\u0003'); }
     async function sendTerminalCtrlD() { await sendTerminalText('\u0004'); }
+    async function sendTerminalLineFromInput() {
+      const el = document.getElementById('terminal_fallback_input');
+      if (!el) return;
+      const line = String(el.value || '');
+      if (!line.trim()) return;
+      el.value = '';
+      await sendTerminalText(line + '\n');
+    }
     function clearTerminalView() {
       const pre = document.getElementById('terminal_pre');
       if (pre) pre.textContent = '';
