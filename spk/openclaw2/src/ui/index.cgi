@@ -1003,52 +1003,56 @@ NODE
               echo "[$(date '+%Y-%m-%d %H:%M:%S')] weixin_qr_data2 requested url_prefix=${qr_encoded%%\?*}"
             } >> "$DEBUG_LOG" 2>/dev/null || true
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            /var/packages/openclaw2/target/bin/node - <<'NODE' "$body" "$qr_encoded"
-const body = process.argv[2] || '';
-const queryUrl = process.argv[3] || '';
-let url = queryUrl;
-if (body) {
-  try {
-    const payload = JSON.parse(body);
-    if (payload && typeof payload.url === 'string' && payload.url) url = payload.url;
-  } catch {}
-}
-if (!url) {
-  process.stdout.write(JSON.stringify({ ok: false, error: 'missing url' }));
-  process.exit(0);
-}
-try {
-  const qrt = require('/volume1/docker/openclaw/.openclaw/extensions/openclaw-weixin/node_modules/qrcode-terminal');
-  const text = typeof url === 'string' ? url.trim() : String(url || '');
-  qrt.generate(text, { small: true }, (ascii) => {
-    const lines = String(ascii || '').split('\n');
-    const cell = 6;
-    const margin = 4;
-    const cols = Math.max(...lines.map(l => l.length), 0);
-    const rows = lines.length;
-    const width = (cols + margin * 2) * cell;
-    const height = (rows + margin * 2) * cell;
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" shape-rendering="crispEdges">`;
-    svg += `<rect width="100%" height="100%" fill="#ffffff"/>`;
-    for (let y = 0; y < rows; y++) {
-      const line = lines[y];
-      for (let x = 0; x < line.length; x++) {
-        const ch = line[x];
-        if (ch !== ' ' && ch !== '\t') {
-          const px = (x + margin) * cell;
-          const py = (y + margin) * cell;
-          svg += `<rect x="${px}" y="${py}" width="${cell}" height="${cell}" fill="#000000"/>`;
-        }
-      }
-    }
-    svg += '</svg>';
-    const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
-    process.stdout.write(JSON.stringify({ ok: true, contentType: 'image/svg+xml', dataUrl }));
-  });
-} catch (e) {
-  process.stdout.write(JSON.stringify({ ok: false, error: String(e && e.message || e) }));
-}
-NODE
+            python3 - <<'PY' "$body" "$qr_encoded" "$DEBUG_LOG"
+import json, os, subprocess, sys, tempfile
+raw = sys.argv[1] if len(sys.argv) > 1 else ''
+query_url = sys.argv[2] if len(sys.argv) > 2 else ''
+debug_log = sys.argv[3] if len(sys.argv) > 3 else ''
+url = query_url
+if raw:
+    try:
+        payload = json.loads(raw)
+        if isinstance(payload, dict) and payload.get('url'):
+            url = str(payload.get('url'))
+    except Exception:
+        pass
+if not url:
+    print(json.dumps({'ok': False, 'error': 'missing url'}, ensure_ascii=False))
+    raise SystemExit
+
+def log(msg):
+    if not debug_log:
+        return
+    try:
+        with open(debug_log, 'a', encoding='utf-8') as f:
+            from time import strftime
+            f.write(f"[{strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+    except Exception:
+        pass
+
+try:
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        png_path = tmp.name
+    # -m 2 中等纠错，-s 8 较清晰尺寸
+    p = subprocess.run(['qrencode', '-o', png_path, '-m', '2', '-s', '8', url], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+    if p.returncode != 0:
+        raise RuntimeError((p.stdout or b'').decode('utf-8', 'ignore') or 'qrencode failed')
+    with open(png_path, 'rb') as f:
+        data = f.read()
+    import base64
+    data_url = 'data:image/png;base64,' + base64.b64encode(data).decode('ascii')
+    log(f'weixin_qr_data2 qrencode_ok bytes={len(data)}')
+    print(json.dumps({'ok': True, 'contentType': 'image/png', 'dataUrl': data_url}, ensure_ascii=False))
+except Exception as e:
+    log(f'weixin_qr_data2 qrencode_err={e}')
+    print(json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False))
+finally:
+    try:
+        if 'png_path' in locals() and os.path.exists(png_path):
+            os.remove(png_path)
+    except Exception:
+        pass
+PY
             exit 0
             ;;
         *)
