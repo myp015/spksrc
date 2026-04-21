@@ -1754,7 +1754,7 @@ cat <<'HTML'
             + '      <option value="qqbot">QQ Bot</option>'
             + '      <option value="wecom">企业微信</option>'
             + '      <option value="dingtalk">钉钉</option>'
-            + '      <option value="openclaw-weixin">微信</option>'},{
+            + '      <option value="openclaw-weixin">微信</option>'
             + '    </select></div>'
             + '    <div id="channelFormArea"></div>'
             + '    <div class="modal-actions">'
