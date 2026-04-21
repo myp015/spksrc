@@ -1002,11 +1002,26 @@ keeper_file = os.path.join(sdir, 'keeper.pid')
 open(log, 'ab').close()
 os.mkfifo(fifo)
 
+cfg_path = '/volume1/docker/openclaw/.openclaw/openclaw.json'
+workspace_dir = '/volume1/docker/openclaw'
+try:
+    if os.path.exists(cfg_path):
+        cfg = json.load(open(cfg_path, 'r', encoding='utf-8'))
+        ws = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
+        if ws:
+            workspace_dir = ws
+except Exception:
+    pass
+try:
+    os.makedirs(workspace_dir, exist_ok=True)
+except Exception:
+    workspace_dir = '/volume1/@appdata/openclaw2/data/home'
+
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
-env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
-env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
+env['HOME'] = workspace_dir
+env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 # 提示符直接显示当前目录（由 shell 原生渲染）。
 env['PS1'] = '\\w$ '
@@ -1033,14 +1048,14 @@ keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep
 fin = open(fifo, 'rb', buffering=0)
 fout = open(log, 'ab', buffering=0)
 # 使用非 login 交互 shell，保留注入 PATH，避免 profile 覆盖导致 openclaw 不可用。
-shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=env['HOME'], env=env, start_new_session=True)
+shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=workspace_dir, env=env, start_new_session=True)
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
     user = subprocess.check_output(['id','-un'], text=True).strip()
 except Exception:
     user = ''
-print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'cwd': env['HOME']}, ensure_ascii=False))
+print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'cwd': workspace_dir}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -2760,9 +2775,10 @@ cat <<'HTML'
         }
         terminalSessionId = ret.sessionId || '';
         terminalOffset = Number(ret.offset || 0);
-        pre.textContent = '';
+        const initCwd = (ret.cwd || '/volume1/@appdata/openclaw2/data/home');
+        pre.textContent = '[cwd] ' + initCwd + '\n';
         const cwdEl = document.getElementById('terminal_cwd');
-        if (cwdEl) cwdEl.textContent = '当前目录：' + (ret.cwd || '/volume1/@appdata/openclaw2/data/home');
+        if (cwdEl) cwdEl.textContent = '当前目录：' + initCwd;
       }
       if (terminalPollTimer) clearInterval(terminalPollTimer);
       terminalPollTimer = setInterval(readTerminalOutput, 500);
