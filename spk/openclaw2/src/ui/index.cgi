@@ -2761,6 +2761,8 @@ cat <<'HTML'
         terminalSessionId = ret.sessionId || '';
         terminalOffset = Number(ret.offset || 0);
         pre.textContent = '';
+        const cwdEl = document.getElementById('terminal_cwd');
+        if (cwdEl) cwdEl.textContent = '当前目录：' + (ret.cwd || '/volume1/@appdata/openclaw2/data/home');
       }
       if (terminalPollTimer) clearInterval(terminalPollTimer);
       terminalPollTimer = setInterval(readTerminalOutput, 500);
