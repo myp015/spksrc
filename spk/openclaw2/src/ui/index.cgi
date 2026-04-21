@@ -1033,6 +1033,12 @@ fin = open(fifo, 'rb', buffering=0)
 fout = open(log, 'ab', buffering=0)
 # 使用非 login 交互 shell，保留注入 PATH，避免 profile 覆盖导致 openclaw 不可用。
 shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=env['HOME'], env=env, start_new_session=True)
+# 强制提示符显示当前目录（避免不同环境下退回默认提示符）。
+try:
+    with open(fifo, 'wb', buffering=0) as wf:
+        wf.write(b'export PS1="\\w$ "\n')
+except Exception:
+    pass
 with open(pid_file, 'w', encoding='utf-8') as f: f.write(str(shell.pid))
 with open(keeper_file, 'w', encoding='utf-8') as f: f.write(str(keeper.pid))
 try:
