@@ -700,6 +700,17 @@ try:
     message = '已连接' if connected else '等待扫码确认'
 except Exception:
     connected = False
+
+# 状态兜底：若日志里已出现“与微信连接成功”，即视为已连接（避免 status 同步延迟导致前端一直 pending）。
+if not connected:
+    try:
+        if os.path.exists(debug_log):
+            tail = open(debug_log, 'r', encoding='utf-8', errors='ignore').read()[-120000:]
+            if '✅ 与微信连接成功！' in tail and '登录超时：二维码多次过期' not in tail[-4000:]:
+                connected = True
+                message = '已连接（日志确认）'
+    except Exception:
+        pass
 if connected:
     # 登录成功后清理后台 login worker
     try:
@@ -1894,7 +1905,28 @@ cat <<'HTML'
       }
     }
     async function regenerateWeixinQr() {
-      await startWeixinLogin(true);
+      setWeixinBusy('poll', true);
+      try {
+        const { statusEl, qrEl } = getWeixinUiEls();
+        if (!statusEl || !qrEl) {
+          setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
+          return;
+        }
+        statusEl.textContent = '正在刷新二维码...';
+        try {
+          const latest = await api('weixin_qr_latest');
+          if (latest && latest.ok && latest.qrUrl) {
+            window.__weixinQrUrl = latest.qrUrl;
+            await renderWeixinQr(latest.qrUrl, qrEl);
+            statusEl.textContent = '二维码已刷新（快速）';
+            setMsg('二维码已刷新', 'ok');
+            return;
+          }
+        } catch {}
+        await startWeixinLogin(true);
+      } finally {
+        setWeixinBusy('poll', false);
+      }
     }
     async function disconnectWeixin() {
       try {
