@@ -1828,11 +1828,26 @@ cat <<'HTML'
         const providers = (data.configuredProviders || []).slice();
         const idxRaw = document.getElementById('modelModalMask').dataset.editIndex;
         const idx = idxRaw === '' ? -1 : parseInt(idxRaw, 10);
+        const providerId = (document.getElementById('dlg_provider_id').value || 'custom-openai').trim();
+        const baseUrl = (document.getElementById('dlg_base_url').value || '').trim();
+
+        // 仅在“添加”时校验：Provider ID 或 Base URL 任一重复都禁止添加。
+        if (idx < 0) {
+          const duplicatedId = providers.some(p => ((p && p.id) || '').trim() === providerId);
+          const duplicatedBase = baseUrl && providers.some(p => ((p && p.baseUrl) || '').trim() === baseUrl);
+          if (duplicatedId || duplicatedBase) {
+            const reason = duplicatedId ? 'Provider ID 已存在' : 'Base URL 已存在';
+            setMsg('添加失败：' + reason + '，请修改后重试', 'err');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
+            return;
+          }
+        }
+
         const provider = {
-          id: document.getElementById('dlg_provider_id').value || 'custom-openai',
-          displayName: (document.getElementById('dlg_provider_id').value || 'custom-openai'),
+          id: providerId,
+          displayName: providerId,
           api: document.getElementById('dlg_api').value,
-          baseUrl: document.getElementById('dlg_base_url').value,
+          baseUrl: baseUrl,
           apiKey: document.getElementById('dlg_api_key').value,
           models: getSelectedModelIdsFromHidden().map(id => ({ modelId: id, id: id }))
         };
