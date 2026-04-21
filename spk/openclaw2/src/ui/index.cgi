@@ -1016,6 +1016,7 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
 env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
 env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+env['PS1'] = '$ '
 
 keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep 3600; done'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 fin = open(fifo, 'rb', buffering=0)
@@ -1812,15 +1813,17 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="display:flex;gap:8px;align-items:center;">'
-            + '    <input id="terminal_cmd" style="flex:1;" placeholder="交互终端输入（回车发送）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLine();}">'
-            + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
-            + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
-            + '    <button class="btn" onclick="clearTerminalView()">清屏</button>'
-            + '    <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
-            + '  </div>'
             + '  <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验），当前 app 用户会话，工作目录：/volume1/@appdata/openclaw2/data/home</div>'
-            + '  <pre id="terminal_pre" style="min-height:280px;max-height:none;flex:1;">终端连接中...</pre>'
+            + '  <div style="display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
+            + '    <pre id="terminal_pre" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
+            + '    <div style="display:flex;gap:8px;align-items:center;padding:8px;border-top:1px solid #1f2937;background:#111827;">'
+            + '      <input id="terminal_cmd" style="flex:1;background:#0b1220;color:#e5e7eb;border:1px solid #374151;" placeholder="输入命令后回车发送" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLine();}">'
+            + '      <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
+            + '      <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
+            + '      <button class="btn" onclick="clearTerminalView()">清屏</button>'
+            + '      <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
+            + '    </div>'
+            + '  </div>'
             + '</div>';
           await ensureTerminalSession();
           setMsg('终端已加载（交互模式）', 'ok');
@@ -2719,6 +2722,12 @@ cat <<'HTML'
         pre.scrollTop = pre.scrollHeight;
       } catch (e) {}
     }
+    function sanitizeTerminalText(text) {
+      let s = String(text || '');
+      s = s.replace(/\x1B\[[0-9;?]*[ -\/]*[@-~]/g, '');
+      s = s.replace(/\[[0-9;]{1,20}m/g, '');
+      return s;
+    }
     async function ensureTerminalSession() {
       const pre = document.getElementById('terminal_pre');
       if (!pre) return;
@@ -2730,7 +2739,7 @@ cat <<'HTML'
         }
         terminalSessionId = ret.sessionId || '';
         terminalOffset = Number(ret.offset || 0);
-        pre.textContent = '[connected] user=' + (ret.user || '-') + ' cwd=' + (ret.cwd || '-') + '\n';
+        pre.textContent = '';
       }
       if (terminalPollTimer) clearInterval(terminalPollTimer);
       terminalPollTimer = setInterval(readTerminalOutput, 500);
@@ -2745,7 +2754,7 @@ cat <<'HTML'
         if (!ret || !ret.ok) return;
         terminalOffset = Number(ret.nextOffset || terminalOffset);
         if (ret.output) {
-          pre.textContent += ret.output;
+          pre.textContent += sanitizeTerminalText(ret.output);
           pre.scrollTop = pre.scrollHeight;
         }
         if (ret.alive === false && terminalPollTimer) {
