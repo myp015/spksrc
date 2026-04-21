@@ -1550,9 +1550,9 @@ cat <<'HTML'
             + '      <div style="font-size:12px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
             + '      <div id="dlg_model_selected_line" onclick="toggleModelDropdown()" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
             + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
-            + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">'
-            + '        <input id="dlg_model_manual_input" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
-            + '        <button class="btn" onclick="addManualModelFromInput()">添加</button>'
+            + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:nowrap;">'
+            + '        <input id="dlg_model_manual_input" style="flex:1;min-width:0;" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
+            + '        <button class="btn" style="white-space:nowrap;flex:0 0 auto;" onclick="addManualModelFromInput()">添加</button>'
             + '      </div>'
             + '      <input id="dlg_model_ids" type="hidden">'
             + '    </div>'
@@ -1683,6 +1683,11 @@ cat <<'HTML'
     function setSelectedModelIdsToHidden(ids) {
       document.getElementById('dlg_model_ids').value = (ids || []).join('\n');
     }
+    function getAvailableModelIdsFromDropdown() {
+      const wrap = document.getElementById('dlg_model_dropdown');
+      if (!wrap) return [];
+      return Array.from(new Set(Array.from(wrap.querySelectorAll('input[type="checkbox"][value]')).map(i => i.value).filter(Boolean)));
+    }
     function renderModelDropdown(ids, selectedIds) {
       const wrap = document.getElementById('dlg_model_dropdown');
       if (!wrap) return;
@@ -1719,19 +1724,22 @@ cat <<'HTML'
     }
     function toggleModelSelection(id, checked) {
       const curr = getSelectedModelIdsFromHidden();
+      const all = getAvailableModelIdsFromDropdown();
       const next = checked ? Array.from(new Set(curr.concat([id]))) : curr.filter(x => x !== id);
-      setModelSelectOptions(Array.from(new Set(curr.concat([id]))), next);
+      setModelSelectOptions(Array.from(new Set(all.concat([id]))), next);
     }
     function removeModelSelection(id) {
       const curr = getSelectedModelIdsFromHidden();
+      const all = getAvailableModelIdsFromDropdown();
       const next = curr.filter(x => x !== id);
-      setModelSelectOptions(curr, next);
+      setModelSelectOptions(Array.from(new Set(all.concat([id]))), next);
     }
     function toggleModelDropdown() {
       const el = document.getElementById('dlg_model_dropdown');
       if (!el) return;
-      el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
-      if (el.style.display === 'block') triggerDiscoverModelsForDialog();
+      const open = (el.style.display === 'none' || !el.style.display);
+      el.style.display = open ? 'block' : 'none';
+      if (open) triggerDiscoverModelsForDialog();
     }
     function addManualModelFromInput() {
       const inp = document.getElementById('dlg_model_manual_input');
@@ -1782,6 +1790,17 @@ cat <<'HTML'
       const dd = document.getElementById('dlg_model_dropdown');
       if (dd) dd.style.display = 'none';
     }
+
+    // 点击模型下拉外区域自动折叠
+    document.addEventListener('click', function(ev) {
+      const dd = document.getElementById('dlg_model_dropdown');
+      const line = document.getElementById('dlg_model_selected_line');
+      if (!dd || !line) return;
+      if (dd.style.display !== 'block') return;
+      const t = ev.target;
+      if (dd.contains(t) || line.contains(t)) return;
+      dd.style.display = 'none';
+    });
     function closeModelDialog() {
       document.getElementById('modelModalMask').style.display = 'none';
       document.body.classList.remove('modal-open');
