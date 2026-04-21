@@ -1685,6 +1685,7 @@ cat <<'HTML'
     let terminalSessionId = '';
     let terminalOffset = 0;
     let terminalPollTimer = null;
+    let terminalWriteQueue = Promise.resolve();
     let terminalSuggest = ['openclaw doctor', 'openclaw gateway status', 'openclaw gateway restart', 'openclaw config validate'];
     window.__openclaw2ClientErrors = [];
 
@@ -2837,9 +2838,12 @@ cat <<'HTML'
       if (pre) pre.focus();
     }
     async function sendTerminalText(text) {
-      if (!terminalSessionId) await ensureTerminalSession();
-      if (!terminalSessionId) return;
-      await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
+      terminalWriteQueue = terminalWriteQueue.then(async () => {
+        if (!terminalSessionId) await ensureTerminalSession();
+        if (!terminalSessionId) return;
+        await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
+      }).catch(() => {});
+      await terminalWriteQueue;
       // 输入按键不立即强制读回，交给定时轮询，避免输入与输出错序串扰。
     }
     async function handleTerminalKey(ev) {
@@ -2855,7 +2859,7 @@ cat <<'HTML'
 
       if (ev.key === 'Tab') { ev.preventDefault(); await sendTerminalText('\t'); return; }
       if (ev.key === 'Enter') { ev.preventDefault(); await sendTerminalText('\n'); return; }
-      if (ev.key === 'Backspace') { ev.preventDefault(); await sendTerminalText('\b'); return; }
+      if (ev.key === 'Backspace') { ev.preventDefault(); await sendTerminalText('\u007f'); return; }
 
       if (ev.key === 'ArrowUp') { ev.preventDefault(); await sendTerminalText('\u001b[A'); return; }
       if (ev.key === 'ArrowDown') { ev.preventDefault(); await sendTerminalText('\u001b[B'); return; }
