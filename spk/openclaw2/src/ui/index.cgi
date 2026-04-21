@@ -1600,26 +1600,55 @@ cat <<'HTML'
         + '  </div>'
         + '</div>';
     }
+    let __qrLibPromise = null;
+    function ensureQrLib() {
+      if (window.QRCode) return Promise.resolve(window.QRCode);
+      if (__qrLibPromise) return __qrLibPromise;
+      __qrLibPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/qrcodejs2-fix@0.0.2/qrcode.min.js';
+        script.async = true;
+        script.onload = () => {
+          if (window.QRCode) resolve(window.QRCode);
+          else reject(new Error('二维码库加载完成但未找到 QRCode 对象'));
+        };
+        script.onerror = () => reject(new Error('二维码库加载失败'));
+        document.head.appendChild(script);
+      });
+      return __qrLibPromise;
+    }
+    async function buildQrDataUrlFromText(text) {
+      await ensureQrLib();
+      const mount = document.createElement('div');
+      mount.style.cssText = 'position:fixed;left:-99999px;top:-99999px;visibility:hidden;';
+      document.body.appendChild(mount);
+      try {
+        new window.QRCode(mount, {
+          text: text,
+          width: 320,
+          height: 320,
+          correctLevel: window.QRCode.CorrectLevel.M
+        });
+        await new Promise(r => setTimeout(r, 80));
+        const canvas = mount.querySelector('canvas');
+        if (canvas && canvas.toDataURL) return canvas.toDataURL('image/png');
+        const img = mount.querySelector('img');
+        if (img && img.src) return img.src;
+        throw new Error('二维码绘制结果为空');
+      } finally {
+        if (mount && mount.parentNode) mount.parentNode.removeChild(mount);
+      }
+    }
     async function renderWeixinQr(qrUrl, qrEl) {
       try {
-        // 方案改为与固定测试二维码一致：直接内嵌微信返回的二维码页面 URL，避免本地二维码算法报错。
-        window.__weixinQrDataUrl = '';
         window.__weixinQrUrl = qrUrl;
-        const proxiedUrl = (window.location.pathname || '/webman/3rdparty/openclaw2/index.cgi') + '?native_api=1&action=weixin_qr_proxy&url=' + encodeURIComponent(qrUrl);
-        console.info('[channels:weixin:inline-qr:proxy-embed]', { qrUrl: qrUrl, proxiedUrl });
-        qrEl.innerHTML = ''
-          + '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">'
-          + '  <div style="font-size:12px;color:#667085;">请使用微信扫码完成登录（当前页代理内嵌）</div>'
-          + '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px;">'
-          + '    <iframe src="' + esc(proxiedUrl) + '" style="width:320px;height:420px;border:0;display:block;background:#fff;" referrerpolicy="no-referrer"></iframe>'
-          + '  </div>'
-          + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-          + '    <a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>'
-          + '  </div>'
-          + '</div>';
+        const dataUrl = await buildQrDataUrlFromText(qrUrl);
+        window.__weixinQrDataUrl = dataUrl;
+        console.info('[channels:weixin:inline-qr:local-draw]', { qrUrl: qrUrl, hasDataUrl: !!dataUrl });
+        renderWeixinQrInline(dataUrl, qrUrl, qrEl, '请使用微信扫码完成登录（已按二维码内容本地重绘）');
       } catch (e) {
         console.error('[channels:weixin:inline-qr:error]', e);
-        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码生成失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
+        qrEl.innerHTML = '<div style="font-size:12px;color:#b42318;margin-bottom:8px;">二维码本地重绘失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
       }
     }
