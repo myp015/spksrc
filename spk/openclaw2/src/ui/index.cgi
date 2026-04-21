@@ -1044,11 +1044,12 @@ try:
 except Exception:
     pass
 
-# 保持 FIFO 写端常驻，避免脚本会话因 stdin EOF 立刻退出。
+# 保持 FIFO 写端常驻，避免会话因 stdin EOF 立刻退出。
 keeper = subprocess.Popen(['/bin/sh','-lc', f'exec 3>"{fifo}"; while :; do sleep 3600; done'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 fin = open(fifo, 'rb', buffering=0)
-# 使用 script 分配 PTY，解决退格/补全等行编辑异常。
-shell = subprocess.Popen(['/usr/bin/script','-qfec','/bin/bash --noprofile --norc -i',log], stdin=fin, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=workspace_dir, env=env, start_new_session=True)
+fout = open(log, 'ab', buffering=0)
+# 使用 bash 交互模式（无 script 依赖，兼容 DSM 环境）。
+shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=fin, stdout=fout, stderr=fout, cwd=workspace_dir, env=env, start_new_session=True)
 
 # 初始化到目标目录并固定提示符样式（SSH 风格）
 try:
@@ -1066,7 +1067,7 @@ try:
     host = socket.gethostname()
 except Exception:
     host = ''
-print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'host': host, 'cwd': workspace_dir}, ensure_ascii=False))
+print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'host': host, 'cwd': workspace_dir, 'backend': 'bash-fifo'}, ensure_ascii=False))
 PY
             exit 0
             ;;
