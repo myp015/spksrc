@@ -953,7 +953,6 @@ PY
             } >> "$DEBUG_LOG" 2>/dev/null || true
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             /var/packages/openclaw2/target/bin/node - <<'NODE' "$body" "$qr_encoded"
-const fs = require('fs');
 const body = process.argv[2] || '';
 const queryUrl = process.argv[3] || '';
 let url = queryUrl;
@@ -990,6 +989,62 @@ try {
   svg += '</svg>';
   const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
   process.stdout.write(JSON.stringify({ ok: true, contentType: 'image/svg+xml', dataUrl }));
+} catch (e) {
+  process.stdout.write(JSON.stringify({ ok: false, error: String(e && e.message || e) }));
+}
+NODE
+            exit 0
+            ;;
+        weixin_qr_data2)
+            body=$(read_body)
+            qr_encoded=$(urldecode "$(get_param url "$QUERY")")
+            DEBUG_LOG="${APP_VAR_DIR}/weixin-login-debug.log"
+            {
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] weixin_qr_data2 requested url_prefix=${qr_encoded%%\?*}"
+            } >> "$DEBUG_LOG" 2>/dev/null || true
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            /var/packages/openclaw2/target/bin/node - <<'NODE' "$body" "$qr_encoded"
+const body = process.argv[2] || '';
+const queryUrl = process.argv[3] || '';
+let url = queryUrl;
+if (body) {
+  try {
+    const payload = JSON.parse(body);
+    if (payload && typeof payload.url === 'string' && payload.url) url = payload.url;
+  } catch {}
+}
+if (!url) {
+  process.stdout.write(JSON.stringify({ ok: false, error: 'missing url' }));
+  process.exit(0);
+}
+try {
+  const qrt = require('/volume1/docker/openclaw/.openclaw/extensions/openclaw-weixin/node_modules/qrcode-terminal');
+  const text = typeof url === 'string' ? url.trim() : String(url || '');
+  qrt.generate(text, { small: true }, (ascii) => {
+    const lines = String(ascii || '').split('\n');
+    const cell = 6;
+    const margin = 4;
+    const cols = Math.max(...lines.map(l => l.length), 0);
+    const rows = lines.length;
+    const width = (cols + margin * 2) * cell;
+    const height = (rows + margin * 2) * cell;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" shape-rendering="crispEdges">`;
+    svg += `<rect width="100%" height="100%" fill="#ffffff"/>`;
+    for (let y = 0; y < rows; y++) {
+      const line = lines[y];
+      for (let x = 0; x < line.length; x++) {
+        const ch = line[x];
+        if (ch !== ' ' && ch !== '\t') {
+          const px = (x + margin) * cell;
+          const py = (y + margin) * cell;
+          svg += `<rect x="${px}" y="${py}" width="${cell}" height="${cell}" fill="#000000"/>`;
+        }
+      }
+    }
+    svg += '</svg>';
+    const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
+    process.stdout.write(JSON.stringify({ ok: true, contentType: 'image/svg+xml', dataUrl }));
+  });
 } catch (e) {
   process.stdout.write(JSON.stringify({ ok: false, error: String(e && e.message || e) }));
 }
@@ -1648,7 +1703,7 @@ cat <<'HTML'
           console.info('[channels:weixin:inline-qr:local-draw]', { qrUrl: qrUrl, hasDataUrl: !!dataUrl });
         } catch (localErr) {
           console.warn('[channels:weixin:inline-qr:local-draw:failed]', localErr);
-          const resp = await fetch(API_BASE + 'weixin_qr_data', {
+          const resp = await fetch(API_BASE + 'weixin_qr_data2', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: qrUrl }),
