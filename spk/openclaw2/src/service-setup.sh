@@ -125,7 +125,8 @@ ensure_session_store_dir() {
 }
 
 ensure_openclaw_in_path() {
-    local target_cli="/var/packages/openclaw/target/bin/openclaw"
+    local target_cli="/var/packages/openclaw2/target/bin/openclaw"
+    [ -x "${target_cli}" ] || target_cli="/var/packages/openclaw/target/bin/openclaw"
     local link_cli="/usr/local/bin/openclaw"
 
     mkdir -p /usr/local/bin 2>/dev/null || true
