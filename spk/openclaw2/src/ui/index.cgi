@@ -712,7 +712,7 @@ if not connected:
     except Exception:
         pass
 if connected:
-    # 登录成功后清理后台 login worker
+    # 登录成功后清理后台 login worker，并触发一次渠道重启，避免 getUpdates 会话过期导致“已连接但消息无响应”。
     try:
         if os.path.exists(worker_pid_file):
             pid_txt = (open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip()
@@ -728,6 +728,30 @@ if connected:
                 pass
     except Exception:
         pass
+    try:
+        restart_stamp = '/tmp/openclaw2-weixin-connected.restart.ts'
+        now = time.time()
+        allow_restart = True
+        if os.path.exists(restart_stamp):
+            try:
+                last = float((open(restart_stamp, 'r', encoding='utf-8').read() or '0').strip() or '0')
+                if now - last < 120:
+                    allow_restart = False
+            except Exception:
+                pass
+        if allow_restart:
+            p_restart = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=40)
+            rt = (p_restart.stdout or b'').decode('utf-8', 'ignore')
+            try:
+                with open(restart_stamp, 'w', encoding='utf-8') as sf:
+                    sf.write(str(now))
+            except Exception:
+                pass
+            log(f'openclaw2_restart_after_connect rc={p_restart.returncode} out={rt[-220:]}')
+        else:
+            log('openclaw2_restart_after_connect skipped_recently=1')
+    except Exception as e:
+        log(f'openclaw2_restart_after_connect_err={e}')
 
 log(f'weixin_login_wait connected={bool(connected)} message={message}')
 # 尝试返回当前活跃二维码，便于前端在二维码过期后自动刷新显示。
@@ -1905,28 +1929,7 @@ cat <<'HTML'
       }
     }
     async function regenerateWeixinQr() {
-      setWeixinBusy('poll', true);
-      try {
-        const { statusEl, qrEl } = getWeixinUiEls();
-        if (!statusEl || !qrEl) {
-          setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
-          return;
-        }
-        statusEl.textContent = '正在刷新二维码...';
-        try {
-          const latest = await api('weixin_qr_latest');
-          if (latest && latest.ok && latest.qrUrl) {
-            window.__weixinQrUrl = latest.qrUrl;
-            await renderWeixinQr(latest.qrUrl, qrEl);
-            statusEl.textContent = '二维码已刷新（快速）';
-            setMsg('二维码已刷新', 'ok');
-            return;
-          }
-        } catch {}
-        await startWeixinLogin(true);
-      } finally {
-        setWeixinBusy('poll', false);
-      }
+      await startWeixinLogin(true);
     }
     async function disconnectWeixin() {
       try {
