@@ -1062,6 +1062,16 @@ except Exception:
 relay_pid = os.fork()
 if relay_pid == 0:
     # 中继进程：cmd_fifo -> pty，pty -> out.log
+    # 关闭 CGI stdout/stderr，避免请求被子进程持续占用导致前端卡在“终端连接中...”。
+    try:
+        devnull = os.open('/dev/null', os.O_RDWR)
+        os.dup2(devnull, 0)
+        os.dup2(devnull, 1)
+        os.dup2(devnull, 2)
+        if devnull > 2:
+            os.close(devnull)
+    except Exception:
+        pass
     try:
         cmd_fd = os.open(cmd_fifo, os.O_RDWR | os.O_NONBLOCK)
         with open(log, 'ab', buffering=0) as lf:
@@ -1112,7 +1122,7 @@ try:
     host = socket.gethostname()
 except Exception:
     host = ''
-print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'host': host, 'cwd': workspace_dir, 'backend': 'bash-fifo'}, ensure_ascii=False))
+print(json.dumps({'ok': True, 'sessionId': sid, 'offset': os.path.getsize(log), 'user': user, 'host': host, 'cwd': workspace_dir, 'backend': 'pty-relay'}, ensure_ascii=False))
 PY
             exit 0
             ;;
