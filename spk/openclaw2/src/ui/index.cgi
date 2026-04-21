@@ -2779,7 +2779,17 @@ cat <<'HTML'
       // 非 TTY 交互 shell 常见噪声，直接过滤
       s = s.replace(/^bash: cannot set terminal process group.*\n?/gm, '');
       s = s.replace(/^bash: no job control in this shell\n?/gm, '');
-      return s;
+      // 将退格控制符按“删除前一字符”语义应用，避免显示特殊符号。
+      const out = [];
+      for (const ch of s) {
+        if (ch === '\b' || ch === '\x7f') {
+          if (out.length) out.pop();
+          continue;
+        }
+        if (ch === '\r') continue;
+        out.push(ch);
+      }
+      return out.join('');
     }
     async function ensureTerminalSession() {
       const pre = document.getElementById('terminal_pre');
