@@ -163,13 +163,17 @@ fi
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
 OPENCLAW_WORKSPACE_DIR="$WORKDIR"
+# Force runtime identity vars to package service user context.
+OPENCLAW_SERVICE_USER="sc-openclaw"
+USER="$OPENCLAW_SERVICE_USER"
+LOGNAME="$OPENCLAW_SERVICE_USER"
 # Keep runtime artifacts under .openclaw as requested.
 HOME_DEFAULT="$WORKDIR"
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
 # Ensure doctor/session-store checks always pass regardless of HOME interpretation.
 mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/agents/main/sessions" 2>/dev/null || true
 chmod 700 "$HOME" "$OPENCLAW_STATE_DIR" 2>/dev/null || true
-export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME
+export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME OPENCLAW_SERVICE_USER USER LOGNAME
 
 # No automatic user switching here. If needed, run manually as sc-openclaw:
 #   su -s /bin/sh sc-openclaw
