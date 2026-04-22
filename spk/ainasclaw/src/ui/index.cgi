@@ -2134,6 +2134,7 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
+            + '  <div style="font-size:13px;color:#667085;">终端说明：此终端运行在套件内部环境，默认进入用户目录；关闭页面后会话会自动结束。</div>'
             + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
             + '    <iframe src="/openclaw-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
             + '  </div>'
