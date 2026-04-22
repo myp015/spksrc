@@ -151,8 +151,14 @@ mkdir -p "$WORKDIR"
 chmod 700 "$WORKDIR" 2>/dev/null || true
 # Keep a durable workspace pointer independent from workspace files.
 mkdir -p "$(dirname "$WORKSPACE_PTR_FILE")" 2>/dev/null || true
-{ printf '%s' '$HOME' > "$WORKSPACE_PTR_FILE"; } 2>/dev/null || true
-{ printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_HOME_PTR_FILE"; } 2>/dev/null || true
+# workspace.path is symbolic and stable.
+if [ ! -f "$WORKSPACE_PTR_FILE" ]; then
+  { printf '%s' '$HOME' > "$WORKSPACE_PTR_FILE"; } 2>/dev/null || true
+fi
+# Do not clobber workspace.home.path on every command; only initialize or explicit override.
+if [ ! -f "$WORKSPACE_HOME_PTR_FILE" ] || [ -n "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+  { printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_HOME_PTR_FILE"; } 2>/dev/null || true
+fi
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
