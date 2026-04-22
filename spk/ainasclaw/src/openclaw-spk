@@ -187,6 +187,21 @@ case "$1" in
     echo "HOME=$HOME"
     exit 0
     ;;
+  gateway)
+    case "${2:-}" in
+      restart)
+        # 用户要求：restart 改为“先停再按状态启动”，避免盲目拉起。
+        "$APP_NODE" "$APP_ENTRY" gateway stop --force >/dev/null 2>&1 || true
+        sleep 1
+        if [ "${OPENCLAW_GATEWAY_RESTART_START:-0}" = "1" ]; then
+          shift 2
+          exec "$APP_NODE" "$APP_ENTRY" gateway run --allow-unconfigured --port 18789 "$@"
+        fi
+        echo "gateway stopped. set OPENCLAW_GATEWAY_RESTART_START=1 to auto-start after stop."
+        exit 0
+        ;;
+    esac
+    ;;
   token)
     python3 - "$OPENCLAW_CONFIG_PATH" <<'PY'
 import json,sys

@@ -245,6 +245,9 @@ if workspace:
         workspace = workspace[:-10]
 else:
     workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw').strip()
+# normalize no matter where workspace value comes from
+if workspace.endswith('/.openclaw'):
+    workspace = workspace[:-10]
 
 if not cfg_path:
     cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
@@ -3310,10 +3313,10 @@ cat <<'HTML'
               // 第一步：立即落配置（不重载）
               const sv = await api('channels_save', 'POST', { weixin: { enabled: true }, noReload: true });
               if (sv && sv.error) throw new Error(sv.error);
-              if (currentTab === 'channels') await load('channels');
+              if (currentTab === 'channels') {
+                await load('channels');
+              }
               setMsg('微信已连接（已立即保存）', 'ok');
-              // 用户要求：保存后立即刷新页面，确保新加渠道马上可见。
-              setTimeout(() => { try { window.location.reload(); } catch (_) {} }, 50);
               // 第二步：后台再做热加载（不阻塞 UI）
               api('channels_save', 'POST', { weixin: { enabled: true } }).catch(() => {});
             } catch (e) {
