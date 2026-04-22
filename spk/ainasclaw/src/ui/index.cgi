@@ -2315,26 +2315,16 @@ cat <<'HTML'
       if (terminalPollTimer) { clearInterval(terminalPollTimer); terminalPollTimer = null; }
       document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     }
-    async function api(action, method='GET', payload=null, timeoutMs=15000) {
+    async function api(action, method='GET', payload=null) {
       const url = API_BASE + encodeURIComponent(action) + '&_ts=' + Date.now();
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(new Error('timeout')), Math.max(1000, timeoutMs || 15000));
-      try {
-        const resp = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: payload ? JSON.stringify(payload) : undefined,
-          cache: 'no-store',
-          signal: ctl.signal
-        });
-        const text = await resp.text();
-        try { return text ? JSON.parse(text) : {}; } catch (e) { return { error: 'JSON parse failed', raw: text }; }
-      } catch (e) {
-        const msg = (e && e.name === 'AbortError') ? 'request timeout' : (e && e.message ? e.message : String(e));
-        return { ok: false, error: msg };
-      } finally {
-        clearTimeout(timer);
-      }
+      const resp = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
+        cache: 'no-store'
+      });
+      const text = await resp.text();
+      try { return text ? JSON.parse(text) : {}; } catch (e) { return { error: 'JSON parse failed', raw: text }; }
     }
     async function load(tab) {
       setTabs(tab);
@@ -2601,12 +2591,14 @@ cat <<'HTML'
     async function runInstallAction(actionName) {
       setInstallButtonsBusy(actionName, true);
       try {
-        const act = await api('install_run', 'POST', { method: 'bun', action: actionName }, 20000);
+        const act = await api('install_run', 'POST', { method: 'bun', action: actionName });
         if (actionName === 'start' && act && act.initialized) {
           setMsg('运行状态：正在初始化', 'ok');
         }
-        if (!act || act.ok === false || act.error) {
-          setMsg('重启请求超时/失败，正在改为后台轮询状态…', 'err');
+        if (actionName === 'restart' && act && act.running === false) {
+          // 后端未进入 running 时立即跳出重启状态，避免前端长时间卡住。
+          if (currentTab === 'status') await load('status');
+          return;
         }
         // 仅保留“运行状态”提示，不显示其它文案。
         if (actionName === 'start' || actionName === 'restart' || actionName === 'stop') {
