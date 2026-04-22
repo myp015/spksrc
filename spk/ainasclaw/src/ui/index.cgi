@@ -1677,7 +1677,7 @@ PY
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${CFG_FILE}" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
-import json, os, subprocess, sys, time
+import json, os, subprocess, sys, time, fcntl
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/openclaw/.openclaw/openclaw.json'
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
@@ -1688,6 +1688,16 @@ except Exception:
 action = (payload.get('action') or '').strip().lower()
 if action not in ('start','stop','restart'):
     print(json.dumps({'ok': False, 'error': 'unsupported action'}, ensure_ascii=False)); raise SystemExit
+
+# serialize install_run actions to avoid duplicate concurrent restarts causing double-spawn/port lock races
+lock_path = '/var/packages/ainasclaw/var/install_run.lock'
+os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+_lock_fp = open(lock_path, 'w')
+try:
+    fcntl.flock(_lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print(json.dumps({'ok': False, 'busy': True, 'error': 'another start/stop/restart is already running'}, ensure_ascii=False), flush=True)
+    raise SystemExit
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG']='0'
