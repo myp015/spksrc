@@ -95,7 +95,14 @@ harden_extension_permissions() {
     for path in "${ext_dir}"/*; do
         [ -e "${path}" ] || continue
         [ "$(basename "${path}")" = "node_modules" ] && continue
-        chown -R root:root "${path}" 2>/dev/null || true
+        if [ -L "${path}" ]; then
+            # keep symlink candidate itself trusted (doctor/plugin loader may check lstat owner)
+            chown -h root:root "${path}" 2>/dev/null || true
+            # and keep target trusted
+            chown -R root:root "${path}" 2>/dev/null || true
+        else
+            chown -R root:root "${path}" 2>/dev/null || true
+        fi
     done
 
     # Also harden bundled plugin directories under app/node_modules to avoid "plugin not found"
