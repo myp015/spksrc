@@ -90,8 +90,14 @@ harden_extension_permissions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
     [ -d "${ext_dir}" ] || return 0
 
-    # Ownership policy: keep extensions owner consistent with workspace (.openclaw).
-    # Do not force root ownership here.
+    # Ownership policy: plugins must pass OpenClaw trust checks (root-owned or uid=0 expected).
+    # Keep node_modules symlink writable by service user, but force plugin dirs/files to root:root.
+    local path
+    for path in "${ext_dir}"/*; do
+        [ -e "${path}" ] || continue
+        [ "$(basename "${path}")" = "node_modules" ] && continue
+        chown -R root:root "${path}" 2>/dev/null || true
+    done
 
     # OpenClaw blocks plugins under writable paths. Normalize perms conservatively.
     find "${ext_dir}" -type d -exec chmod 755 {} \; 2>/dev/null || true
