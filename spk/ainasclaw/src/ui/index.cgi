@@ -1906,7 +1906,7 @@ if action in ('start','restart'):
                 sf.write(f'[gateway-spawn] started pid={p.pid}\n')
         except Exception:
             pass
-        time.sleep(1)
+        time.sleep(3)
     except Exception as e:
         ok = False
         logs.append({'cmd':'gateway(spawn-detached)','error':str(e)})
@@ -1922,9 +1922,14 @@ def is_running(port=18789):
     finally:
         s.close()
 
-# Keep CGI response fast/stable to avoid frontend hanging on long restart waits.
 running = is_running(18789)
-print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': initialized}, ensure_ascii=False), flush=True)
+if action in ('start','restart') and not running:
+    for _ in range(12):
+        time.sleep(1)
+        running = is_running(18789)
+        if running:
+            break
+print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': initialized}, ensure_ascii=False))
 PY
             exit 0
             ;;
