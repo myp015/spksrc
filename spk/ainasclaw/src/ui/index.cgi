@@ -232,20 +232,68 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw', 'configPath': cfg_path, 'configExists': True}
-# applyNow=true 时立即应用（重启）；false 时仅落配置，重启后生效。
+# applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
     try:
-        import subprocess
-        pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'ainasclaw'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
-        out['restartTriggered'] = True
-        out['restartRc'] = pr.returncode
-        out['restartOutTail'] = ((pr.stdout or b'').decode('utf-8', 'ignore'))[-180:]
+        import subprocess, time, socket
+        env = os.environ.copy()
+        env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+        env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
+        env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
+        env['OPENCLAW_CONFIG_PATH'] = cfg_path
+        env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+        env['OPENCLAW_TOOLS_PROFILE'] = 'full'
+        env['OPENCLAW_TOOLS_ELEVATED_ENABLED'] = '1'
+        env['OPENCLAW_ELEVATED_DEFAULT'] = 'full'
+        env['OPENCLAW_EXEC_SECURITY_DEFAULT'] = 'full'
+
+        # 保存后自动启用：先停旧进程，再拉起 gateway。
+        for cmd in (
+            ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'stop', '--json'],
+            ['pkill', '-f', 'openclaw-gatew'],
+            ['pkill', '-f', '/app/openclaw/dist/index.js gateway'],
+            ['pkill', '-f', 'openclaw gateway'],
+        ):
+            try:
+                subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8)
+            except Exception:
+                pass
+
+        logf = open('/tmp/openclaw-gateway.spawn.log', 'ab', buffering=0)
+        p = subprocess.Popen(
+            ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', '18789'],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=logf,
+            stderr=logf,
+            close_fds=True,
+            start_new_session=True,
+        )
+        out['gatewayAutoStartTriggered'] = True
+        out['gatewayAutoStartPid'] = p.pid
+
+        running = False
+        for _ in range(12):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.6)
+            try:
+                s.connect(('127.0.0.1', 18789))
+                running = True
+                s.close()
+                break
+            except Exception:
+                try:
+                    s.close()
+                except Exception:
+                    pass
+                time.sleep(1)
+        out['gatewayRunning'] = running
     except Exception as e:
-        out['restartTriggered'] = False
-        out['restartErr'] = str(e)
+        out['gatewayAutoStartTriggered'] = False
+        out['gatewayAutoStartErr'] = str(e)
 else:
-    out['restartTriggered'] = False
-    out['message'] = '配置已保存，重启后生效'
+    out['gatewayAutoStartTriggered'] = False
+    out['message'] = '配置已保存（未自动启用）'
 print(json.dumps(out, ensure_ascii=False))
 PY
             exit 0
