@@ -367,19 +367,10 @@ try:
 except Exception:
     pass
 
-# copy channel plugins into workspace/extensions for stable discovery on DSM
-for pkg_rel in [
-    '@larksuiteoapi/feishu-openclaw-plugin',
-    '@soimy/dingtalk',
-    '@sunnoy/wecom',
-    '@tencent-connect/openclaw-qqbot',
-    '@tencent-weixin/openclaw-weixin',
-]:
+# keep workspace/extensions free of channel plugin copies (DSM trust checks may block uid!=0).
+# channel plugins are staged under app/dist/extensions by service script.
+for pkg_name in ['feishu-openclaw-plugin', 'dingtalk', 'wecom', 'openclaw-qqbot', 'openclaw-weixin']:
     try:
-        src = os.path.join(app_dir, 'node_modules', *pkg_rel.split('/'))
-        if not (os.path.isdir(src) and os.path.isfile(os.path.join(src, 'openclaw.plugin.json'))):
-            continue
-        pkg_name = os.path.basename(src)
         dst = os.path.join(ext_dir, pkg_name)
         import shutil
         if os.path.lexists(dst):
@@ -387,7 +378,6 @@ for pkg_rel in [
                 os.unlink(dst)
             else:
                 shutil.rmtree(dst, ignore_errors=True)
-        shutil.copytree(src, dst, dirs_exist_ok=True)
     except Exception:
         pass
 

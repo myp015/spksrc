@@ -67,21 +67,37 @@ sync_bundled_channel_plugins_to_extensions() {
     rm -f "${ext_dir}/node_modules"
     ln -s "${OPENCLAW_APP_DIR}/node_modules" "${ext_dir}/node_modules"
 
-    # Copy channel plugins into workspace/extensions so OpenClaw plugin discovery
-    # consistently sees them as extension roots on DSM.
-    for src in \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
-        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
-        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
+    # Do NOT place channel plugins under workspace/extensions on DSM.
+    # OpenClaw trust checks may treat workspace-owned plugin dirs as suspicious (uid != 0).
+    # Channel plugins are shipped in app/dist/extensions (root-owned) instead.
+    rm -rf \
+        "${ext_dir}/feishu-openclaw-plugin" \
+        "${ext_dir}/dingtalk" \
+        "${ext_dir}/wecom" \
+        "${ext_dir}/openclaw-qqbot" \
+        "${ext_dir}/openclaw-weixin" 2>/dev/null || true
+}
+
+sync_bundled_channel_plugins_to_stock_extensions() {
+    local stock_ext_dir="${OPENCLAW_APP_DIR}/dist/extensions"
+    mkdir -p "${stock_ext_dir}"
+
+    # Stage DSM channel plugins into stock extension root (trusted root-owned source).
+    local src dst
+    for pair in \
+        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk:dingtalk" \
+        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom:wecom" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin:openclaw-weixin"
     do
+        src="${pair%%:*}"
+        dst="${stock_ext_dir}/${pair##*:}"
         [ -d "${src}" ] || continue
         [ -f "${src}/openclaw.plugin.json" ] || continue
-        pkg_name="$(basename "${src}")"
-        target_dir="${ext_dir}/${pkg_name}"
-        rm -rf "${target_dir}" 2>/dev/null || true
-        cp -a "${src}" "${target_dir}"
+        rm -rf "${dst}" 2>/dev/null || true
+        cp -a "${src}" "${dst}"
+        chown -R root:root "${dst}" 2>/dev/null || true
+        find "${dst}" -type d -exec chmod 755 {} \; 2>/dev/null || true
+        find "${dst}" -type f -exec chmod 644 {} \; 2>/dev/null || true
     done
 }
 
@@ -710,6 +726,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
 
+        sync_bundled_channel_plugins_to_stock_extensions
         sync_bundled_channel_plugins_to_extensions
         harden_extension_permissions
         sync_skills_to_workspace
@@ -848,6 +865,7 @@ try {
     export XDG_DATA_HOME="${runtime_home_dir}/.local/share"
 
     # 初始化/切换目录时，确保插件与技能都完整落在 /xxx/.openclaw 下
+    sync_bundled_channel_plugins_to_stock_extensions
     sync_bundled_channel_plugins_to_extensions
     sync_skills_to_workspace
     harden_extension_permissions
