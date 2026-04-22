@@ -7,14 +7,14 @@ fi
 LOG_FILE="${APP_VAR_DIR}/ainasclaw.log"
 GATEWAY_PORT="18789"
 QUERY="${QUERY_STRING:-}"
-BASE_CFG_FILE="/volume1/docker/openclaw/.openclaw/openclaw.json"
+BASE_CFG_FILE="/volume1/openclaw/.openclaw/openclaw.json"
 
 # Resolve active config path from configured workspace:
 # workspace=/volume1/openclaw -> cfg=/volume1/openclaw/.openclaw/openclaw.json
 CFG_FILE="$(python3 - <<'PY' "$BASE_CFG_FILE"
 import json, os, sys
-base = sys.argv[1] if len(sys.argv) > 1 else '/volume1/docker/openclaw/.openclaw/openclaw.json'
-workspace = '/volume1/docker/openclaw'
+base = sys.argv[1] if len(sys.argv) > 1 else '/volume1/openclaw/.openclaw/openclaw.json'
+workspace = '/volume1/openclaw'
 try:
     if os.path.exists(base):
         c = json.load(open(base, 'r', encoding='utf-8'))
@@ -134,7 +134,7 @@ try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
 except Exception:
     cfg = {}
-workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw')
+workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
 token = ((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '123456')
 binary_path = '/var/packages/ainasclaw/target/bin/openclaw' if os.path.exists('/var/packages/ainasclaw/target/bin/openclaw') else ''
 out = {
@@ -187,7 +187,7 @@ for pid, p in providers_map.items():
             if mid:
                 item['models'].append({'id': mid, 'modelId': mid})
     providers.append(item)
-workspace_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw')
+workspace_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
 print(json.dumps({'configuredProviders': providers, 'workspaceDir': workspace_dir, 'configPath': cfg_path, 'configExists': bool(cfg)}, ensure_ascii=False))
 PY
             exit 0
@@ -263,7 +263,7 @@ os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
-out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw', 'configPath': cfg_path, 'configExists': True}
+out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw', 'configPath': cfg_path, 'configExists': True}
 # applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
     try:
@@ -273,7 +273,7 @@ if apply_now:
         env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
         env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
         env['OPENCLAW_CONFIG_PATH'] = cfg_path
-        env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+        env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
         env['OPENCLAW_TOOLS_PROFILE'] = 'full'
         env['OPENCLAW_TOOLS_ELEVATED_ENABLED'] = '1'
         env['OPENCLAW_ELEVATED_DEFAULT'] = 'full'
@@ -649,7 +649,7 @@ try:
     env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
     env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
     env['OPENCLAW_CONFIG_PATH'] = cfg_path
-    env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+    env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
     cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     reload_ok = (p.returncode == 0)
@@ -773,7 +773,7 @@ env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 log(f'weixin_login_start begin round={round_id} force={1 if force_new else 0}')
 # 清理历史遗留登录 worker，避免旧流程仍在后台运行干扰当前登录。
 try:
@@ -912,7 +912,7 @@ env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'status', '--json']
 raw = ''
 try:
@@ -970,7 +970,8 @@ try:
             aid = re.sub(r'[^a-zA-Z0-9_-]+', '-', aid_raw).strip('-')
             if not aid:
                 aid = aid_raw.replace('@', '-').replace('.', '-')
-            acc_dir = '/volume1/docker/openclaw/.openclaw/openclaw-weixin/accounts'
+            state_dir = os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw'
+            acc_dir = os.path.join(state_dir, 'openclaw-weixin', 'accounts')
             os.makedirs(acc_dir, exist_ok=True)
             acc_path = os.path.join(acc_dir, f'{aid}.json')
             acc = {
@@ -982,7 +983,7 @@ try:
             with open(acc_path, 'w', encoding='utf-8') as af:
                 json.dump(acc, af, ensure_ascii=False, indent=2)
                 af.write('\n')
-            ids_path = '/volume1/docker/openclaw/.openclaw/openclaw-weixin/accounts.json'
+            ids_path = os.path.join(state_dir, 'openclaw-weixin', 'accounts.json')
             # 关键：仅保留当前新账号，避免网关继续用旧账号（旧账号常被 session-guard 暂停）
             with open(ids_path, 'w', encoding='utf-8') as idf:
                 json.dump([aid], idf, ensure_ascii=False, indent=2)
@@ -1082,7 +1083,7 @@ env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
@@ -1124,7 +1125,7 @@ PY
             python3 - <<'PY' "${APP_VAR_DIR}" "${CFG_FILE}"
 import json, os, signal, socket, subprocess, sys, time
 base = (sys.argv[1] if len(sys.argv) > 1 else '/tmp').rstrip('/')
-cfg_path = sys.argv[2] if len(sys.argv) > 2 else '/volume1/docker/openclaw/.openclaw/openclaw.json'
+cfg_path = sys.argv[2] if len(sys.argv) > 2 else '/volume1/openclaw/.openclaw/openclaw.json'
 term_root = os.path.join(base, 'terminal-sessions')
 os.makedirs(term_root, exist_ok=True)
 sid = f"t{int(time.time()*1000)}-{os.getpid()}"
@@ -1137,7 +1138,7 @@ keeper_file = os.path.join(sdir, 'keeper.pid')
 open(log, 'ab').close()
 os.mkfifo(fifo)
 
-workspace_dir = '/volume1/docker/openclaw'
+workspace_dir = '/volume1/openclaw'
 try:
     if os.path.exists(cfg_path):
         cfg = json.load(open(cfg_path, 'r', encoding='utf-8'))
@@ -1156,7 +1157,7 @@ env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = workspace_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 # 提示符直接显示当前目录（由 shell 原生渲染）。
 env['PS1'] = '\\w$ '
 # 确保 openclaw 原生命令任意目录可用
@@ -1343,7 +1344,7 @@ if not line.strip():
     print(json.dumps({'ok': True, 'output': '', 'cwd': ''}, ensure_ascii=False)); raise SystemExit
 sdir = os.path.join(base, 'terminal-sessions', sid)
 cwd_file = os.path.join(sdir, 'cwd.txt')
-cwd = '/volume1/docker/openclaw'
+cwd = '/volume1/openclaw'
 try:
     if os.path.exists(cwd_file):
         cwd = (open(cwd_file, 'r', encoding='utf-8').read() or '').strip() or cwd
@@ -1374,9 +1375,9 @@ if m:
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = '/volume1/docker/openclaw'
+env['HOME'] = '/volume1/openclaw'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
+env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 env['PATH'] = '/var/packages/ainasclaw/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH','')
 
 p = subprocess.run(['/bin/bash', '-lc', line], cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -1474,7 +1475,7 @@ PY
             python3 - <<'PY' "$body" "${CFG_FILE}" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
 import json, os, subprocess, sys, time
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
-cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/docker/openclaw/.openclaw/openclaw.json'
+cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/openclaw/.openclaw/openclaw.json'
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
 try:
     payload = json.loads(raw or '{}')
@@ -1489,7 +1490,7 @@ env['OPENCLAW_USE_SYSTEM_CONFIG']='0'
 env['OPENCLAW_DATA_DIR']='/volume1/@appdata/ainasclaw/data'
 env['HOME']='/volume1/@appdata/ainasclaw/data/home'
 env['OPENCLAW_CONFIG_PATH']=cfg
-env['OPENCLAW_STATE_DIR']='/volume1/docker/openclaw/.openclaw'
+env['OPENCLAW_STATE_DIR']=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
 env['OPENCLAW_TOOLS_PROFILE']='full'
 env['OPENCLAW_TOOLS_ELEVATED_ENABLED']='1'
 env['OPENCLAW_ELEVATED_DEFAULT']='full'
@@ -2112,7 +2113,7 @@ cat <<'HTML'
             ['代理路径', data.proxyBasePath || '-'],
             ['Gateway 地址', mappedDashboard || '-'],
             ['Gateway 地址(含token)', mappedTokenized || '-'],
-            ['用户文件夹路径', data.workspaceDir || '/volume1/docker/openclaw'],
+            ['用户文件夹路径', data.workspaceDir || '/volume1/openclaw'],
             ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
@@ -2133,7 +2134,7 @@ cat <<'HTML'
             + '<div class="modal-mask" id="userSettingsMask">'
             + '  <div class="modal">'
             + '    <h3>用户目录设置</h3>'
-            + '    <div class="field"><label>用户目录</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/docker/openclaw') + '" placeholder="/volume1/docker/openclaw"></div>'
+            + '    <div class="field"><label>用户目录</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/openclaw') + '" placeholder="/volume1/openclaw"></div>'
             + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="closeUserSettingsDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveWorkspaceQuick();closeUserSettingsDialog();">保存</button>'
@@ -2203,7 +2204,7 @@ cat <<'HTML'
         if (tab === 'models') {
 
           const providers = data.configuredProviders || [];
-          const workspaceDir = data.workspaceDir || '/volume1/docker/openclaw';
+          const workspaceDir = data.workspaceDir || '/volume1/openclaw';
           window.__modelsData = data;
           const options = ['<option value="custom-openai">自定义 OpenAI 兼容</option>'].concat(Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>')).join('');
           content.innerHTML = ''
@@ -2738,7 +2739,7 @@ cat <<'HTML'
     async function saveWorkspaceQuick() {
       let hotReloadTriggered = false;
       try {
-        const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/docker/openclaw';
+        const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/openclaw';
         const m = await api('models');
         const payload = { providers: (m.configuredProviders || []), workspaceDir, applyNow: true };
         hotReloadTriggered = true;

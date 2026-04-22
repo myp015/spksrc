@@ -1,7 +1,7 @@
 OPENCLAW_NODE="${SYNOPKG_PKGDEST}/bin/node"
 OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
-OPENCLAW_WORKSPACE_DEFAULT="/volume1/docker/openclaw"
+OPENCLAW_WORKSPACE_DEFAULT="/volume1/openclaw"
 OPENCLAW_STATE_DIR_BASE="${OPENCLAW_WORKSPACE_DEFAULT}/.openclaw"
 OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
@@ -450,7 +450,7 @@ NGINX_EOF
             export WIZARD_BASE_URL="${wizard_base_url}"
             export WIZARD_API_KEY="${wizard_api_key}"
         else
-            export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/docker/openclaw}"
+            export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/openclaw}"
             export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
             export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
             export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
@@ -518,7 +518,7 @@ const workspaceInput = trim(process.env.WIZARD_WORKSPACE_DIR);
 const modelIdInput = trim(process.env.WIZARD_MODEL_ID);
 const baseUrlInput = trim(process.env.WIZARD_BASE_URL);
 const apiKeyInput = trim(process.env.WIZARD_API_KEY);
-const workspace = workspaceInput ? (workspaceInput.endsWith("/.openclaw") ? workspaceInput : `${workspaceInput}/.openclaw`) : "";
+const workspace = workspaceInput ? (workspaceInput.endsWith("/.openclaw") ? workspaceInput.slice(0, -10) : workspaceInput) : "";
 
 cfg.models = cfg.models || {};
 cfg.models.providers = cfg.models.providers || {};
@@ -546,10 +546,11 @@ cfg.memory = cfg.memory || {};
 cfg.memory.qmd = cfg.memory.qmd || {};
 cfg.memory.qmd.paths = Array.isArray(cfg.memory.qmd.paths) ? cfg.memory.qmd.paths : [];
 if (workspace) {
+  const statePath = `${workspace}/.openclaw`;
   if (!cfg.memory.qmd.paths.length) {
-    cfg.memory.qmd.paths.push({ path: workspace, name: "workspace", pattern: "**/*.md" });
+    cfg.memory.qmd.paths.push({ path: statePath, name: "workspace", pattern: "**/*.md" });
   } else {
-    cfg.memory.qmd.paths[0].path = workspace;
+    cfg.memory.qmd.paths[0].path = statePath;
   }
 }
 
@@ -735,10 +736,15 @@ EOF
     OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
-    mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+    # 初始化规则：
+    # - 用户目录= /xxx
+    # - 工作目录(状态目录)= /xxx/.openclaw
+    # - 配置文件= /xxx/.openclaw/openclaw.json
+    mkdir -p "${OPENCLAW_WORKSPACE}" "${OPENCLAW_STATE_DIR}"
     ensure_session_store_dir
 
-    # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
+    # 若目标目录未初始化（无 config），则从已选源配置初始化；
+    # 若用户清空目录，也会在此自动重建并拷贝配置。
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
         cp -f "${selected_source_config}" "${OPENCLAW_CONFIG_FILE}"
     fi
