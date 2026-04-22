@@ -63,29 +63,18 @@ sync_bundled_channel_plugins_to_extensions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
     mkdir -p "${ext_dir}"
 
-    # Let extensions resolve bundled runtime deps from app/node_modules.
+    # Keep only node_modules symlink for dependency resolution.
     rm -f "${ext_dir}/node_modules"
     ln -s "${OPENCLAW_APP_DIR}/node_modules" "${ext_dir}/node_modules"
 
-    # Use symlink-to-bundle for channel plugins so ownership remains trusted (root-owned in app bundle),
-    # avoiding doctor/plugin loader rejection in workspace paths.
-    for src in \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
-        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
-        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
-    do
-        [ -d "${src}" ] || continue
-        [ -f "${src}/openclaw.plugin.json" ] || continue
-
-        local pkg_name
-        pkg_name="$(basename "${src}")"
-        local target_dir="${ext_dir}/${pkg_name}"
-
-        rm -rf "${target_dir}"
-        ln -s "${src}" "${target_dir}"
-    done
+    # Remove legacy copied/symlinked channel plugin dirs under workspace/extensions;
+    # channel plugins are discovered from app/node_modules directly.
+    rm -rf \
+        "${ext_dir}/feishu-openclaw-plugin" \
+        "${ext_dir}/dingtalk" \
+        "${ext_dir}/wecom" \
+        "${ext_dir}/openclaw-qqbot" \
+        "${ext_dir}/openclaw-weixin" 2>/dev/null || true
 }
 
 harden_extension_permissions() {

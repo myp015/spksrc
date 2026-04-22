@@ -367,20 +367,10 @@ try:
 except Exception:
     pass
 
-# sync selected bundled channel plugins into workspace extensions
-# use symlink to bundled plugin path to preserve trusted ownership and avoid stale/blocked plugin diagnostics
-for pkg_rel in [
-    '@larksuiteoapi/feishu-openclaw-plugin',
-    '@soimy/dingtalk',
-    '@sunnoy/wecom',
-    '@tencent-connect/openclaw-qqbot',
-    '@tencent-weixin/openclaw-weixin',
-]:
+# channel plugins are loaded from app/node_modules directly.
+# clean any stale workspace channel plugin dirs to avoid duplicate/stale diagnostics.
+for pkg_name in ['feishu-openclaw-plugin', 'dingtalk', 'wecom', 'openclaw-qqbot', 'openclaw-weixin']:
     try:
-        src = os.path.join(app_dir, 'node_modules', *pkg_rel.split('/'))
-        if not (os.path.isdir(src) and os.path.isfile(os.path.join(src, 'openclaw.plugin.json'))):
-            continue
-        pkg_name = os.path.basename(src)
         dst = os.path.join(ext_dir, pkg_name)
         import shutil
         if os.path.lexists(dst):
@@ -388,7 +378,6 @@ for pkg_rel in [
                 os.unlink(dst)
             else:
                 shutil.rmtree(dst, ignore_errors=True)
-        os.symlink(src, dst)
     except Exception:
         pass
 

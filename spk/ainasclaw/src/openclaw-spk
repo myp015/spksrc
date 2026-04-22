@@ -86,7 +86,11 @@ case "$WORKSPACE_DIR" in
   *) WORKDIR_DEFAULT="$WORKSPACE_DIR/.openclaw" ;;
 esac
 WORKDIR="${OPENCLAW_STATE_DIR:-$WORKDIR_DEFAULT}"
-if [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
+# If workspace comes from persistent pointer, always use that workspace config path
+# (avoid drifting to legacy/base configs).
+if [ "$WORKSPACE_FROM_PTR" = "1" ] && [ -z "${CLI_CONFIG_PATH:-}" ] && [ -z "${OPENCLAW_CONFIG_PATH:-}" ]; then
+  CONFIG_PATH="$WORKDIR/openclaw.json"
+elif [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
   CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
 
