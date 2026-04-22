@@ -259,13 +259,12 @@ if apply_now:
             except Exception:
                 pass
 
-        logf = open('/tmp/openclaw-gateway.spawn.log', 'ab', buffering=0)
         p = subprocess.Popen(
             ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', '18789'],
             env=env,
             stdin=subprocess.DEVNULL,
-            stdout=logf,
-            stderr=logf,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             close_fds=True,
             start_new_session=True,
         )
