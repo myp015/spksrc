@@ -2295,7 +2295,12 @@ cat <<'HTML'
     async function runInstallAction(actionName) {
       setInstallButtonsBusy(actionName, true);
       try {
-        await api('install_run', 'POST', { method: 'bun', action: actionName });
+        const act = await api('install_run', 'POST', { method: 'bun', action: actionName });
+        if (actionName === 'restart' && act && act.running === false) {
+          // 后端未进入 running 时立即跳出重启状态，避免前端长时间卡住。
+          if (currentTab === 'status') await load('status');
+          return;
+        }
         // 仅保留“运行状态”提示，不显示其它文案。
         if (actionName === 'start' || actionName === 'restart' || actionName === 'stop') {
           const wantRunning = (actionName !== 'stop');
@@ -2305,9 +2310,13 @@ cat <<'HTML'
             try {
               const s = await api('status');
               if (actionName === 'restart') {
-                // 重启期间保持“正在重启”，直到真正 running 才结束
+                // 重启期间显示“正在重启”，直到状态发生一次“先停后起”转换，防止卡住。
                 setMsg('运行状态：正在重启', 'ok');
-                if (s && s.running) {
+                if (!runInstallAction.__seenRestartDown && s && s.running === false) {
+                  runInstallAction.__seenRestartDown = true;
+                }
+                if (s && s.running && runInstallAction.__seenRestartDown) {
+                  runInstallAction.__seenRestartDown = false;
                   if (currentTab === 'status') await load('status');
                   return;
                 }
@@ -2321,6 +2330,7 @@ cat <<'HTML'
             } catch {}
           }
           // 超时后再拉一次真实状态，避免停留在旧显示。
+          runInstallAction.__seenRestartDown = false;
           if (currentTab === 'status') await load('status');
           return;
         }
@@ -2329,6 +2339,7 @@ cat <<'HTML'
         // 概览页按要求不展示其它提示。
         if (currentTab === 'status') await load('status');
       } finally {
+        runInstallAction.__seenRestartDown = false;
         setInstallButtonsBusy('', false);
       }
     }
