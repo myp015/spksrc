@@ -9,6 +9,7 @@ OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
+WORKSPACE_PTR_FILE="${SYNOPKG_PKGVAR}/workspace.path"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
 
@@ -730,6 +731,9 @@ process.stdout.write(`${wsFromBase}|${sourcePath}`);
 ' "${OPENCLAW_CONFIG_FILE_BASE}")
 EOF
 
+    if [ -z "${selected_workspace}" ] && [ -f "${WORKSPACE_PTR_FILE}" ]; then
+        selected_workspace="$(cat "${WORKSPACE_PTR_FILE}" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+    fi
     if [ -z "${selected_workspace}" ]; then
         selected_workspace="${OPENCLAW_WORKSPACE_DEFAULT}"
     fi
@@ -749,6 +753,10 @@ EOF
     OPENCLAW_WORKSPACE="${selected_workspace}"
     OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
+
+    # Persist workspace pointer outside workspace tree; survives workspace deletion.
+    mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
+    printf '%s' "${OPENCLAW_WORKSPACE}" > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
 
     # 初始化规则：
     # - 用户目录= /xxx
@@ -806,6 +814,14 @@ try {
     sync_skills_to_workspace
     harden_extension_permissions
 
+    # Ensure session store exists for doctor/runtime checks.
+    mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
+
+    # Avoid duplicate-plugin diagnostics when active workspace is not default workspace.
+    if [ "${OPENCLAW_WORKSPACE}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
+        rm -rf "${OPENCLAW_STATE_DIR_BASE}/extensions" 2>/dev/null || true
+    fi
+
     # Safety: if a channel config exists but its plugin is unavailable in current runtime,
     # drop that channel config and stale plugin refs to avoid "unknown channel id" startup failures.
     "${OPENCLAW_NODE}" -e '
@@ -844,8 +860,7 @@ const pluginChannelMap = new Map();
 for (const root of [
   path.join(appDir, "dist", "extensions"),
   path.join(appDir, "node_modules"),
-  path.join(stateDir, "extensions"),
-  path.join(stateDir, "node_modules")
+  path.join(stateDir, "extensions")
 ]) {
   for (const manifest of walkForPluginManifests(root, 6)) {
     const j = safeReadJson(manifest);

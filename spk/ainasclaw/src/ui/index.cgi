@@ -261,16 +261,19 @@ cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw
 # (do NOT copy active full config back; bootstrap file should only store workspace pointer)
 try:
     os.makedirs(os.path.dirname(base_cfg_path), exist_ok=True)
-    base_cfg = {}
-    if os.path.exists(base_cfg_path):
-        try:
-            base_cfg = json.load(open(base_cfg_path, 'r', encoding='utf-8')) or {}
-        except Exception:
-            base_cfg = {}
     base_cfg = {'agents': {'defaults': {'workspace': workspace}}}
     with open(base_cfg_path, 'w', encoding='utf-8') as bf:
         json.dump(base_cfg, bf, ensure_ascii=False, indent=2)
         bf.write('\n')
+except Exception:
+    pass
+
+# persist workspace pointer outside workspace directory to survive workspace deletion
+try:
+    ptr = '/var/packages/ainasclaw/var/workspace.path'
+    os.makedirs(os.path.dirname(ptr), exist_ok=True)
+    with open(ptr, 'w', encoding='utf-8') as pf:
+        pf.write(workspace)
 except Exception:
     pass
 providers_payload = payload.get('providers') or []
