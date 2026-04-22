@@ -1,11 +1,11 @@
-name: Build OpenClaw2 SPK (x64-7.2)
+name: Build AiNasClaw SPK (x64-7.2)
 
 on:
   push:
     branches:
       - master
     paths:
-      - 'spk/openclaw2/**'
+      - 'spk/ainasclaw/**'
       - '.github/workflows/build-openclaw2-x64.yml'
   workflow_dispatch:
     inputs:
@@ -15,8 +15,8 @@ on:
         default: 'master'
 
 jobs:
-  build-openclaw2-x64:
-    name: Build openclaw2 (x64-7.2)
+  build-ainasclaw-x64:
+    name: Build ainasclaw (x64-7.2)
     runs-on: ubuntu-latest
 
     steps:
@@ -30,17 +30,17 @@ jobs:
         uses: actions/cache@v5
         with:
           path: toolchain/*/work
-          key: toolchain-x64-7.2-openclaw2-v1-${{ hashFiles('toolchain/syno-x64-7.2/digests') }}
+          key: toolchain-x64-7.2-ainasclaw-v1-${{ hashFiles('toolchain/syno-x64-7.2/digests') }}
 
-      - name: Build openclaw2 package
+      - name: Build ainasclaw package
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
           entrypoint: /bin/bash
-          args: -lc "set -e; cd /github/workspace/spk/openclaw2 && make arch-x64-7.2"
+          args: -lc "set -e; cd /github/workspace/spk/ainasclaw && make arch-x64-7.2"
 
       - name: Upload SPK artifact
         uses: actions/upload-artifact@v6
         with:
-          name: openclaw2-x64-7.2
-          path: packages/openclaw2_x64-7.2_*.spk
+          name: ainasclaw-x64-7.2
+          path: packages/ainasclaw_x64-7.2_*.spk
           if-no-files-found: error
