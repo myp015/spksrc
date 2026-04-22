@@ -94,7 +94,7 @@ uptime_seconds = 0
 if running:
     try:
         # 优先按 PID 读取 etimes，避免字符串匹配误差导致一直 0 秒。
-        cmdline = "pgrep -af 'openclaw.*gateway|dist/index.js gateway' | grep -v 'fn-port/server' | head -n1"
+        cmdline = "pgrep -af 'openclaw.*gateway|dist/index.js gateway' | grep -v 'app/fn-port/server' | head -n1"
         p = os.popen(cmdline)
         line = (p.read() or '').strip()
         p.close()
