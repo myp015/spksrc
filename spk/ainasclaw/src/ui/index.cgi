@@ -374,6 +374,7 @@ try:
             'OPENCLAW_STATE_DIR=\"{state}\"; '
             'OPENCLAW_WORKSPACE_DIR=\"{state}\"; '
             'HOME=\"{state}\"; '
+            'OPENCLAW_GATEWAY_RESTART_START=1; '
             'sync_provider_models_from_upstream"'
         ).format(cfg=cfg_path, state=state_dir_for_sync)
         r = subprocess.run(sync_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
@@ -852,6 +853,7 @@ if not skip_reload:
         env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
         env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
         env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+        env['OPENCLAW_GATEWAY_RESTART_START'] = '1'
         cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
         p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         reload_ok = (p.returncode == 0)
