@@ -21,6 +21,10 @@ try:
     if os.path.exists(ptr):
         ws_ptr = (open(ptr, 'r', encoding='utf-8').read() or '').strip()
         if ws_ptr:
+            if ws_ptr == '$HOME':
+                ws_ptr = '/var/packages/ainasclaw/home'
+            elif ws_ptr.startswith('$HOME/'):
+                ws_ptr = '/var/packages/ainasclaw/home/' + ws_ptr[len('$HOME/'):]
             workspace = ws_ptr
             ptr_hit = True
 except Exception:
@@ -294,8 +298,11 @@ cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw
 try:
     ptr = '/var/packages/ainasclaw/var/workspace.path'
     os.makedirs(os.path.dirname(ptr), exist_ok=True)
+    ptr_write = workspace
+    if workspace == '/var/packages/ainasclaw/home':
+        ptr_write = '$HOME'
     with open(ptr, 'w', encoding='utf-8') as pf:
-        pf.write(workspace)
+        pf.write(ptr_write)
 except Exception:
     pass
 providers_payload = payload.get('providers') or []
