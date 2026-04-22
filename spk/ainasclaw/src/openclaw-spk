@@ -107,6 +107,8 @@ fi
 # New/empty workspace should be initialized explicitly by start/setup flow.
 
 mkdir -p "$WORKDIR"
+# Harden state dir perms for doctor/security checks.
+chmod 700 "$WORKDIR" 2>/dev/null || true
 # Keep a durable workspace pointer independent from workspace files.
 mkdir -p "$(dirname "$WORKSPACE_PTR_FILE")" 2>/dev/null || true
 printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_PTR_FILE" 2>/dev/null || true
@@ -119,6 +121,7 @@ HOME_DEFAULT="$WORKDIR"
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
 # Ensure doctor/session-store checks always pass regardless of HOME interpretation.
 mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/agents/main/sessions" 2>/dev/null || true
+chmod 700 "$HOME" "$OPENCLAW_STATE_DIR" 2>/dev/null || true
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME
 
 # No automatic user switching here. If needed, run manually as sc-openclaw:
