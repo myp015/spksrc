@@ -227,12 +227,11 @@ PY
             body=$(read_body)
             cfg_file="${CFG_FILE}"
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body" "$cfg_file" "${APP_VAR_DIR}/openclaw-gateway.spawn.log" "${BASE_CFG_FILE}"
+            python3 - <<'PY' "$body" "$cfg_file" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
 import json, os, sys
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
-base_cfg_path = sys.argv[4] if len(sys.argv) > 4 else '/volume1/openclaw/.openclaw/openclaw.json'
 try:
     payload = json.loads(raw or '{}')
 except Exception:
@@ -264,17 +263,6 @@ elif isinstance(paths[0], dict):
 
 # after workspace change, always write into target workspace config path
 cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
-# keep bootstrap config in sync so resolver follows latest workspace
-# (do NOT copy active full config back; bootstrap file should only store workspace pointer)
-try:
-    os.makedirs(os.path.dirname(base_cfg_path), exist_ok=True)
-    base_cfg = {'agents': {'defaults': {'workspace': workspace}}}
-    with open(base_cfg_path, 'w', encoding='utf-8') as bf:
-        json.dump(base_cfg, bf, ensure_ascii=False, indent=2)
-        bf.write('\n')
-except Exception:
-    pass
-
 # persist workspace pointer outside workspace directory to survive workspace deletion
 try:
     ptr = '/var/packages/ainasclaw/var/workspace.path'
@@ -444,24 +432,26 @@ if apply_now:
                 except Exception:
                     pass
 
+        currently_running = is_running(18789)
         # 如果已运行且目录未变化，避免重复拉起导致 EADDRINUSE。
         # 若目录变化则必须重启，确保 gateway 切到新 workspace。
-        if is_running(18789) and not workspace_changed:
+        if currently_running and not workspace_changed:
             out['gatewayAutoStartTriggered'] = False
             out['gatewayRunning'] = True
             out['message'] = 'gateway already running'
         else:
-            # 保存后自动启用：先停旧进程，再拉起 gateway。
-            for cmd in (
-                ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'stop', '--json'],
-                ['pkill', '-f', 'openclaw-gatew'],
-                ['pkill', '-f', '/app/openclaw/dist/index.js gateway'],
-                ['pkill', '-f', 'openclaw gateway'],
-            ):
-                try:
-                    subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8)
-                except Exception:
-                    pass
+            # 仅在当前确实在运行时先停旧进程；未运行时直接拉起，避免无意义超时。
+            if currently_running:
+                for cmd in (
+                    ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'stop', '--json'],
+                    ['pkill', '-f', 'openclaw-gatew'],
+                    ['pkill', '-f', '/app/openclaw/dist/index.js gateway'],
+                    ['pkill', '-f', 'openclaw gateway'],
+                ):
+                    try:
+                        subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=4)
+                    except Exception:
+                        pass
 
             os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
             try:
