@@ -342,9 +342,12 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     f.write('\n')
 
 # user requirement: after adding/updating model providers, trigger provider-model sync script automatically
+model_sync_triggered = False
+model_sync_exit = None
 try:
     import subprocess, datetime
     if providers_map:
+        model_sync_triggered = True
         state_dir_for_sync = os.path.dirname(cfg_path)
         # NOTE: service-setup initializes OPENCLAW_CONFIG_FILE to base defaults when sourced.
         # Re-assign target cfg path AFTER source so sync runs on the active workspace config.
@@ -353,10 +356,12 @@ try:
             'OPENCLAW_CONFIG_FILE=\"{cfg}\"; '
             'OPENCLAW_CONFIG_PATH=\"{cfg}\"; '
             'OPENCLAW_STATE_DIR=\"{state}\"; '
+            'OPENCLAW_WORKSPACE_DIR=\"{state}\"; '
             'HOME=\"{state}\"; '
             'sync_provider_models_from_upstream"'
         ).format(cfg=cfg_path, state=state_dir_for_sync)
         r = subprocess.run(sync_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+        model_sync_exit = int(r.returncode)
         # lightweight marker for troubleshooting whether auto-sync path was executed
         try:
             with open(os.path.join(state_dir_for_sync, 'model-sync.last-run.txt'), 'w', encoding='utf-8') as mf:
@@ -426,7 +431,9 @@ out = {
     'workspaceDir': workspace or '/volume1/openclaw',
     'configPath': cfg_path,
     'configExists': True,
-    'workspaceChanged': workspace_changed
+    'workspaceChanged': workspace_changed,
+    'modelSyncTriggered': model_sync_triggered,
+    'modelSyncExit': model_sync_exit
 }
 # applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
