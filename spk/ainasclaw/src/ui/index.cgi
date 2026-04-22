@@ -3232,7 +3232,7 @@ cat <<'HTML'
       try {
         const { statusEl, qrEl } = getWeixinUiEls();
         if (!statusEl || !qrEl) {
-          setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
+          // 微信面板未展开时静默忽略，避免弹错误提示打断流程。
           return;
         }
         statusEl.textContent = '正在获取二维码...';
@@ -3264,7 +3264,7 @@ cat <<'HTML'
         const roundId = window.__weixinRoundId || '';
         const { statusEl, qrEl } = getWeixinUiEls();
         if (!statusEl) {
-          setMsg('微信面板未打开，请先在“渠道设置”中切换到微信后再操作。', 'err');
+          // 面板未展开时静默轮询，不弹错误。
           return;
         }
         if (!silent) statusEl.textContent = '正在查询登录状态...';
@@ -3294,7 +3294,8 @@ cat <<'HTML'
           try {
             setMsg('微信已连接，正在自动保存...', 'ok');
             if (statusEl) statusEl.textContent = '已连接，正在自动保存...';
-            await saveChannelDialog({ fastAutoSave: true });
+            // 后台检测到 connected 后立即写入当前微信渠道配置（不依赖面板保存按钮）
+            await api('channels_save', 'POST', { weixin: { enabled: true } });
           } catch {}
           setMsg('微信已连接（已自动保存）', 'ok');
         }
