@@ -174,10 +174,11 @@ PY
             body=$(read_body)
             cfg_file="/volume1/docker/openclaw/.openclaw/openclaw.json"
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body" "$cfg_file"
+            python3 - <<'PY' "$body" "$cfg_file" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
 import json, os, sys
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
+spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
 try:
     payload = json.loads(raw or '{}')
 except Exception:
