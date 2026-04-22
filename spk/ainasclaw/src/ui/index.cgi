@@ -2378,7 +2378,6 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
-            + '  <button class="btn" id="btn_oc_restart" onclick="runInstallAction(\'restart\')">重启 OpenClaw</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
             + '  <button class="btn primary" id="btn_open_web" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
@@ -2396,11 +2395,8 @@ cat <<'HTML'
             + '    </div>'
             + '  </div>'
             + '</div>';
-          if (installBusy && installBusyAction === 'restart') {
-            setMsg('运行状态：正在重启', 'ok');
-          } else {
-            setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
-          }
+          setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          window.__statusRunning = !!data.running;
           if (installBusy) {
             setInstallButtonsBusy(installBusyAction, true);
           } else {
@@ -2415,14 +2411,10 @@ cat <<'HTML'
               const nextUptime = nextRunning ? formatUptime((s && s.uptimeSeconds) || 0) : '-';
               const msgEl = document.getElementById('msg');
               if (msgEl) {
-                if (installBusy && installBusyAction === 'restart') {
-                  msgEl.className = 'msg ok';
-                  msgEl.textContent = '运行状态：正在重启';
-                } else {
-                  msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
-                  msgEl.textContent = '运行状态：' + nextText;
-                }
+                msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
+                msgEl.textContent = '运行状态：' + nextText;
               }
+              window.__statusRunning = nextRunning;
               const gridVals = document.querySelectorAll('.grid .cellv');
               if (gridVals && gridVals.length >= 5) {
                 gridVals[3].textContent = nextRunning ? '是' : '否';
@@ -2573,27 +2565,22 @@ cat <<'HTML'
       installBusyAction = busy ? String(actionName || '') : '';
       const startBtn = document.getElementById('btn_oc_start');
       const stopBtn = document.getElementById('btn_oc_stop');
-      const restartBtn = document.getElementById('btn_oc_restart');
-      if (!startBtn || !stopBtn || !restartBtn) return;
+      if (!startBtn || !stopBtn) return;
       if (busy) {
         startBtn.disabled = true;
         stopBtn.disabled = true;
-        restartBtn.disabled = true;
         startBtn.textContent = actionName === 'start' ? '启动中...' : '启动 OpenClaw';
         stopBtn.textContent = actionName === 'stop' ? '停止中...' : '停止 OpenClaw';
-        restartBtn.textContent = actionName === 'restart' ? '重启中...' : '重启 OpenClaw';
         return;
       }
-      startBtn.disabled = false;
-      stopBtn.disabled = false;
-      restartBtn.disabled = false;
+      const running = !!window.__statusRunning;
+      startBtn.disabled = running;
+      stopBtn.disabled = !running;
       startBtn.textContent = '启动 OpenClaw';
       stopBtn.textContent = '停止 OpenClaw';
-      restartBtn.textContent = '重启 OpenClaw';
     }
     function setHotReloadBusy(busy) {
-      // 所有热重启动作统一映射到“重启中”状态展示。
-      setInstallButtonsBusy('restart', !!busy);
+      setInstallButtonsBusy('', !!busy);
     }
     async function waitHotReloadSettled(timeoutMs = 30000) {
       const end = Date.now() + timeoutMs;
@@ -2610,48 +2597,26 @@ cat <<'HTML'
       setInstallButtonsBusy(actionName, true);
       try {
         let act;
-        if (actionName === 'restart') {
-          // Restart fallback path: stop + start (start path is proven stable on DSM).
-          await api('install_run', 'POST', { method: 'bun', action: 'stop' });
-          await new Promise(r => setTimeout(r, 700));
-          act = await api('install_run', 'POST', { method: 'bun', action: 'start' });
-        } else {
-          act = await api('install_run', 'POST', { method: 'bun', action: actionName });
-        }
+        act = await api('install_run', 'POST', { method: 'bun', action: actionName });
         if (actionName === 'start' && act && act.initialized) {
           setMsg('运行状态：正在初始化', 'ok');
         }
-        if (actionName === 'restart' && act && act.running === false) {
-          // 后端未进入 running 时立即跳出重启状态，避免前端长时间卡住。
-          if (currentTab === 'status') await load('status');
-          return;
-        }
         // 仅保留“运行状态”提示，不显示其它文案。
-        if (actionName === 'start' || actionName === 'restart' || actionName === 'stop') {
+        if (actionName === 'start' || actionName === 'stop') {
           const wantRunning = (actionName !== 'stop');
           const maxTries = 40; // 最多约 36s，覆盖重启后端口恢复慢的场景
           for (let i = 0; i < maxTries; i += 1) {
             await new Promise(r => setTimeout(r, 900));
             try {
               const s = await api('status');
-              if (actionName === 'restart') {
-                // restart 走 stop+start 回退路径时，不强依赖先看到 down，再看到 running 即成功。
-                setMsg('运行状态：正在重启', 'ok');
-                if (s && s.running) {
-                  if (currentTab === 'status') await load('status');
-                  return;
-                }
-              } else {
-                if (s && !!s.running === wantRunning) {
-                  setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
-                  if (currentTab === 'status') await load('status');
-                  return;
-                }
+              if (s && !!s.running === wantRunning) {
+                setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
+                if (currentTab === 'status') await load('status');
+                return;
               }
             } catch {}
           }
           // 超时后再拉一次真实状态，避免停留在旧显示。
-          runInstallAction.__seenRestartDown = false;
           if (currentTab === 'status') await load('status');
           return;
         }
@@ -2660,7 +2625,6 @@ cat <<'HTML'
         // 概览页按要求不展示其它提示。
         if (currentTab === 'status') await load('status');
       } finally {
-        runInstallAction.__seenRestartDown = false;
         setInstallButtonsBusy('', false);
       }
     }
@@ -2969,8 +2933,8 @@ cat <<'HTML'
         setHotReloadBusy(true);
         const ret = await api('models_save', 'POST', payload);
         if (ret && ret.gatewayRunning === false) {
-          await runInstallAction('restart');
-          setModelDialogHint('保存成功，已执行网关重启并应用模型', 'ok');
+          await runInstallAction('start');
+          setModelDialogHint('保存成功，已执行网关启动并应用模型', 'ok');
         } else {
           setModelDialogHint('保存成功，已热重启并应用模型', 'ok');
         }
@@ -3137,7 +3101,7 @@ cat <<'HTML'
         const ret = await api('channels_save', 'POST', payload);
         closeChannelDialog();
         await load('channels');
-        if (ret && ret.reloaded) setMsg('运行状态：正在重启', 'ok');
+        if (ret && ret.reloaded) setMsg('运行状态：配置已更新', 'ok');
       } catch (e) {
         setMsg('渠道保存失败：' + (e.message || e), 'err');
       } finally {
