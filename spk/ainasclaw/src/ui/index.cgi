@@ -1681,6 +1681,15 @@ import json, os, subprocess, sys, time
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/openclaw/.openclaw/openclaw.json'
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
+
+def _fatal_json(exc_type, exc, tb):
+    try:
+        print(json.dumps({'ok': False, 'error': f'{exc_type.__name__}: {exc}'}, ensure_ascii=False), flush=True)
+    except Exception:
+        pass
+    raise SystemExit(0)
+
+sys.excepthook = _fatal_json
 try:
     payload = json.loads(raw or '{}')
 except Exception:
