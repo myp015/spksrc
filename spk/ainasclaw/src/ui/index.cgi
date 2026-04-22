@@ -320,6 +320,54 @@ os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
+
+# Initialize workspace runtime assets immediately after workspace switch/save
+state_dir = os.path.dirname(cfg_path) if cfg_path else os.path.join(workspace or '/volume1/openclaw', '.openclaw')
+skills_dir = os.path.join(state_dir, 'skills', '_bundled')
+ext_dir = os.path.join(state_dir, 'extensions')
+os.makedirs(skills_dir, exist_ok=True)
+os.makedirs(ext_dir, exist_ok=True)
+
+app_dir = '/var/packages/ainasclaw/target/app/openclaw'
+
+# sync extension skills from app dist/extensions/*/skills
+try:
+    dist_ext = os.path.join(app_dir, 'dist', 'extensions')
+    if os.path.isdir(dist_ext):
+        for plugin_id in os.listdir(dist_ext):
+            src = os.path.join(dist_ext, plugin_id, 'skills')
+            if not os.path.isdir(src):
+                continue
+            dst = os.path.join(skills_dir, plugin_id)
+            if os.path.exists(dst):
+                import shutil
+                shutil.rmtree(dst, ignore_errors=True)
+            import shutil
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+except Exception:
+    pass
+
+# sync selected bundled channel plugins into workspace extensions
+for pkg_rel in [
+    '@larksuiteoapi/feishu-openclaw-plugin',
+    '@soimy/dingtalk',
+    '@sunnoy/wecom',
+    '@tencent-connect/openclaw-qqbot',
+    '@tencent-weixin/openclaw-weixin',
+]:
+    try:
+        src = os.path.join(app_dir, 'node_modules', *pkg_rel.split('/'))
+        if not (os.path.isdir(src) and os.path.isfile(os.path.join(src, 'openclaw.plugin.json'))):
+            continue
+        pkg_name = os.path.basename(src)
+        dst = os.path.join(ext_dir, pkg_name)
+        import shutil
+        if os.path.exists(dst):
+            shutil.rmtree(dst, ignore_errors=True)
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+    except Exception:
+        pass
+
 out = {'configuredProviders': providers_payload, 'workspaceDir': workspace or '/volume1/openclaw', 'configPath': cfg_path, 'configExists': True}
 # applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
