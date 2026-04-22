@@ -54,7 +54,25 @@ read_body() {
     if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
         dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null
     else
-        cat
+        # Some DSM CGI flows don't provide CONTENT_LENGTH for JSON POST.
+        # Read stdin in non-blocking/idle-timeout mode to avoid hanging forever.
+        python3 - <<'PY'
+import os, sys, select
+fd = sys.stdin.fileno()
+chunks = []
+while True:
+    r, _, _ = select.select([fd], [], [], 0.15)
+    if not r:
+        break
+    data = os.read(fd, 65536)
+    if not data:
+        break
+    chunks.append(data)
+    if len(data) < 65536:
+        # Continue loop once more; break on next idle timeout.
+        pass
+sys.stdout.buffer.write(b''.join(chunks))
+PY
     fi
 }
 
