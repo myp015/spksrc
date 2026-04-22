@@ -1667,6 +1667,7 @@ env['OPENCLAW_TOOLS_ELEVATED_ENABLED']='1'
 env['OPENCLAW_ELEVATED_DEFAULT']='full'
 env['OPENCLAW_EXEC_SECURITY_DEFAULT']='full'
 
+initialized = False
 # On start/restart only, create runtime config if missing.
 if action in ('start','restart'):
     try:
@@ -1688,6 +1689,7 @@ if action in ('start','restart'):
                 paths[0]['path'] = state_path
             with open(cfg,'w',encoding='utf-8') as wf:
                 json.dump(c0,wf,ensure_ascii=False,indent=2); wf.write('\n')
+            initialized = True
     except Exception:
         pass
 
@@ -1891,7 +1893,7 @@ if action in ('start','restart') and not running:
         running = is_running(18789)
         if running:
             break
-print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running}, ensure_ascii=False))
+print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': initialized}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -2550,6 +2552,9 @@ cat <<'HTML'
       setInstallButtonsBusy(actionName, true);
       try {
         const act = await api('install_run', 'POST', { method: 'bun', action: actionName });
+        if (actionName === 'start' && act && act.initialized) {
+          setMsg('运行状态：正在初始化', 'ok');
+        }
         if (actionName === 'restart' && act && act.running === false) {
           // 后端未进入 running 时立即跳出重启状态，避免前端长时间卡住。
           if (currentTab === 'status') await load('status');
@@ -2947,8 +2952,14 @@ cat <<'HTML'
           saveBtn.disabled = true;
           saveBtn.textContent = workspaceChanged ? '正在初始化…' : '保存中…';
         }
-        await api('models_save', 'POST', payload);
-        setMsg(workspaceChanged ? ('用户目录已更新并开始初始化：' + workspaceDir) : ('用户目录保存成功：' + workspaceDir), 'ok');
+        const ret = await api('models_save', 'POST', payload);
+        if (workspaceChanged) {
+          setMsg('用户目录已更新，正在初始化并启动：' + workspaceDir, 'ok');
+          // Ensure gateway starts even if models_save path only persisted config.
+          await runInstallAction('start');
+        } else {
+          setMsg('用户目录保存成功：' + workspaceDir, 'ok');
+        }
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
       finally {
         if (hotReloadTriggered) {
