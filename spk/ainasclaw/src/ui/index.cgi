@@ -343,17 +343,30 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
 
 # user requirement: after adding/updating model providers, trigger provider-model sync script automatically
 try:
-    import subprocess
+    import subprocess, datetime
     if providers_map:
+        state_dir_for_sync = os.path.dirname(cfg_path)
+        # NOTE: service-setup initializes OPENCLAW_CONFIG_FILE to base defaults when sourced.
+        # Re-assign target cfg path AFTER source so sync runs on the active workspace config.
         sync_cmd = (
-            'OPENCLAW_CONFIG_FILE="{cfg}" '
-            'OPENCLAW_CONFIG_PATH="{cfg}" '
-            'OPENCLAW_STATE_DIR="{state}" '
-            'HOME="{state}" '
             'bash -lc "source /var/packages/ainasclaw/scripts/service-setup >/dev/null 2>&1; '
+            'OPENCLAW_CONFIG_FILE=\"{cfg}\"; '
+            'OPENCLAW_CONFIG_PATH=\"{cfg}\"; '
+            'OPENCLAW_STATE_DIR=\"{state}\"; '
+            'HOME=\"{state}\"; '
             'sync_provider_models_from_upstream"'
-        ).format(cfg=cfg_path, state=os.path.dirname(cfg_path))
-        subprocess.run(sync_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+        ).format(cfg=cfg_path, state=state_dir_for_sync)
+        r = subprocess.run(sync_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+        # lightweight marker for troubleshooting whether auto-sync path was executed
+        try:
+            with open(os.path.join(state_dir_for_sync, 'model-sync.last-run.txt'), 'w', encoding='utf-8') as mf:
+                mf.write(datetime.datetime.utcnow().isoformat() + 'Z\n')
+                mf.write('exit=' + str(r.returncode) + '\n')
+                out = (r.stdout or b'').decode('utf-8', errors='ignore')
+                if out:
+                    mf.write(out[-4000:])
+        except Exception:
+            pass
 except Exception:
     pass
 
