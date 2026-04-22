@@ -2415,6 +2415,9 @@ cat <<'HTML'
                 msgEl.textContent = '运行状态：' + nextText;
               }
               window.__statusRunning = nextRunning;
+              if (!installBusy) {
+                setInstallButtonsBusy('', false);
+              }
               const gridVals = document.querySelectorAll('.grid .cellv');
               if (gridVals && gridVals.length >= 5) {
                 gridVals[3].textContent = nextRunning ? '是' : '否';
