@@ -271,9 +271,13 @@ if apply_now:
         env = os.environ.copy()
         env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
         env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-        env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
+        env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
         env['OPENCLAW_CONFIG_PATH'] = cfg_path
         env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+        env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+        env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+        env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
         env['OPENCLAW_TOOLS_PROFILE'] = 'full'
         env['OPENCLAW_TOOLS_ELEVATED_ENABLED'] = '1'
         env['OPENCLAW_ELEVATED_DEFAULT'] = 'full'
@@ -647,9 +651,13 @@ try:
     env = os.environ.copy()
     env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
     env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-    env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
+    env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
     env['OPENCLAW_CONFIG_PATH'] = cfg_path
     env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+    env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+    env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+    env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+    env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
     cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     reload_ok = (p.returncode == 0)
@@ -774,6 +782,10 @@ env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
 log(f'weixin_login_start begin round={round_id} force={1 if force_new else 0}')
 # 清理历史遗留登录 worker，避免旧流程仍在后台运行干扰当前登录。
 try:
@@ -910,9 +922,13 @@ def log(msg):
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
+env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
 cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'status', '--json']
 raw = ''
 try:
@@ -1081,9 +1097,13 @@ cfg_path = sys.argv[1]
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
+env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
 cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
@@ -1150,14 +1170,18 @@ except Exception:
 try:
     os.makedirs(workspace_dir, exist_ok=True)
 except Exception:
-    workspace_dir = '/volume1/@appdata/ainasclaw/data/home'
+    workspace_dir = '/volume1/openclaw'
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = workspace_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+env['HOME'] = env['OPENCLAW_STATE_DIR']
+env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
 # 提示符直接显示当前目录（由 shell 原生渲染）。
 env['PS1'] = '\\w$ '
 # 确保 openclaw 原生命令任意目录可用
@@ -1375,9 +1399,13 @@ if m:
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = '/volume1/openclaw'
+env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
 env['PATH'] = '/var/packages/ainasclaw/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH','')
 
 p = subprocess.run(['/bin/bash', '-lc', line], cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -1488,9 +1516,13 @@ if action not in ('start','stop','restart'):
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG']='0'
 env['OPENCLAW_DATA_DIR']='/volume1/@appdata/ainasclaw/data'
-env['HOME']='/volume1/@appdata/ainasclaw/data/home'
+env['HOME']=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
 env['OPENCLAW_CONFIG_PATH']=cfg
 env['OPENCLAW_STATE_DIR']=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
+env['NPM_CONFIG_CACHE']=env['OPENCLAW_STATE_DIR']+'/.npm'
+env['XDG_CACHE_HOME']=env['OPENCLAW_STATE_DIR']+'/.cache'
+env['XDG_CONFIG_HOME']=env['OPENCLAW_STATE_DIR']+'/.config'
+env['XDG_DATA_HOME']=env['OPENCLAW_STATE_DIR']+'/.local/share'
 env['OPENCLAW_TOOLS_PROFILE']='full'
 env['OPENCLAW_TOOLS_ELEVATED_ENABLED']='1'
 env['OPENCLAW_ELEVATED_DEFAULT']='full'

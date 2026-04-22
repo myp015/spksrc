@@ -780,17 +780,17 @@ try {
 } catch {}
 ' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_WORKSPACE}"
 
-    local resolved_home_dir
-    resolved_home_dir="$(resolve_home_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
-    # Safety guard: never let HOME end at .../.openclaw, otherwise components that
-    # derive ~/.openclaw paths will create nested .openclaw/.openclaw trees.
-    case "${resolved_home_dir}" in
-        */.openclaw) resolved_home_dir="$(dirname "${resolved_home_dir}")" ;;
-    esac
+    # 用户要求：运行文件统一落在 /xxx/.openclaw
+    local runtime_home_dir="${OPENCLAW_STATE_DIR}"
+    mkdir -p "${runtime_home_dir}" "${runtime_home_dir}/.npm" "${runtime_home_dir}/.cache" "${runtime_home_dir}/.config" >/dev/null 2>&1 || true
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-    export HOME="${resolved_home_dir}"
+    export HOME="${runtime_home_dir}"
+    export NPM_CONFIG_CACHE="${runtime_home_dir}/.npm"
+    export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
+    export XDG_CONFIG_HOME="${runtime_home_dir}/.config"
+    export XDG_DATA_HOME="${runtime_home_dir}/.local/share"
 
     # 初始化/切换目录时，确保插件与技能都完整落在 /xxx/.openclaw 下
     sync_bundled_channel_plugins_to_extensions
@@ -1302,7 +1302,11 @@ service_postuninst() {
 # Default exports before prestart recalculates runtime paths.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
-export HOME="${OPENCLAW_WORKSPACE_DEFAULT}"
+export HOME="${OPENCLAW_STATE_DIR_BASE}"
+export NPM_CONFIG_CACHE="${OPENCLAW_STATE_DIR_BASE}/.npm"
+export XDG_CACHE_HOME="${OPENCLAW_STATE_DIR_BASE}/.cache"
+export XDG_CONFIG_HOME="${OPENCLAW_STATE_DIR_BASE}/.config"
+export XDG_DATA_HOME="${OPENCLAW_STATE_DIR_BASE}/.local/share"
 # Keep restarts in-process under Synology service manager to avoid PID drift
 # (full-process respawn can make synopkg status misreport as stopped).
 export OPENCLAW_NO_RESPAWN=1
