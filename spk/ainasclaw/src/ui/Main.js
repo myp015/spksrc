@@ -14,7 +14,9 @@ Ext.define('SYNO.SDS.AiNasClaw.Main', {
         this.appInstance = cfg.appInstance;
 
         // Launch via DSM 3rdparty proxy entry.
-        var monitorUrl = '/webman/3rdparty/ainasclaw/index.cgi';
+        // Add launchApp=1 so index.cgi direct-link guard won't misclassify
+        // Package Center iframe open as a blocked direct URL.
+        var monitorUrl = '/webman/3rdparty/ainasclaw/index.cgi?launchApp=1';
 
         var config = Ext.apply({
             resizable: true,
