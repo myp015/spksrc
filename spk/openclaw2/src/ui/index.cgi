@@ -26,6 +26,39 @@ read_body() {
 action=$(urldecode "$(get_param action "$QUERY")")
 native_api=$(urldecode "$(get_param native_api "$QUERY")")
 
+# 仅允许 DSM 登录会话访问（避免未登录直接打开）
+REQ_COOKIE="${HTTP_COOKIE:-}"
+if ! printf '%s' "$REQ_COOKIE" | grep -Eq '(^|;[[:space:]]*)id='; then
+    printf "Status: 403 Forbidden
+"
+    printf "Content-Type: text/plain; charset=UTF-8
+
+"
+    printf "Forbidden: DSM login required
+"
+    exit 0
+fi
+
+# 禁止“直接 URL 打开”（兼容套件中心打开链路）
+# 规则：已登录前提下，若是页面入口(native_api!=1)且“无 Referer + 无 SynoToken/launchApp + 非 iframe”，判定为直链并拒绝。
+if [ "$native_api" != "1" ]; then
+    REQ_REF="${HTTP_REFERER:-}"
+    REQ_DEST="${HTTP_SEC_FETCH_DEST:-}"
+    HAS_LAUNCHAPP="$(printf '%s' "$QUERY" | grep -Eo '(^|&)launchApp=[^&]*' || true)"
+    HAS_SYNOTOKEN="$(printf '%s' "$QUERY" | grep -Eo '(^|&)(SynoToken|synotoken)=[^&]*' || true)"
+
+    if [ -z "$REQ_REF" ] && [ -z "$HAS_LAUNCHAPP" ] && [ -z "$HAS_SYNOTOKEN" ] && [ "$REQ_DEST" != "iframe" ]; then
+        printf "Status: 404 Not Found
+"
+        printf "Content-Type: text/plain; charset=UTF-8
+
+"
+        printf "Sorry, the page you are looking for is not found.
+"
+        exit 0
+    fi
+fi
+
 # 入口访问放宽：避免误伤 DSM 套件中心打开链路。
 # 如需公网防护，请在网关/反向代理层做来源限制。
 
@@ -2019,49 +2052,20 @@ cat <<'HTML'
           logsTimer = setInterval(refreshLogsNow, 2000);
           return;
         }
+
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">优先使用 OpenClaw2 内嵌终端（/openclaw2-terminal/，无需额外安装 terminal 套件）；不可用时回退内置终端。</div>'
-            + '  <div id="terminal_iframe_wrap" style="display:none;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
+            + '  <div style="font-size:13px;color:#667085;">当前终端为 OpenClaw2 内置 ttyd 模式（/openclaw2-terminal/）。已移除旧版回退终端 UI。</div>'
+            + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
             + '    <iframe src="/openclaw2-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
             + '  </div>'
-            + '  <div id="terminal_native_wrap" style="display:flex;flex-direction:column;flex:1;min-height:0;gap:8px;">'
-            + '    <div id="terminal_cwd" style="font-size:13px;color:#667085;">当前目录：-</div>'
-            + '    <div style="display:flex;gap:8px;align-items:center;">'
-            + '      <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
-            + '      <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
-            + '      <button class="btn" onclick="clearTerminalView()">清屏</button>'
-            + '      <button class="btn primary" onclick="restartTerminalSession()">重连</button>'
-            + '    </div>'
-            + '    <div style="font-size:13px;color:#667085;">交互终端（类 SSH 体验）：输入栏已放到终端内部底部。</div>'
-            + '    <div id="terminal_box" tabindex="0" onclick="focusTerminal()" onmousedown="focusTerminal()" onkeydown="handleTerminalKey(event)" style="outline:none;display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#0b1220;">'
-            + '      <div id="terminal_prompt_line" onclick="focusTerminal()" style="font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#93c5fd;padding:6px 10px;border-bottom:1px solid #1f2937;">-</div>'
-            + '      <pre id="terminal_pre" onclick="focusTerminal()" style="margin:0;flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:auto;border-radius:0;background:#0b1220;color:#dbeafe;">终端连接中...</pre>'
-            + '      <div style="display:flex;gap:8px;align-items:center;padding:8px;border-top:1px solid #1f2937;background:#0f172a;">'
-            + '        <span style="color:#93c5fd;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">$</span>'
-            + '        <input id="terminal_fallback_input" placeholder="输入命令后回车" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}" style="flex:1;border:1px solid #334155;border-radius:8px;padding:8px 10px;background:#020617;color:#e2e8f0;" />'
-            + '        <button class="btn" onclick="sendTerminalLineFromInput()">发送</button>'
-            + '      </div>'
-            + '    </div>'
-            + '  </div>'
             + '</div>';
-          const hasDsmTerminal = await probeDsmTerminal();
-          if (hasDsmTerminal) {
-            const iframeWrap = document.getElementById('terminal_iframe_wrap');
-            const nativeWrap = document.getElementById('terminal_native_wrap');
-            if (iframeWrap) iframeWrap.style.display = 'block';
-            if (nativeWrap) nativeWrap.style.display = 'none';
-            setMsg('终端已切换为 DSM 内嵌模式（syno-terminal 同款）', 'ok');
-            return;
-          }
-          await ensureTerminalSession();
-          hookTerminalGlobalKeys();
-          focusTerminal();
-          setMsg('未检测到 /openclaw2-terminal/，已回退内置终端', 'ok');
+          setMsg('终端已切换为 OpenClaw2 内置 ttyd 模式', 'ok');
           return;
         }
         if (tab === 'models') {
+
           const providers = data.configuredProviders || [];
           const workspaceDir = data.workspaceDir || '/volume1/docker/openclaw';
           window.__modelsData = data;

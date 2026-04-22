@@ -45,8 +45,6 @@ start_daemon() {
         fi
     fi
 
-    call_func "service_prestart"
-
     if is_running; then
         return 0
     fi
@@ -80,6 +78,8 @@ stop_daemon() {
 
 case "$1" in
     start)
+        # Always run prestart hook (ttyd/nginx alias refresh), even if monitor is already running.
+        call_func "service_prestart"
         if is_running; then
             echo "${SYNOPKG_PKGNAME} is already running" >> "${LOG_FILE}"
             exit 0
