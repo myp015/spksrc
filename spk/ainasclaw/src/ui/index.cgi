@@ -257,7 +257,17 @@ if workspace:
     if workspace.endswith('/.openclaw'):
         workspace = workspace[:-10]
 else:
-    workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw').strip()
+    # 优先从当前 cfg_path 反推工作目录，避免被配置内容里的旧 workspace 值污染。
+    workspace = ''
+    if cfg_path:
+        cp = cfg_path.strip()
+        suffix = '/.openclaw/openclaw.json'
+        if cp.endswith(suffix):
+            workspace = cp[:-len(suffix)]
+        else:
+            workspace = os.path.dirname(cp)
+    if not workspace:
+        workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw').strip()
 # normalize no matter where workspace value comes from
 if workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
