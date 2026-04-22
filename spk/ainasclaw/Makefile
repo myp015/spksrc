@@ -106,7 +106,6 @@ openclaw_copy_target:
 	@rm -rf $(STAGING_DIR)
 	@install -d -m 755 $(STAGING_DIR)/bin
 	@install -d -m 755 $(STAGING_DIR)/app/openclaw
-	@install -d -m 755 $(STAGING_DIR)/app/fn-port
 	@install -d -m 755 $(STAGING_DIR)/var
 	@cp -f $(WORK_DIR)/node-runtime/bin/node $(STAGING_DIR)/bin/node
 	@cp -f $(WORK_DIR)/bun-runtime/bun $(STAGING_DIR)/bin/bun
@@ -127,7 +126,6 @@ openclaw_copy_target:
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
-	@cp -rf src/app/fn-port/* $(STAGING_DIR)/app/fn-port/
 
 .PHONY: openclaw_extra_install
 openclaw_extra_install:

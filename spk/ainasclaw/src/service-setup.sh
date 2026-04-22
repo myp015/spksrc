@@ -1228,18 +1228,9 @@ export HOME="${OPENCLAW_WORKSPACE_DEFAULT}"
 # (full-process respawn can make synopkg status misreport as stopped).
 export OPENCLAW_NO_RESPAWN=1
 
-FN_MONITOR_ENTRY="${SYNOPKG_PKGDEST}/app/fn-port/server/index.cjs"
-FN_STATIC_DIR="${SYNOPKG_PKGDEST}/app/fn-port/ui"
-FN_SOUL_MD_SRC="${SYNOPKG_PKGDEST}/app/fn-port/prompts/SOUL.md"
-FN_SOCKET_PATH="${SYNOPKG_PKGDEST}/sc-openclaw.sock"
-
-if [ ! -f "${FN_MONITOR_ENTRY}" ]; then
-    echo "[ainasclaw] ERROR: fn monitor entry missing: ${FN_MONITOR_ENTRY}" 1>&2
-fi
-
-# 仅保留 DSM 套件后台 UI（index.cgi），不再启动 trim monitor 页面服务。
+# 仅保留 DSM 套件后台 UI（index.cgi）与内置终端，不再启动 fn-port monitor 页面服务。
 # 使用稳定的 sleep 前台进程维持套件 running 状态。
-SERVICE_COMMAND="env PATH=${SYNOPKG_PKGDEST}/bin:/var/packages/nodejs_v22/target/bin:/var/packages/bunjs/target/bin:$PATH HOME=${SYNOPKG_PKGVAR}/data/home OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_DATA_DIR=${SYNOPKG_PKGVAR}/data PORT=${SERVICE_PORT} BASE_PATH=/ FN_AUTH_ENABLED=0 FN_AUTH_REQUIRE_SAME_ORIGIN=0 STATIC_DIR=${FN_STATIC_DIR} SOUL_MD_SRC=${FN_SOUL_MD_SRC} MONITOR_SOCKET_PATH=${FN_SOCKET_PATH} MONITOR_ACCESS_MODE=public OPENCLAW_PATCHES_DIR=${SYNOPKG_PKGDEST}/app/fn-port/vendor/openclaw-patches/dist ${OPENCLAW_NODE} ${FN_MONITOR_ENTRY}"
-SVC_CWD="${SYNOPKG_PKGDEST}/app/fn-port/server"
+SERVICE_COMMAND="/bin/sh -c 'while true; do sleep 3600; done'"
+SVC_CWD="${SYNOPKG_PKGDEST}"
 SVC_BACKGROUND=yes
 SVC_WRITE_PID=yes
