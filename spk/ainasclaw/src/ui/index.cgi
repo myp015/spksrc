@@ -1695,7 +1695,6 @@ env['OPENCLAW_DATA_DIR']='/volume1/@appdata/ainasclaw/data'
 env['HOME']=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
 env['OPENCLAW_CONFIG_PATH']=cfg
 env['OPENCLAW_STATE_DIR']=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
-env['OPENCLAW_WORKSPACE_DIR']=env['OPENCLAW_STATE_DIR']
 env['NPM_CONFIG_CACHE']=env['OPENCLAW_STATE_DIR']+'/.npm'
 env['XDG_CACHE_HOME']=env['OPENCLAW_STATE_DIR']+'/.cache'
 env['XDG_CONFIG_HOME']=env['OPENCLAW_STATE_DIR']+'/.config'
@@ -1840,6 +1839,15 @@ if action in ('stop','restart'):
         time.sleep(1)
 
 if action in ('start','restart'):
+    # 启动前执行一次模型同步脚本（不阻塞启动）
+    sync_script = '/root/openclaw-sync-models.sh'
+    if os.path.exists(sync_script):
+        try:
+            rc_sync, out_sync = run([sync_script, cfg], timeout=120)
+            logs.append({'cmd': f'{sync_script} {cfg}', 'rc': rc_sync, 'out': out_sync[-1200:]})
+        except Exception as e:
+            logs.append({'cmd': f'{sync_script} {cfg}', 'error': str(e)})
+
     # 启动前强制清理 agents.defaults.models，只保留当前 providers.models 存在的引用
     try:
         c2 = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
@@ -2605,9 +2613,13 @@ cat <<'HTML'
             try {
               const s = await api('status');
               if (actionName === 'restart') {
-                // 更稳妥判定：重启后只要恢复 running 即结束，避免未观测到 down 边沿时前端卡住。
+                // 重启期间显示“正在重启”，直到状态发生一次“先停后起”转换，防止卡住。
                 setMsg('运行状态：正在重启', 'ok');
-                if (s && s.running) {
+                if (!runInstallAction.__seenRestartDown && s && s.running === false) {
+                  runInstallAction.__seenRestartDown = true;
+                }
+                if (s && s.running && runInstallAction.__seenRestartDown) {
+                  runInstallAction.__seenRestartDown = false;
                   if (currentTab === 'status') await load('status');
                   return;
                 }
