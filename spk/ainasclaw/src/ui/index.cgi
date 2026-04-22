@@ -52,7 +52,16 @@ urldecode() {
 
 read_body() {
     if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
-        dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null
+        # Read exact bytes from stdin (more reliable than dd across DSM CGI variants).
+        python3 - <<'PY' "$CONTENT_LENGTH"
+import sys
+try:
+    n = int(sys.argv[1])
+except Exception:
+    n = 0
+if n > 0:
+    sys.stdout.buffer.write(sys.stdin.buffer.read(n))
+PY
     else
         # Some DSM CGI flows don't provide CONTENT_LENGTH for JSON POST.
         # Read stdin in non-blocking/idle-timeout mode to avoid hanging forever.
@@ -68,9 +77,6 @@ while True:
     if not data:
         break
     chunks.append(data)
-    if len(data) < 65536:
-        # Continue loop once more; break on next idle timeout.
-        pass
 sys.stdout.buffer.write(b''.join(chunks))
 PY
     fi
