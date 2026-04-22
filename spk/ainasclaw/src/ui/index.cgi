@@ -1621,16 +1621,31 @@ if action in ('start','restart'):
         logs.append({'cmd':'sanitize defaults.models','error':str(e)})
 
     try:
+        os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
+        try:
+            with open(spawn_log, 'a', encoding='utf-8') as sf:
+                sf.write('[gateway-spawn] request start\n')
+        except Exception:
+            pass
+        try:
+            logf = open(spawn_log, 'ab', buffering=0)
+        except Exception:
+            logf = None
         p = subprocess.Popen(
             ['/var/packages/ainasclaw/target/bin/openclaw','gateway','run','--allow-unconfigured','--port','18789'],
             env=env,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=(logf if logf is not None else subprocess.DEVNULL),
+            stderr=(logf if logf is not None else subprocess.DEVNULL),
             close_fds=True,
             start_new_session=True
         )
         logs.append({'cmd':'gateway(spawn-detached)','pid':p.pid})
+        try:
+            with open(spawn_log, 'a', encoding='utf-8') as sf:
+                sf.write(f'[gateway-spawn] started pid={p.pid}\n')
+        except Exception:
+            pass
         time.sleep(3)
     except Exception as e:
         ok = False
