@@ -242,6 +242,8 @@ try:
 except Exception:
     cfg = {}
 prev_workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
+if prev_workspace.endswith('/.openclaw'):
+    prev_workspace = prev_workspace[:-10]
 workspace = (payload.get('workspaceDir') or '').strip()
 if workspace:
     # 用户目录保护：不允许将用户目录命名为 .openclaw（该名称保留给内部工作目录）
