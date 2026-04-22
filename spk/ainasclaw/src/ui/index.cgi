@@ -2121,7 +2121,9 @@ cat <<'HTML'
         }
         if (tab === 'logs') {
           content.innerHTML = ''
-            + '<pre id="log_pre">' + esc(data.log || '') + '</pre>';
+            + '<div style="height:100%;display:flex;flex-direction:column;">'
+            + '  <pre id="log_pre" style="flex:1;min-height:0;max-height:none;margin:0;">' + esc(data.log || '') + '</pre>'
+            + '</div>';
           const pre = document.getElementById('log_pre');
           if (pre) pre.scrollTop = pre.scrollHeight;
           setMsg('');
