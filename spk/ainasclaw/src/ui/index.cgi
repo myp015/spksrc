@@ -1816,8 +1816,18 @@ if action in ('start','restart'):
         pass
 
 def run(cmd, timeout=20):
-    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
-    return p.returncode, (p.stdout or b'').decode('utf-8','ignore')
+    try:
+        p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
+        return p.returncode, (p.stdout or b'').decode('utf-8','ignore')
+    except subprocess.TimeoutExpired as e:
+        out = ''
+        try:
+            out = ((e.stdout or b'') + (e.stderr or b'')).decode('utf-8', 'ignore')
+        except Exception:
+            out = str(e)
+        return 124, f'timeout: {out[-800:]}'
+    except Exception as e:
+        return 999, str(e)
 
 def force_stop():
     out=[]
@@ -1844,6 +1854,7 @@ if action in ('stop','restart'):
     else:
         rc, txt = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=8)
         logs.append({'cmd':'gateway stop --json','rc':rc,'out':txt[-800:]})
+        # restart 路径更保守：即使 stop 超时也继续强停并进入启动，避免前端看起来“卡死”。
         force = force_stop()
         logs.append({'cmd':'force-stop','out':str(force)[:800]})
         time.sleep(1)
