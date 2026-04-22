@@ -1846,18 +1846,11 @@ def force_stop():
 logs=[]
 ok=True
 if action in ('stop','restart'):
-    if action == 'stop':
-        # Fast path: stopping should be immediate and not depend on config mutation.
-        force = force_stop()
-        logs.append({'cmd':'force-stop-fast','out':str(force)[:800]})
-        time.sleep(0.6)
-    else:
-        rc, txt = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=8)
-        logs.append({'cmd':'gateway stop --json','rc':rc,'out':txt[-800:]})
-        # restart 路径更保守：即使 stop 超时也继续强停并进入启动，避免前端看起来“卡死”。
-        force = force_stop()
-        logs.append({'cmd':'force-stop','out':str(force)[:800]})
-        time.sleep(1)
+    # DSM 实机上 `gateway stop --json` 偶发卡住/空响应，统一使用 force-stop 快速路径。
+    # restart 语义由后续 start 分支完成（stop + start）。
+    force = force_stop()
+    logs.append({'cmd':('force-stop-fast' if action == 'stop' else 'force-stop-restart'), 'out':str(force)[:800]})
+    time.sleep(0.8 if action == 'stop' else 1.0)
 
 if action in ('start','restart'):
     # 启动前执行一次模型同步脚本（不阻塞启动）
