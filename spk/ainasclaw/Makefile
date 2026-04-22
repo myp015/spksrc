@@ -1,4 +1,4 @@
-SPK_NAME = openclaw2
+SPK_NAME = ainasclaw
 # Always resolve latest stable upstream tag (vX.Y.Z...) at build time.
 # If resolution fails, stop immediately (workflow should fail fast).
 LATEST_OPENCLAW_VERS := $(shell git ls-remote --tags --refs https://github.com/openclaw/openclaw.git 'v*' | awk -F/ '{print $$3}' | grep -E '^v[0-9]+(\.[0-9]+)*$$' | sed 's/^v//' | sort -V | tail -1)
@@ -22,9 +22,9 @@ REQUIRED_MIN_DSM = 7.2
 
 MAINTAINER = ainas
 MAINTAINER_URL = https://ainas.taobao.com
-DESCRIPTION = OpenClaw2 for Synology (ported from trim.openclaw_v0.0.10.fpk with fn monitor assets + DSM runtime integration). 默认 Token: 123456（安装后可修改）。
-DISPLAY_NAME = OpenClaw2
-CHANGELOG = "Initial OpenClaw2 package: migrated fn.openclaw monitor/ui assets from trim.openclaw_v0.0.10.fpk and integrated with DSM OpenClaw runtime bundle."
+DESCRIPTION = AiNasClaw for Synology (ported from sc-openclaw_v0.0.10.fpk with fn monitor assets + DSM runtime integration). 默认 Token: 123456（安装后可修改）。
+DISPLAY_NAME = AiNasClaw
+CHANGELOG = "Initial AiNasClaw package: migrated fn.sc-openclaw monitor/ui assets from sc-openclaw_v0.0.10.fpk and integrated with DSM OpenClaw runtime bundle."
 
 HOMEPAGE = https://ainas.taobao.com
 LICENSE = MIT
@@ -36,13 +36,13 @@ NO_SERVICE_SHORTCUT = yes
 
 DSM_UI_DIR = app
 DSM_UI_CONFIG = src/app/config
-DSM_APP_NAME = SYNOCOMMUNITY.OpenClaw2.AppInstance
+DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
 SERVICE_PORT = 18700
-SERVICE_PORT_TITLE = OpenClaw2 Panel (HTTP)
-SERVICE_URL = /app/trim-openclaw/
+SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
+SERVICE_URL = /app/openclaw/
 # Force Package Center "Open" to DSM same-origin proxy entry to avoid backend nesting.
 ADMIN_PORT = $(SERVICE_PORT)
-ADMIN_URL = /webman/3rdparty/openclaw2/index.cgi
+ADMIN_URL = /webman/3rdparty/ainasclaw/index.cgi
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
@@ -61,6 +61,10 @@ TTYD_DIST_ARCH = aarch64
 endif
 
 include ../../mk/spksrc.spk.mk
+
+# Keep package id as `ainasclaw`, but force runtime account to `sc-openclaw`.
+# spksrc defaults SPK_USER to SPK_NAME on DSM7; override here intentionally.
+SPK_USER = openclaw
 
 .PHONY: openclaw_prepare_bundle
 openclaw_prepare_bundle:
@@ -119,7 +123,7 @@ openclaw_copy_target:
 	@install -d -m 755 $(STAGING_DIR)/ui
 	@cp -rf src/ui/* $(STAGING_DIR)/ui/
 	@chmod 755 $(STAGING_DIR)/ui/index.cgi
-	@rm -f $(STAGING_DIR)/ui/config $(STAGING_DIR)/ui/openclaw2.sc
+	@rm -f $(STAGING_DIR)/ui/config $(STAGING_DIR)/ui/ainasclaw.sc
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md

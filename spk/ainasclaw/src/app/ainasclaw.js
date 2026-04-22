@@ -1,10 +1,10 @@
-Ext.ns('SYNOCOMMUNITY.OpenClaw2');
+Ext.ns('SYNOCOMMUNITY.AiNasClaw');
 
-SYNOCOMMUNITY.OpenClaw2.API_BASE = '/webman/3rdparty/openclaw2/index.cgi?native_api=1&action=';
+SYNOCOMMUNITY.AiNasClaw.API_BASE = '/webman/3rdparty/ainasclaw/index.cgi?native_api=1&action=';
 
-SYNOCOMMUNITY.OpenClaw2.api = function(action, method, payload, onSuccess, onFailure) {
+SYNOCOMMUNITY.AiNasClaw.api = function(action, method, payload, onSuccess, onFailure) {
     Ext.Ajax.request({
-        url: SYNOCOMMUNITY.OpenClaw2.API_BASE + action,
+        url: SYNOCOMMUNITY.AiNasClaw.API_BASE + action,
         method: method || 'GET',
         jsonData: payload || null,
         headers: { 'Content-Type': 'application/json' },
@@ -20,11 +20,11 @@ SYNOCOMMUNITY.OpenClaw2.api = function(action, method, payload, onSuccess, onFai
     });
 };
 
-SYNOCOMMUNITY.OpenClaw2.pretty = function(data) {
+SYNOCOMMUNITY.AiNasClaw.pretty = function(data) {
     return Ext.util.JSON.encode(data, true);
 };
 
-SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel = function(title, loadAction, saveAction, options) {
+SYNOCOMMUNITY.AiNasClaw.makeJsonEditorPanel = function(title, loadAction, saveAction, options) {
     options = options || {};
     var editor = new Ext.form.TextArea({
         style: 'font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;',
@@ -39,8 +39,8 @@ SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel = function(title, loadAction, saveAc
         tbar: [{
             text: '刷新',
             handler: function() {
-                SYNOCOMMUNITY.OpenClaw2.api(loadAction, 'GET', null, function(data) {
-                    editor.setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                SYNOCOMMUNITY.AiNasClaw.api(loadAction, 'GET', null, function(data) {
+                    editor.setValue(SYNOCOMMUNITY.AiNasClaw.pretty(data));
                 });
             }
         }].concat(options.readOnly ? [] : [{
@@ -48,36 +48,36 @@ SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel = function(title, loadAction, saveAc
             handler: function() {
                 try {
                     var payload = Ext.decode(editor.getValue());
-                    SYNOCOMMUNITY.OpenClaw2.api(saveAction, 'POST', payload, function(data) {
-                        Ext.Msg.alert('OpenClaw2', title + ' 已提交');
-                        editor.setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                    SYNOCOMMUNITY.AiNasClaw.api(saveAction, 'POST', payload, function(data) {
+                        Ext.Msg.alert('AiNasClaw', title + ' 已提交');
+                        editor.setValue(SYNOCOMMUNITY.AiNasClaw.pretty(data));
                     }, function(resp) {
-                        Ext.Msg.alert('OpenClaw2', '保存失败: HTTP ' + resp.status);
+                        Ext.Msg.alert('AiNasClaw', '保存失败: HTTP ' + resp.status);
                     });
                 } catch (e) {
-                    Ext.Msg.alert('OpenClaw2', 'JSON 格式错误: ' + e.message);
+                    Ext.Msg.alert('AiNasClaw', 'JSON 格式错误: ' + e.message);
                 }
             }
         }]),
         items: [editor],
         listeners: {
             activate: function() {
-                SYNOCOMMUNITY.OpenClaw2.api(loadAction, 'GET', null, function(data) {
-                    editor.setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                SYNOCOMMUNITY.AiNasClaw.api(loadAction, 'GET', null, function(data) {
+                    editor.setValue(SYNOCOMMUNITY.AiNasClaw.pretty(data));
                 });
             }
         }
     });
 };
 
-SYNOCOMMUNITY.OpenClaw2.AppInstance = Ext.extend(SYNO.SDS.AppInstance, {
-    appWindowName: 'SYNOCOMMUNITY.OpenClaw2.AppWindow',
+SYNOCOMMUNITY.AiNasClaw.AppInstance = Ext.extend(SYNO.SDS.AppInstance, {
+    appWindowName: 'SYNOCOMMUNITY.AiNasClaw.AppWindow',
     constructor: function () {
-        SYNOCOMMUNITY.OpenClaw2.AppInstance.superclass.constructor.apply(this, arguments);
+        SYNOCOMMUNITY.AiNasClaw.AppInstance.superclass.constructor.apply(this, arguments);
     }
 });
 
-SYNOCOMMUNITY.OpenClaw2.AppWindow = Ext.extend(SYNO.SDS.AppWindow, {
+SYNOCOMMUNITY.AiNasClaw.AppWindow = Ext.extend(SYNO.SDS.AppWindow, {
     appInstance: null,
 
     constructor: function (config) {
@@ -104,26 +104,26 @@ SYNOCOMMUNITY.OpenClaw2.AppWindow = Ext.extend(SYNO.SDS.AppWindow, {
             listeners: {
                 activate: function(p) {
                     p.body.update('<div style="padding:16px;color:#666;">加载中…</div>');
-                    SYNOCOMMUNITY.OpenClaw2.api('status', 'GET', null, function(data) { overviewTpl.overwrite(p.body, data || {}); });
+                    SYNOCOMMUNITY.AiNasClaw.api('status', 'GET', null, function(data) { overviewTpl.overwrite(p.body, data || {}); });
                 }
             }
         });
 
-        var modelsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('模型配置', 'models', 'models_save');
-        var channelsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('消息渠道', 'channels', 'channels_save');
-        var pluginsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('插件管理', 'plugins', 'plugin_install');
+        var modelsPanel = SYNOCOMMUNITY.AiNasClaw.makeJsonEditorPanel('模型配置', 'models', 'models_save');
+        var channelsPanel = SYNOCOMMUNITY.AiNasClaw.makeJsonEditorPanel('消息渠道', 'channels', 'channels_save');
+        var pluginsPanel = SYNOCOMMUNITY.AiNasClaw.makeJsonEditorPanel('插件管理', 'plugins', 'plugin_install');
         pluginsPanel.getTopToolbar().add({
             text: '刷新插件状态',
             handler: function() {
-                SYNOCOMMUNITY.OpenClaw2.api('plugins_refresh', 'POST', {}, function(data) {
-                    pluginsPanel.items.get(0).setValue(SYNOCOMMUNITY.OpenClaw2.pretty(data));
+                SYNOCOMMUNITY.AiNasClaw.api('plugins_refresh', 'POST', {}, function(data) {
+                    pluginsPanel.items.get(0).setValue(SYNOCOMMUNITY.AiNasClaw.pretty(data));
                 });
             }
         });
 
-        var installPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('安装 / 控制', 'install', 'install_run');
-        var governorPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('进程治理', 'process_governor', null, { readOnly: true });
-        var logsPanel = SYNOCOMMUNITY.OpenClaw2.makeJsonEditorPanel('运行日志', 'logs', null, { readOnly: true, height: 560 });
+        var installPanel = SYNOCOMMUNITY.AiNasClaw.makeJsonEditorPanel('安装 / 控制', 'install', 'install_run');
+        var governorPanel = SYNOCOMMUNITY.AiNasClaw.makeJsonEditorPanel('进程治理', 'process_governor', null, { readOnly: true });
+        var logsPanel = SYNOCOMMUNITY.AiNasClaw.makeJsonEditorPanel('运行日志', 'logs', null, { readOnly: true, height: 560 });
         logsPanel.items.get(0).setStyle('background', '#111');
         logsPanel.items.get(0).setStyle('color', '#ddd');
 
@@ -142,10 +142,10 @@ SYNOCOMMUNITY.OpenClaw2.AppWindow = Ext.extend(SYNO.SDS.AppWindow, {
             height: 860,
             layout: 'fit',
             border: false,
-            cls: 'synocommunity-openclaw2',
+            cls: 'synocommunity-ainasclaw',
             items: [tabs]
         }, config);
 
-        SYNOCOMMUNITY.OpenClaw2.AppWindow.superclass.constructor.call(this, config);
+        SYNOCOMMUNITY.AiNasClaw.AppWindow.superclass.constructor.call(this, config);
     }
 });

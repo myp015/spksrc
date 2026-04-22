@@ -33,7 +33,7 @@ is_running() {
     fi
 
     # 2) fallback process check for monitor entry
-    pgrep -f '/var/packages/openclaw2/target/fn-port/server/index.cjs|/volume1/@appstore/openclaw2/fn-port/server/index.cjs' >/dev/null 2>&1
+    pgrep -f '/var/packages/ainasclaw/target/fn-port/server/index.cjs|/volume1/@appstore/ainasclaw/fn-port/server/index.cjs' >/dev/null 2>&1
 }
 
 start_daemon() {
@@ -71,7 +71,7 @@ stop_daemon() {
         rm -f "${PID_FILE}" >/dev/null 2>&1 || true
     fi
 
-    pkill -f '/var/packages/openclaw2/target/fn-port/server/index.cjs|/volume1/@appstore/openclaw2/fn-port/server/index.cjs' >/dev/null 2>&1 || true
+    pkill -f '/var/packages/ainasclaw/target/fn-port/server/index.cjs|/volume1/@appstore/ainasclaw/fn-port/server/index.cjs' >/dev/null 2>&1 || true
 
     call_func "service_poststop"
 }

@@ -2,18 +2,18 @@
     "data-share": {
         "shares": [
             {
-                "name": "trim.openclaw",
+                "name": "sc-openclaw",
                 "permission": {
                     "rw": [
-                        "trim.openclaw"
+                        "sc-openclaw"
                     ]
                 }
             },
             {
-                "name": "trim.openclaw/data",
+                "name": "sc-openclaw/data",
                 "permission": {
                     "rw": [
-                        "trim.openclaw"
+                        "sc-openclaw"
                     ]
                 }
             }

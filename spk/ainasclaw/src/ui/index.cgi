@@ -1,10 +1,10 @@
 #!/bin/sh
-APP_VAR_DIR="/var/packages/openclaw2/var"
-if [ -d "/volume1/@appdata/openclaw2" ]; then
-    APP_VAR_DIR="/volume1/@appdata/openclaw2"
+APP_VAR_DIR="/var/packages/ainasclaw/var"
+if [ -d "/volume1/@appdata/ainasclaw" ]; then
+    APP_VAR_DIR="/volume1/@appdata/ainasclaw"
 fi
 
-LOG_FILE="${APP_VAR_DIR}/openclaw2.log"
+LOG_FILE="${APP_VAR_DIR}/ainasclaw.log"
 GATEWAY_PORT="18789"
 QUERY="${QUERY_STRING:-}"
 
@@ -115,7 +115,7 @@ except Exception:
     cfg = {}
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/docker/openclaw')
 token = ((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '123456')
-binary_path = '/var/packages/openclaw2/target/bin/openclaw' if os.path.exists('/var/packages/openclaw2/target/bin/openclaw') else ''
+binary_path = '/var/packages/ainasclaw/target/bin/openclaw' if os.path.exists('/var/packages/ainasclaw/target/bin/openclaw') else ''
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -243,7 +243,7 @@ out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agen
 if apply_now:
     try:
         import subprocess
-        pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+        pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'ainasclaw'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
         out['restartTriggered'] = True
         out['restartRc'] = pr.returncode
         out['restartOutTail'] = ((pr.stdout or b'').decode('utf-8', 'ignore'))[-180:]
@@ -274,7 +274,7 @@ api_type = (payload.get('api') or 'openai-completions').strip()
 if not base_url:
     print('{"error":"baseUrl required"}')
     raise SystemExit
-headers = {'User-Agent': 'openclaw2-native-ui/1.0'}
+headers = {'User-Agent': 'ainasclaw-native-ui/1.0'}
 if api_key:
     headers['Authorization'] = 'Bearer ' + api_key
 
@@ -349,7 +349,7 @@ api_type = (payload.get('api') or 'openai-completions').strip()
 if not base_url:
     print('{"error":"baseUrl required","models":[]}')
     raise SystemExit
-headers = {'User-Agent': 'openclaw2-native-ui/1.0'}
+headers = {'User-Agent': 'ainasclaw-native-ui/1.0'}
 if api_key:
     headers['Authorization'] = 'Bearer ' + api_key
 
@@ -548,11 +548,11 @@ try:
     import subprocess
     env = os.environ.copy()
     env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-    env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
-    env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+    env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
+    env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
     env['OPENCLAW_CONFIG_PATH'] = cfg_path
     env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-    cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'gateway', 'restart', '--json']
+    cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     reload_ok = (p.returncode == 0)
     reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-500:]
@@ -672,7 +672,7 @@ def log(msg):
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
@@ -694,7 +694,7 @@ try:
 except Exception:
     pass
 
-# 关键：openclaw2 内部有并发流程会覆写 openclaw.json，导致 weixin 插件配置丢失。
+# 关键：ainasclaw 内部有并发流程会覆写 openclaw.json，导致 weixin 插件配置丢失。
 # 每次开始登录前都做一次强制修正，确保 allowlist/entries/channels 包含 openclaw-weixin。
 try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
@@ -737,7 +737,7 @@ log('openclaw_weixin_config_repaired=1')
 bootstrap_log = 'openclaw-weixin config repaired (fast path)'
 log('openclaw_weixin_ensure_enabled=1 fast_path=1')
 
-# 直接调用微信二维码接口（对齐 trim.openclaw_v0.0.10 的“秒出码”路径），避免走 CLI login 阻塞。
+# 直接调用微信二维码接口（对齐 sc-openclaw_v0.0.10 的“秒出码”路径），避免走 CLI login 阻塞。
 import urllib.request, urllib.error
 base_url = 'https://ilinkai.weixin.qq.com'
 bot_type = '3'
@@ -771,7 +771,7 @@ if url and qrcode:
             'startedAt': int(time.time()),
             'force': bool(force_new)
         }
-        with open('/tmp/openclaw2-weixin-login-state.json', 'w', encoding='utf-8') as sf:
+        with open('/tmp/ainasclaw-weixin-login-state.json', 'w', encoding='utf-8') as sf:
             json.dump(state, sf, ensure_ascii=False)
         log(f'weixin_state_saved round={round_id} qrcode_len={len(qrcode)}')
     except Exception as e:
@@ -811,11 +811,11 @@ def log(msg):
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
-env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
+env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'status', '--json']
+cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'status', '--json']
 raw = ''
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
@@ -828,9 +828,9 @@ if raw.strip().startswith('202') and '\n{' in raw:
 connected = False
 message = '等待扫码确认'
 
-# 新实现：直接轮询二维码状态接口（对齐 trim.openclaw_v0.0.10），不再依赖日志关键字判定连接。
+# 新实现：直接轮询二维码状态接口（对齐 sc-openclaw_v0.0.10），不再依赖日志关键字判定连接。
 import urllib.request, urllib.error
-state_file = '/tmp/openclaw2-weixin-login-state.json'
+state_file = '/tmp/ainasclaw-weixin-login-state.json'
 state = {}
 if os.path.exists(state_file):
     try:
@@ -942,7 +942,7 @@ try:
 
             # 连接成功后重启一次包，使网关立刻切换到新账号
             try:
-                pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'openclaw2'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+                pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'ainasclaw'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
                 rt = (pr.stdout or b'').decode('utf-8', 'ignore')
                 log(f'weixin_restart_after_confirm rc={pr.returncode} out={rt[-180:]}')
             except Exception as e3:
@@ -981,11 +981,11 @@ import json, os, subprocess, sys
 cfg_path = sys.argv[1]
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
-env['HOME'] = '/volume1/@appdata/openclaw2/data/home'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
+env['HOME'] = '/volume1/@appdata/ainasclaw/data/home'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-cmd = ['/var/packages/openclaw2/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
+cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
     text = (p.stdout or b'').decode('utf-8', 'ignore')
@@ -1051,20 +1051,20 @@ except Exception:
 try:
     os.makedirs(workspace_dir, exist_ok=True)
 except Exception:
-    workspace_dir = '/volume1/@appdata/openclaw2/data/home'
+    workspace_dir = '/volume1/@appdata/ainasclaw/data/home'
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = workspace_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 # 提示符直接显示当前目录（由 shell 原生渲染）。
 env['PS1'] = '\\w$ '
 # 确保 openclaw 原生命令任意目录可用
-env['PATH'] = '/var/packages/openclaw2/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH', '')
+env['PATH'] = '/var/packages/ainasclaw/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH', '')
 try:
-    cli = '/var/packages/openclaw2/target/bin/openclaw'
+    cli = '/var/packages/ainasclaw/target/bin/openclaw'
     if not os.path.exists(cli):
         cli = '/var/packages/openclaw/target/bin/openclaw'
     link = '/usr/local/bin/openclaw'
@@ -1275,11 +1275,11 @@ if m:
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw2/data'
+env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = '/volume1/docker/openclaw'
 env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
-env['PATH'] = '/var/packages/openclaw2/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH','')
+env['PATH'] = '/var/packages/ainasclaw/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH','')
 
 p = subprocess.run(['/bin/bash', '-lc', line], cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 out = p.stdout or ''
@@ -1387,8 +1387,8 @@ if action not in ('start','stop','restart'):
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG']='0'
-env['OPENCLAW_DATA_DIR']='/volume1/@appdata/openclaw2/data'
-env['HOME']='/volume1/@appdata/openclaw2/data/home'
+env['OPENCLAW_DATA_DIR']='/volume1/@appdata/ainasclaw/data'
+env['HOME']='/volume1/@appdata/ainasclaw/data/home'
 env['OPENCLAW_CONFIG_PATH']=cfg
 env['OPENCLAW_STATE_DIR']='/volume1/docker/openclaw/.openclaw'
 env['OPENCLAW_TOOLS_PROFILE']='full'
@@ -1489,7 +1489,7 @@ def force_stop():
 logs=[]
 ok=True
 if action in ('stop','restart'):
-    rc, txt = run(['/var/packages/openclaw2/target/bin/openclaw','gateway','stop','--json'], timeout=35)
+    rc, txt = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=35)
     logs.append({'cmd':'gateway stop --json','rc':rc,'out':txt[-800:]})
     force = force_stop()
     logs.append({'cmd':'force-stop','out':str(force)[:800]})
@@ -1548,7 +1548,7 @@ if action in ('start','restart'):
     try:
         logf = open('/tmp/openclaw-gateway.spawn.log','ab', buffering=0)
         p = subprocess.Popen(
-            ['/var/packages/openclaw2/target/bin/openclaw','gateway'],
+            ['/var/packages/ainasclaw/target/bin/openclaw','gateway'],
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=logf,
@@ -1595,7 +1595,7 @@ PY
             [ -f "$SPAWN_LOG" ] || touch "$SPAWN_LOG"
             merged=$( \
               printf '===== openclaw (gateway) :: %s =====\n' "$OCL_LOG"; tail -n 500 "$OCL_LOG" 2>/dev/null; \
-              printf '\n===== openclaw2 app :: %s =====\n' "$APP_LOG"; tail -n 220 "$APP_LOG" 2>/dev/null; \
+              printf '\n===== ainasclaw app :: %s =====\n' "$APP_LOG"; tail -n 220 "$APP_LOG" 2>/dev/null; \
               printf '\n===== spawn log :: %s =====\n' "$SPAWN_LOG"; tail -n 180 "$SPAWN_LOG" 2>/dev/null \
             )
             logs_json=$(printf '%s' "$merged" | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g')
@@ -1646,7 +1646,7 @@ PY
               echo "[$(date '+%Y-%m-%d %H:%M:%S')] weixin_qr_data requested url_prefix=${qr_encoded%%\?*}"
             } >> "$DEBUG_LOG" 2>/dev/null || true
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            /var/packages/openclaw2/target/bin/node - <<'NODE' "$body" "$qr_encoded"
+            /var/packages/ainasclaw/target/bin/node - <<'NODE' "$body" "$qr_encoded"
 const body = process.argv[2] || '';
 const queryUrl = process.argv[3] || '';
 let url = queryUrl;
@@ -1661,7 +1661,7 @@ if (!url) {
   process.exit(0);
 }
 try {
-  const QRCode = require('/volume1/@appstore/openclaw2/app/openclaw/node_modules/qrcode-terminal/vendor/QRCode');
+  const QRCode = require('/volume1/@appstore/ainasclaw/app/openclaw/node_modules/qrcode-terminal/vendor/QRCode');
   const qr = new QRCode(-1, 'M');
   qr.addData(url);
   qr.make();
@@ -1781,7 +1781,7 @@ cat <<'HTML'
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpenClaw2</title>
+  <title>AiNasClaw</title>
   <style>
     html, body { scroll-behavior: auto; overscroll-behavior: contain; height:100%; }
     body { margin:0; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:#f5f6f8; color:#222; }
@@ -1830,7 +1830,7 @@ cat <<'HTML'
 </head>
 <body>
   <div class="wrap">
-    <div class="title">OpenClaw2</div>
+    <div class="title">AiNasClaw</div>
     <div class="tabs">
       <button class="tab active" data-tab="status">概览</button>
       <button class="tab" data-tab="models">模型配置</button>
@@ -1845,7 +1845,7 @@ cat <<'HTML'
   </div>
 
   <script>
-    const API_BASE = '/webman/3rdparty/openclaw2/index.cgi?native_api=1&action=';
+    const API_BASE = '/webman/3rdparty/ainasclaw/index.cgi?native_api=1&action=';
     const PROVIDER_PRESETS = {
       anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages', models: ['claude-3-5-sonnet-latest','claude-3-7-sonnet-latest','claude-sonnet-4-20250514','claude-opus-4-20250514'] },
       google: { label: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', api: 'openai-completions', models: ['gemini-2.5-pro','gemini-2.5-flash','gemini-2.0-flash'] },
@@ -1874,7 +1874,7 @@ cat <<'HTML'
     let terminalWriteQueue = Promise.resolve();
     let terminalSuggest = ['openclaw doctor', 'openclaw gateway status', 'openclaw gateway restart', 'openclaw config validate'];
     let terminalGlobalKeyHooked = false;
-    window.__openclaw2ClientErrors = [];
+    window.__ainasclawClientErrors = [];
 
     function captureClientError(type, payload) {
       try {
@@ -1883,10 +1883,10 @@ cat <<'HTML'
           type,
           payload: payload || {}
         };
-        window.__openclaw2ClientErrors.push(rec);
-        if (window.__openclaw2ClientErrors.length > 50) window.__openclaw2ClientErrors.shift();
+        window.__ainasclawClientErrors.push(rec);
+        if (window.__ainasclawClientErrors.length > 50) window.__ainasclawClientErrors.shift();
         const text = JSON.stringify(rec);
-        if (console && console.error) console.error('[openclaw2-ui-error]', text);
+        if (console && console.error) console.error('[ainasclaw-ui-error]', text);
         const merged = (rec.payload && (rec.payload.message || '')) + '\n' + (rec.payload && (rec.payload.stack || ''));
         if (/flexcroll|document\.write|asynchronously-loaded external script/i.test(merged)) {
           setMsg('检测到 DSM 内置 flexcroll 脚本兼容报错（document.write 异步限制）。已记录错误详情，可继续使用当前页面功能。', 'err');
@@ -1894,8 +1894,8 @@ cat <<'HTML'
       } catch (_) {}
     }
 
-    window.openclaw2ClientErrors = function () {
-      return (window.__openclaw2ClientErrors || []).slice();
+    window.ainasclawClientErrors = function () {
+      return (window.__ainasclawClientErrors || []).slice();
     };
 
     window.addEventListener('error', function (ev) {
@@ -2056,12 +2056,12 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">当前终端为 OpenClaw2 内置 ttyd 模式（/openclaw2-terminal/）。已移除旧版回退终端 UI。</div>'
+            + '  <div style="font-size:13px;color:#667085;">当前终端为 AiNasClaw 内置 ttyd 模式（/openclaw-terminal/）。已移除旧版回退终端 UI。</div>'
             + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
-            + '    <iframe src="/openclaw2-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
+            + '    <iframe src="/openclaw-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
             + '  </div>'
             + '</div>';
-          setMsg('终端已切换为 OpenClaw2 内置 ttyd 模式', 'ok');
+          setMsg('终端已切换为 AiNasClaw 内置 ttyd 模式', 'ok');
           return;
         }
         if (tab === 'models') {
@@ -2979,7 +2979,7 @@ cat <<'HTML'
     }
     async function probeDsmTerminal() {
       try {
-        const r = await fetch('/openclaw2-terminal/', { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
+        const r = await fetch('/openclaw-terminal/', { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
         return !!(r && r.ok);
       } catch (_) {
         return false;
@@ -2998,7 +2998,7 @@ cat <<'HTML'
         terminalOffset = Number(ret.offset || 0);
         window.__terminalUser = ret.user || 'root';
         window.__terminalHost = ret.host || 'localhost';
-        const initCwd = (ret.cwd || '/volume1/@appdata/openclaw2/data/home');
+        const initCwd = (ret.cwd || '/volume1/@appdata/ainasclaw/data/home');
         const initUser = (ret.user || 'root');
         const initHost = (ret.host || 'localhost');
         pre.textContent = '';

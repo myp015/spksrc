@@ -1,0 +1,22 @@
+{
+    "ainasclaw.js": {
+        "SYNOCOMMUNITY.AiNasClaw.AppInstance": {
+            "type": "app",
+            "title": "AiNasClaw",
+            "version": "1.0.0",
+            "icon": "images/openclaw-{0}.png",
+            "texts": "texts",
+            "allowMultiInstance": false,
+            "allUsers": true,
+            "appWindow": "SYNOCOMMUNITY.AiNasClaw.AppWindow",
+            "depend": ["SYNOCOMMUNITY.AiNasClaw.AppWindow"]
+        },
+        "SYNOCOMMUNITY.AiNasClaw.AppWindow": {
+            "type": "lib",
+            "title": "AiNasClaw",
+            "icon": "images/openclaw-{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
+    }
+}

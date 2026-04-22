@@ -1,12 +1,12 @@
-Ext.define('SYNO.SDS.OpenClaw2.Instance', {
+Ext.define('SYNO.SDS.AiNasClaw.Instance', {
     extend: 'SYNO.SDS.AppInstance',
-    appWindowName: 'SYNO.SDS.OpenClaw2.Main',
+    appWindowName: 'SYNO.SDS.AiNasClaw.Main',
     constructor: function() {
         this.callParent(arguments);
     }
 });
 
-Ext.define('SYNO.SDS.OpenClaw2.Main', {
+Ext.define('SYNO.SDS.AiNasClaw.Main', {
     extend: 'SYNO.SDS.AppWindow',
     appInstance: null,
 
@@ -14,7 +14,7 @@ Ext.define('SYNO.SDS.OpenClaw2.Main', {
         this.appInstance = cfg.appInstance;
 
         // Launch via DSM 3rdparty proxy entry.
-        var monitorUrl = '/webman/3rdparty/openclaw2/index.cgi';
+        var monitorUrl = '/webman/3rdparty/ainasclaw/index.cgi';
 
         var config = Ext.apply({
             resizable: true,

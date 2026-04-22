@@ -1,20 +1,20 @@
 {
     "Main.js": {
-        "SYNO.SDS.OpenClaw2.Instance": {
+        "SYNO.SDS.AiNasClaw.Instance": {
             "type":"app",
             "version": "1.0.0",
-            "desc": "OpenClaw2 配置面板",
+            "desc": "AiNasClaw 配置面板",
             "icon": "images/icon_{0}.png",
-            "title": "OpenClaw2",
+            "title": "AiNasClaw",
             "texts": "texts",
             "allowMultiInstance": false,
             "waterfallLoadTexts": true,
-            "appWindow": "SYNO.SDS.OpenClaw2.Main",
+            "appWindow": "SYNO.SDS.AiNasClaw.Main",
             "depend": []
         },
-        "SYNO.SDS.OpenClaw2.Main": {
+        "SYNO.SDS.AiNasClaw.Main": {
             "type": "lib",
-            "title": "OpenClaw2",
+            "title": "AiNasClaw",
             "icon": "images/icon_{0}.png",
             "texts": "texts",
             "depend": []

@@ -9,8 +9,8 @@ OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
-LOG_FILE="${SYNOPKG_PKGVAR}/openclaw2.log"
-PID_FILE="${SYNOPKG_PKGVAR}/openclaw2.pid"
+LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
+PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
 
 resolve_state_dir_from_workspace() {
     local ws="$1"
@@ -125,7 +125,7 @@ ensure_session_store_dir() {
 }
 
 ensure_openclaw_in_path() {
-    local target_cli="/var/packages/openclaw2/target/bin/openclaw"
+    local target_cli="/var/packages/ainasclaw/target/bin/openclaw"
     [ -x "${target_cli}" ] || target_cli="/var/packages/openclaw/target/bin/openclaw"
     local link_cli="/usr/local/bin/openclaw"
 
@@ -356,8 +356,8 @@ service_postinst() {
 
     # Install DSM nginx alias for bundled terminal entry (root context during postinst/upgrade).
     mkdir -p "${SYNOPKG_PKGDEST}/var" 2>/dev/null || true
-    cat > "${SYNOPKG_PKGDEST}/var/alias.openclaw2-terminal.conf" <<'NGINX_EOF'
-location ~ ^/openclaw2-terminal(.*)$ {
+    cat > "${SYNOPKG_PKGDEST}/var/alias.openclaw-terminal.conf" <<'NGINX_EOF'
+location ~ ^/openclaw-terminal(.*)$ {
     # 必须是 DSM 登录会话
     if ($http_cookie !~* "(^|;\\s*)id=") {
         return 403;
@@ -365,7 +365,7 @@ location ~ ^/openclaw2-terminal(.*)$ {
 
     # 仅拦截“入口页”直链；放行 token/ws 等子路径，避免终端握手被误伤
     set $oc2_block 0;
-    if ($request_uri ~ "^/openclaw2-terminal/?$") {
+    if ($request_uri ~ "^/openclaw-terminal/?$") {
         set $oc2_block 1;
     }
     if ($http_referer != "") {
@@ -403,7 +403,7 @@ location ~ ^/openclaw2-terminal(.*)$ {
     proxy_buffering         off;
 }
 NGINX_EOF
-    ln -sf "${SYNOPKG_PKGDEST}/var/alias.openclaw2-terminal.conf" /etc/nginx/conf.d/alias.openclaw2-terminal.conf
+    ln -sf "${SYNOPKG_PKGDEST}/var/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf
     if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || true
     fi
@@ -644,20 +644,20 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 service_prestart() {
     mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
-    # OpenClaw2 bundled terminal (ttyd) integration (no dependency on external terminal package).
+    # AiNasClaw bundled terminal (ttyd) integration (no dependency on external terminal package).
     # nginx alias is prepared in service_postinst (root context); here we only ensure ttyd process.
     if [ -x "${SYNOPKG_PKGDEST}/bin/ttyd" ]; then
-        if [ ! -f "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" ] || ! kill -0 "$(cat "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" 2>/dev/null)" 2>/dev/null; then
+        if [ ! -f "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" ] || ! kill -0 "$(cat "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" 2>/dev/null)" 2>/dev/null; then
             local ttyd_bin="${SYNOPKG_PKGDEST}/bin/ttyd"
-            local ttyd_args="-p 17682 -6 -a -W --base-path /openclaw2-terminal/ -t titleFixed=OpenClaw2 -t allow-clipboard-read=true -t allow-clipboard-write=true -t rendererType=canvas"
+            local ttyd_args="-p 17682 -6 -a -W --base-path /openclaw-terminal/ -t titleFixed=AiNasClaw -t allow-clipboard-read=true -t allow-clipboard-write=true -t rendererType=canvas"
             local shell_cmd="/bin/sh"
             [ -x /bin/bash ] && shell_cmd="/bin/bash"
             local terminfo_root="${SYNOPKG_PKGDEST}/share/terminfo"
             [ -d "${terminfo_root}" ] || terminfo_root="/usr/share/terminfo"
             LD_LIBRARY_PATH="${SYNOPKG_PKGDEST}/lib:${LD_LIBRARY_PATH}" TERMINFO="${terminfo_root}" \
                 nohup "${ttyd_bin}" ${ttyd_args} ${shell_cmd} -l >"${LOG_FILE}" 2>&1 &
-            echo "[openclaw2] terminal proxy up via ${ttyd_bin} at /openclaw2-terminal/" >> "${LOG_FILE}"
-            echo $! > "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid"
+            echo "[ainasclaw] terminal proxy up via ${ttyd_bin} at /openclaw-terminal/" >> "${LOG_FILE}"
+            echo $! > "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid"
         fi
     fi
 
@@ -1179,7 +1179,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # Clear stale pid marker before a fresh start.
     [ -n "${PID_FILE}" ] && rm -f "${PID_FILE}" 2>/dev/null || true
 
-    # fn-port monitor runtime dirs (ported from trim.openclaw)
+    # fn-port monitor runtime dirs (ported from sc-openclaw)
     local fn_home_dir="${SYNOPKG_PKGVAR}/data/home"
     local fn_cfg_dir="${fn_home_dir}/.openclaw"
     local fn_cfg_file="${fn_cfg_dir}/openclaw.json"
@@ -1200,18 +1200,18 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 
 service_poststop() {
     # stop bundled ttyd if still alive
-    if [ -f "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" ]; then
+    if [ -f "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" ]; then
         local tpid
-        tpid="$(cat "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" 2>/dev/null)"
+        tpid="$(cat "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" 2>/dev/null)"
         if [ -n "${tpid}" ]; then
             kill -TERM "${tpid}" >/dev/null 2>&1 || true
             sleep 1
             kill -KILL "${tpid}" >/dev/null 2>&1 || true
         fi
-        rm -f "${SYNOPKG_PKGDEST}/var/openclaw2-terminal.pid" >/dev/null 2>&1 || true
+        rm -f "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" >/dev/null 2>&1 || true
     fi
 
-    rm -f /etc/nginx/conf.d/alias.openclaw2-terminal.conf >/dev/null 2>&1 || true
+    rm -f /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
     if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || true
     fi
@@ -1228,10 +1228,10 @@ export OPENCLAW_NO_RESPAWN=1
 FN_MONITOR_ENTRY="${SYNOPKG_PKGDEST}/fn-port/server/index.cjs"
 FN_STATIC_DIR="${SYNOPKG_PKGDEST}/fn-port/ui"
 FN_SOUL_MD_SRC="${SYNOPKG_PKGDEST}/fn-port/prompts/SOUL.md"
-FN_SOCKET_PATH="${SYNOPKG_PKGDEST}/trim.openclaw.sock"
+FN_SOCKET_PATH="${SYNOPKG_PKGDEST}/sc-openclaw.sock"
 
 if [ ! -f "${FN_MONITOR_ENTRY}" ]; then
-    echo "[openclaw2] ERROR: fn monitor entry missing: ${FN_MONITOR_ENTRY}" 1>&2
+    echo "[ainasclaw] ERROR: fn monitor entry missing: ${FN_MONITOR_ENTRY}" 1>&2
 fi
 
 # 仅保留 DSM 套件后台 UI（index.cgi），不再启动 trim monitor 页面服务。

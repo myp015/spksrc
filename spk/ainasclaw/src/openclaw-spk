@@ -6,12 +6,19 @@ BASE_STATE_DIR="${BASE_DEFAULT}/.openclaw"
 BASE_CFG="${BASE_STATE_DIR}/openclaw.json"
 LEGACY_CFG="/var/packages/openclaw/var/openclaw.json"
 LEGACY_WORKSPACE_CFG="${BASE_DEFAULT}/openclaw.json"
-APP_NODE="/volume1/@appstore/openclaw/bin/node"
-APP_ENTRY="/volume1/@appstore/openclaw/app/openclaw/dist/index.js"
+APP_NODE="/volume1/@appstore/ainasclaw/bin/node"
+APP_ENTRY="/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js"
 
 if [ ! -x "$APP_NODE" ] || [ ! -f "$APP_ENTRY" ]; then
-  echo "❌ openclaw: OpenClaw SPK not found under /volume1/@appstore/openclaw" >&2
-  exit 1
+  APP_NODE_FALLBACK="/volume1/@appstore/openclaw/bin/node"
+  APP_ENTRY_FALLBACK="/volume1/@appstore/openclaw/app/openclaw/dist/index.js"
+  if [ -x "$APP_NODE_FALLBACK" ] && [ -f "$APP_ENTRY_FALLBACK" ]; then
+    APP_NODE="$APP_NODE_FALLBACK"
+    APP_ENTRY="$APP_ENTRY_FALLBACK"
+  else
+    echo "❌ openclaw: OpenClaw SPK not found under /volume1/@appstore/ainasclaw (fallback /volume1/@appstore/openclaw)" >&2
+    exit 1
+  fi
 fi
 
 ORIGINAL_ARGS="$*"
