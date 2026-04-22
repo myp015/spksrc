@@ -1533,7 +1533,8 @@ try:
         ent = entries.get(pid)
         if not isinstance(ent, dict):
             ent = {}
-        ent['enabled'] = True
+        # openclaw-weixin 默认为关闭，避免在插件缺失/未配置时造成 doctor 报错。
+        ent['enabled'] = (False if pid == 'openclaw-weixin' else True)
         entries[pid] = ent
     plugins['entries'] = entries
 

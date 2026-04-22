@@ -112,12 +112,16 @@
     "entries": {
       "browser": {
         "enabled": true
+      },
+      "openclaw-weixin": {
+        "enabled": false
       }
     },
     "installs": {},
     "enabled": true,
     "allow": [
-      "browser"
+      "browser",
+      "openclaw-weixin"
     ]
   },
   "memory": {

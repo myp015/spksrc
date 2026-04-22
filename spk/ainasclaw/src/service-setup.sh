@@ -71,7 +71,8 @@ sync_bundled_channel_plugins_to_extensions() {
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot"
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
     do
         [ -d "${src}" ] || continue
         [ -f "${src}/openclaw.plugin.json" ] || continue
@@ -96,6 +97,19 @@ harden_extension_permissions() {
     for path in "${ext_dir}"/*; do
         [ -e "${path}" ] || continue
         [ "$(basename "${path}")" = "node_modules" ] && continue
+        chown -R root:root "${path}" 2>/dev/null || true
+    done
+
+    # Also harden bundled plugin directories under app/node_modules to avoid "plugin not found"
+    # caused by suspicious ownership checks on direct load-path candidates.
+    for path in \
+        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
+        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
+        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
+    do
+        [ -d "${path}" ] || continue
         chown -R root:root "${path}" 2>/dev/null || true
     done
 
