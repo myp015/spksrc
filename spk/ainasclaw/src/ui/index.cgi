@@ -1689,79 +1689,80 @@ if action in ('start','restart'):
     except Exception:
         pass
 
-# 强制保持 LAN 可访问（44539）
-try:
-    c = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
-except Exception:
-    c = {}
-gw = c.setdefault('gateway', {})
-gw['bind'] = 'lan'
-gw['mode'] = 'local'
-gw['port'] = 18789
-cu = gw.setdefault('controlUi', {})
-cu['basePath'] = '/default'
-cu['allowInsecureAuth'] = True
-cu['dangerouslyDisableDeviceAuth'] = True
-cu['allowedOrigins'] = ['*']
-# 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
-defs = c.setdefault('agents', {}).setdefault('defaults', {})
-if isinstance(defs, dict) and 'fallbackModels' in defs:
-    defs.pop('fallbackModels', None)
-# 外部命令权限：默认开启 full + elevated（用户要求“完整权限”）
-if isinstance(defs, dict):
-    defs['elevatedDefault'] = 'full'
+if action in ('start','restart'):
+    # 强制保持 LAN 可访问（44539）
+    try:
+        c = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
+    except Exception:
+        c = {}
+    gw = c.setdefault('gateway', {})
+    gw['bind'] = 'lan'
+    gw['mode'] = 'local'
+    gw['port'] = 18789
+    cu = gw.setdefault('controlUi', {})
+    cu['basePath'] = '/default'
+    cu['allowInsecureAuth'] = True
+    cu['dangerouslyDisableDeviceAuth'] = True
+    cu['allowedOrigins'] = ['*']
+    # 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
+    defs = c.setdefault('agents', {}).setdefault('defaults', {})
+    if isinstance(defs, dict) and 'fallbackModels' in defs:
+        defs.pop('fallbackModels', None)
+    # 外部命令权限：默认开启 full + elevated（用户要求“完整权限”）
+    if isinstance(defs, dict):
+        defs['elevatedDefault'] = 'full'
 
-tools = c.setdefault('tools', {})
-if not isinstance(tools, dict):
-    tools = {}
-    c['tools'] = tools
-tools['profile'] = 'full'
-elev = tools.setdefault('elevated', {})
-if not isinstance(elev, dict):
-    elev = {}
-    tools['elevated'] = elev
-elev['enabled'] = True
-allow_from = elev.get('allowFrom')
-if not isinstance(allow_from, dict):
-    allow_from = {}
-for k in ['webchat', 'feishu', 'dingtalk', 'qqbot', 'wecom', 'telegram', 'discord', 'slack']:
-    v = allow_from.get(k)
-    if not isinstance(v, list) or not v:
-        allow_from[k] = ['*']
-elev['allowFrom'] = allow_from
+    tools = c.setdefault('tools', {})
+    if not isinstance(tools, dict):
+        tools = {}
+        c['tools'] = tools
+    tools['profile'] = 'full'
+    elev = tools.setdefault('elevated', {})
+    if not isinstance(elev, dict):
+        elev = {}
+        tools['elevated'] = elev
+    elev['enabled'] = True
+    allow_from = elev.get('allowFrom')
+    if not isinstance(allow_from, dict):
+        allow_from = {}
+    for k in ['webchat', 'feishu', 'dingtalk', 'qqbot', 'wecom', 'telegram', 'discord', 'slack']:
+        v = allow_from.get(k)
+        if not isinstance(v, list) or not v:
+            allow_from[k] = ['*']
+    elev['allowFrom'] = allow_from
 
-os.makedirs(os.path.dirname(cfg), exist_ok=True)
-with open(cfg,'w',encoding='utf-8') as f:
-    json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
+    os.makedirs(os.path.dirname(cfg), exist_ok=True)
+    with open(cfg,'w',encoding='utf-8') as f:
+        json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
 
-# 安装后自动补齐完整默认策略（全新可用配置）
-try:
-    plugins = c.setdefault('plugins', {})
-    plugins['enabled'] = True
-    allow = plugins.get('allow')
-    if not isinstance(allow, list):
-        allow = []
-    for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
-        if pid not in allow:
-            allow.append(pid)
-    plugins['allow'] = allow
-    entries = plugins.get('entries')
-    if not isinstance(entries, dict):
-        entries = {}
-    for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
-        ent = entries.get(pid)
-        if not isinstance(ent, dict):
-            ent = {}
-        # openclaw-weixin 默认为关闭，避免在插件缺失/未配置时造成 doctor 报错。
-        ent['enabled'] = (False if pid == 'openclaw-weixin' else True)
-        entries[pid] = ent
-    plugins['entries'] = entries
+    # 安装后自动补齐完整默认策略（全新可用配置）
+    try:
+        plugins = c.setdefault('plugins', {})
+        plugins['enabled'] = True
+        allow = plugins.get('allow')
+        if not isinstance(allow, list):
+            allow = []
+        for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
+            if pid not in allow:
+                allow.append(pid)
+        plugins['allow'] = allow
+        entries = plugins.get('entries')
+        if not isinstance(entries, dict):
+            entries = {}
+        for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
+            ent = entries.get(pid)
+            if not isinstance(ent, dict):
+                ent = {}
+            # openclaw-weixin 默认为关闭，避免在插件缺失/未配置时造成 doctor 报错。
+            ent['enabled'] = (False if pid == 'openclaw-weixin' else True)
+            entries[pid] = ent
+        plugins['entries'] = entries
 
-    # 不在启动流程里强行重建/启用 channels，避免用户删除后的渠道在重启后“复活”。
-    with open(cfg,'w',encoding='utf-8') as f2:
-        json.dump(c,f2,ensure_ascii=False,indent=2); f2.write('\n')
-except Exception:
-    pass
+        # 不在启动流程里强行重建/启用 channels，避免用户删除后的渠道在重启后“复活”。
+        with open(cfg,'w',encoding='utf-8') as f2:
+            json.dump(c,f2,ensure_ascii=False,indent=2); f2.write('\n')
+    except Exception:
+        pass
 
 def run(cmd, timeout=20):
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
@@ -1784,11 +1785,17 @@ def force_stop():
 logs=[]
 ok=True
 if action in ('stop','restart'):
-    rc, txt = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=35)
-    logs.append({'cmd':'gateway stop --json','rc':rc,'out':txt[-800:]})
-    force = force_stop()
-    logs.append({'cmd':'force-stop','out':str(force)[:800]})
-    time.sleep(1)
+    if action == 'stop':
+        # Fast path: stopping should be immediate and not depend on config mutation.
+        force = force_stop()
+        logs.append({'cmd':'force-stop-fast','out':str(force)[:800]})
+        time.sleep(0.6)
+    else:
+        rc, txt = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=8)
+        logs.append({'cmd':'gateway stop --json','rc':rc,'out':txt[-800:]})
+        force = force_stop()
+        logs.append({'cmd':'force-stop','out':str(force)[:800]})
+        time.sleep(1)
 
 if action in ('start','restart'):
     # 启动前执行一次模型同步脚本（不阻塞启动）
