@@ -23,6 +23,9 @@ try:
             workspace = ws
 except Exception:
     pass
+# normalize: workspace should be user directory, not nested .openclaw path
+if workspace.endswith('/.openclaw'):
+    workspace = workspace[:-10]
 print(os.path.join(workspace, '.openclaw', 'openclaw.json'))
 PY
 )"
@@ -208,6 +211,9 @@ except Exception:
     cfg = {}
 workspace = (payload.get('workspaceDir') or '').strip()
 if workspace:
+    # normalize user input: if user accidentally passes .../.openclaw, store parent dir as workspace
+    if workspace.endswith('/.openclaw'):
+        workspace = workspace[:-10]
     cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
     qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
     paths = qmd.setdefault('paths', [])
