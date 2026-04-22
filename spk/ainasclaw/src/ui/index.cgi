@@ -244,6 +244,15 @@ except Exception:
 prev_workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
 workspace = (payload.get('workspaceDir') or '').strip()
 if workspace:
+    # 用户目录保护：不允许将用户目录命名为 .openclaw（该名称保留给内部工作目录）
+    norm_ws = '/' + workspace.strip('/')
+    if norm_ws.endswith('/.openclaw') or '/.openclaw/' in norm_ws + '/':
+        print(json.dumps({
+            'ok': False,
+            'error': '用户目录不能包含 .openclaw（该名称为内部工作目录保留）',
+            'workspaceDir': workspace
+        }, ensure_ascii=False))
+        raise SystemExit
     # normalize user input: if user accidentally passes .../.openclaw, store parent dir as workspace
     if workspace.endswith('/.openclaw'):
         workspace = workspace[:-10]
@@ -2961,6 +2970,11 @@ cat <<'HTML'
       const oldText = saveBtn ? saveBtn.textContent : '';
       try {
         const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/openclaw';
+        const wsNorm = ('/' + workspaceDir.replace(/^\/+/, '')).toLowerCase();
+        if (wsNorm.endsWith('/.openclaw') || wsNorm.includes('/.openclaw/')) {
+          setMsg('用户目录不能包含 .openclaw（该名称为内部工作目录保留）', 'err');
+          return;
+        }
         const m = await api('models');
         const prevWorkspace = (m.workspaceDir || '').trim();
         const workspaceChanged = !!workspaceDir && workspaceDir !== prevWorkspace;
