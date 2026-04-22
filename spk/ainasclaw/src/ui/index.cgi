@@ -259,7 +259,9 @@ except Exception:
 prev_workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
 if prev_workspace.endswith('/.openclaw'):
     prev_workspace = prev_workspace[:-10]
-workspace = (payload.get('workspaceDir') or '').strip()
+workspace_input = (payload.get('workspaceDir') or '').strip()
+workspace_explicit = bool(workspace_input)
+workspace = workspace_input
 if workspace:
     # 用户目录保护：不允许将用户目录命名为 .openclaw（该名称保留给内部工作目录）
     norm_ws = '/' + workspace.strip('/')
@@ -309,10 +311,12 @@ try:
     ptr = '/var/packages/ainasclaw/var/workspace.path'
     home_ptr = '/var/packages/ainasclaw/var/workspace.home.path'
     os.makedirs(os.path.dirname(ptr), exist_ok=True)
-    with open(ptr, 'w', encoding='utf-8') as pf:
-        pf.write('$HOME')
-    with open(home_ptr, 'w', encoding='utf-8') as hpf:
-        hpf.write(workspace)
+    # 仅在显式改目录（或指针缺失）时写 pointer，避免“保存模型”误把目录改回默认。
+    if workspace_explicit or (not os.path.exists(ptr)) or (not os.path.exists(home_ptr)):
+        with open(ptr, 'w', encoding='utf-8') as pf:
+            pf.write('$HOME')
+        with open(home_ptr, 'w', encoding='utf-8') as hpf:
+            hpf.write(workspace)
 except Exception as e:
     pointer_write_err = str(e)
 providers_payload = payload.get('providers') or []
