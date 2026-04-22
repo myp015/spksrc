@@ -7,6 +7,25 @@ fi
 LOG_FILE="${APP_VAR_DIR}/ainasclaw.log"
 GATEWAY_PORT="18789"
 QUERY="${QUERY_STRING:-}"
+BASE_CFG_FILE="/volume1/docker/openclaw/.openclaw/openclaw.json"
+
+# Resolve active config path from configured workspace:
+# workspace=/volume1/openclaw -> cfg=/volume1/openclaw/.openclaw/openclaw.json
+CFG_FILE="$(python3 - <<'PY' "$BASE_CFG_FILE"
+import json, os, sys
+base = sys.argv[1] if len(sys.argv) > 1 else '/volume1/docker/openclaw/.openclaw/openclaw.json'
+workspace = '/volume1/docker/openclaw'
+try:
+    if os.path.exists(base):
+        c = json.load(open(base, 'r', encoding='utf-8'))
+        ws = (((c.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
+        if ws:
+            workspace = ws
+except Exception:
+    pass
+print(os.path.join(workspace, '.openclaw', 'openclaw.json'))
+PY
+)"
 
 get_param() {
     printf '%s' "$2" | tr '&' '\n' | awk -F= -v k="$1" '$1==k{print substr($0,index($0,"=")+1)}' | tail -n1
@@ -65,7 +84,7 @@ if [ "$native_api" = "1" ]; then
     case "$action" in
         status)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$GATEWAY_PORT" "/volume1/docker/openclaw/.openclaw/openclaw.json"
+            python3 - <<'PY' "$GATEWAY_PORT" "${CFG_FILE}"
 import json, os, socket, sys, time
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
@@ -137,7 +156,7 @@ PY
             ;;
         models)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
+            python3 - <<'PY' "${CFG_FILE}"
 import json, os, sys
 cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
 try:
@@ -172,7 +191,7 @@ PY
             ;;
         models_save)
             body=$(read_body)
-            cfg_file="/volume1/docker/openclaw/.openclaw/openclaw.json"
+            cfg_file="${CFG_FILE}"
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "$cfg_file" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
 import json, os, sys
@@ -473,7 +492,7 @@ PY
             ;;
         channels)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
+            python3 - <<'PY' "${CFG_FILE}"
 import json, os, sys
 cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
 try:
@@ -508,7 +527,7 @@ PY
             ;;
         channels_save)
             body=$(read_body)
-            cfg_file="/volume1/docker/openclaw/.openclaw/openclaw.json"
+            cfg_file="${CFG_FILE}"
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "$cfg_file"
 import json, os, sys
@@ -651,7 +670,7 @@ PY
             ;;
         channels_delete)
             body=$(read_body)
-            cfg_file="/volume1/docker/openclaw/.openclaw/openclaw.json"
+            cfg_file="${CFG_FILE}"
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "$cfg_file"
 import json, os, sys
@@ -720,7 +739,7 @@ PY
         weixin_login_start)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid" "$body"
+            python3 - <<'PY' "${APP_VAR_DIR}/data/home" "${CFG_FILE}" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid" "$body"
 import json, os, re, subprocess, sys, time, select, signal
 home_dir = sys.argv[1]
 cfg_path = sys.argv[2]
@@ -862,7 +881,7 @@ PY
         weixin_login_wait)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid" "$body"
+            python3 - <<'PY' "${CFG_FILE}" "${APP_VAR_DIR}/weixin-login-debug.log" "${APP_VAR_DIR}/weixin-login-worker.pid" "$body"
 import json, os, subprocess, sys, time
 cfg_path = sys.argv[1]
 debug_log = sys.argv[2] if len(sys.argv) > 2 else '/tmp/openclaw-weixin-login.log'
@@ -977,7 +996,7 @@ try:
                 pass
             # 同步重写 openclaw.json 的渠道账号配置，强制只启用当前账号
             try:
-                ocfg_path = '/volume1/docker/openclaw/.openclaw/openclaw.json'
+                ocfg_path = cfg_path
                 ocfg = json.load(open(ocfg_path, 'r', encoding='utf-8')) if os.path.exists(ocfg_path) else {}
                 chs = ocfg.setdefault('channels', {})
                 wx = chs.get('openclaw-weixin')
@@ -1049,7 +1068,7 @@ PY
             ;;
         weixin_disconnect)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "/volume1/docker/openclaw/.openclaw/openclaw.json"
+            python3 - <<'PY' "${CFG_FILE}"
 import json, os, subprocess, sys
 cfg_path = sys.argv[1]
 env = os.environ.copy()
@@ -1096,9 +1115,10 @@ PY
             ;;
         terminal_session_start)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "${APP_VAR_DIR}"
+            python3 - <<'PY' "${APP_VAR_DIR}" "${CFG_FILE}"
 import json, os, signal, socket, subprocess, sys, time
 base = (sys.argv[1] if len(sys.argv) > 1 else '/tmp').rstrip('/')
+cfg_path = sys.argv[2] if len(sys.argv) > 2 else '/volume1/docker/openclaw/.openclaw/openclaw.json'
 term_root = os.path.join(base, 'terminal-sessions')
 os.makedirs(term_root, exist_ok=True)
 sid = f"t{int(time.time()*1000)}-{os.getpid()}"
@@ -1111,7 +1131,6 @@ keeper_file = os.path.join(sdir, 'keeper.pid')
 open(log, 'ab').close()
 os.mkfifo(fifo)
 
-cfg_path = '/volume1/docker/openclaw/.openclaw/openclaw.json'
 workspace_dir = '/volume1/docker/openclaw'
 try:
     if os.path.exists(cfg_path):
@@ -1350,7 +1369,7 @@ env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = '/volume1/docker/openclaw'
-env['OPENCLAW_CONFIG_PATH'] = '/volume1/docker/openclaw/.openclaw/openclaw.json'
+env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = '/volume1/docker/openclaw/.openclaw'
 env['PATH'] = '/var/packages/ainasclaw/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH','')
 
@@ -1446,7 +1465,7 @@ PY
         install_run)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
+            python3 - <<'PY' "$body" "${CFG_FILE}" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
 import json, os, subprocess, sys, time
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/docker/openclaw/.openclaw/openclaw.json'
