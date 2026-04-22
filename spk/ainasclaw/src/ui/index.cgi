@@ -1452,6 +1452,7 @@ gw['bind'] = 'lan'
 gw['mode'] = 'local'
 gw['port'] = 18789
 cu = gw.setdefault('controlUi', {})
+cu['basePath'] = '/default'
 cu['allowInsecureAuth'] = True
 cu['dangerouslyDisableDeviceAuth'] = True
 cu['allowedOrigins'] = ['*']

@@ -152,6 +152,7 @@
     "bind": "lan",
     "mode": "local",
     "controlUi": {
+      "basePath": "/default",
       "allowInsecureAuth": true,
       "dangerouslyDisableDeviceAuth": true,
       "allowedOrigins": [
