@@ -120,8 +120,8 @@ mkdir -p "$WORKDIR"
 chmod 700 "$WORKDIR" 2>/dev/null || true
 # Keep a durable workspace pointer independent from workspace files.
 mkdir -p "$(dirname "$WORKSPACE_PTR_FILE")" 2>/dev/null || true
-printf '%s' '$HOME' > "$WORKSPACE_PTR_FILE" 2>/dev/null || true
-printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null || true
+{ printf '%s' '$HOME' > "$WORKSPACE_PTR_FILE"; } 2>/dev/null || true
+{ printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_HOME_PTR_FILE"; } 2>/dev/null || true
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
