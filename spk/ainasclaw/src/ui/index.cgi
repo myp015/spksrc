@@ -31,12 +31,6 @@ try:
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 except Exception:
     pass
-if base and os.path.exists(base) and base != cfg_path and not os.path.exists(cfg_path):
-    try:
-        import shutil
-        shutil.copy2(base, cfg_path)
-    except Exception:
-        pass
 print(cfg_path)
 PY
 )"
@@ -317,6 +311,23 @@ for p in providers_payload:
     providers_map[pid] = provider
 cfg.setdefault('models', {})['providers'] = providers_map
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+
+# user requirement: changing workspace should initialize by defaults only (no migration)
+if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json'):
+    try:
+        cfg = json.load(open('/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json', 'r', encoding='utf-8'))
+        cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace or '/volume1/openclaw'
+        qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
+        paths = qmd.setdefault('paths', [])
+        state_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw')
+        if not paths:
+            paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
+        elif isinstance(paths[0], dict):
+            paths[0]['path'] = state_path
+        cfg.setdefault('models', {})['providers'] = providers_map
+    except Exception:
+        pass
+
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')

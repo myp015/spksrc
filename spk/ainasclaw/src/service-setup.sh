@@ -752,10 +752,14 @@ EOF
     mkdir -p "${OPENCLAW_WORKSPACE}" "${OPENCLAW_STATE_DIR}"
     ensure_session_store_dir
 
-    # 若目标目录未初始化（无 config），则从已选源配置初始化；
-    # 若用户清空目录，也会在此自动重建并拷贝配置。
+    # 用户要求：切换目录时仅按默认模板初始化，不做迁移。
+    # 若目标目录未初始化（无 config）或被清空，则使用模板（或最小空配置）重建。
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
-        cp -f "${selected_source_config}" "${OPENCLAW_CONFIG_FILE}"
+        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
+            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+        else
+            echo "{}" > "${OPENCLAW_CONFIG_FILE}"
+        fi
     fi
 
     # 始终将当前用户目录规则写回配置：
