@@ -728,6 +728,15 @@ EOF
     if [ -z "${selected_workspace}" ]; then
         selected_workspace="${OPENCLAW_WORKSPACE_DEFAULT}"
     fi
+    # Normalize workspace value: keep user dir, not nested /.openclaw path.
+    case "${selected_workspace}" in
+        */.openclaw) selected_workspace="$(dirname "${selected_workspace}")" ;;
+    esac
+    # One-time migration of historical default path to new default path.
+    if [ "${selected_workspace}" = "/volume1/docker/openclaw" ]; then
+        selected_workspace="${OPENCLAW_WORKSPACE_DEFAULT}"
+    fi
+
     if [ -z "${selected_source_config}" ]; then
         selected_source_config="${OPENCLAW_CONFIG_FILE_BASE}"
     fi
