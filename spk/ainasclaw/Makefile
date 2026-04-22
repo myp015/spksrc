@@ -41,8 +41,9 @@ SERVICE_PORT = 18700
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
 # Package Center "Open" should use DSM webman entry (same-origin with session).
-ADMIN_PORT = $(SERVICE_PORT)
-ADMIN_URL = /webman/3rdparty/ainasclaw/index.cgi
+# Package Center detail/open URL should point to gateway instead of config panel.
+ADMIN_PORT = 18789
+ADMIN_URL = /default/chat?session=main
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
