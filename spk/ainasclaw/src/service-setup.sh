@@ -1230,7 +1230,7 @@ export OPENCLAW_NO_RESPAWN=1
 
 # 仅保留 DSM 套件后台 UI（index.cgi）与内置终端，不再启动 fn-port monitor 页面服务。
 # 使用稳定的 sleep 前台进程维持套件 running 状态。
-SERVICE_COMMAND="while true; do sleep 3600; done"
+SERVICE_COMMAND="/bin/sleep 2147483647"
 SVC_CWD="${SYNOPKG_PKGDEST}"
 SVC_BACKGROUND=yes
 SVC_WRITE_PID=yes
