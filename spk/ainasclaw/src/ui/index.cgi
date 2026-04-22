@@ -2616,7 +2616,15 @@ cat <<'HTML'
     async function runInstallAction(actionName) {
       setInstallButtonsBusy(actionName, true);
       try {
-        const act = await api('install_run', 'POST', { method: 'bun', action: actionName });
+        let act;
+        if (actionName === 'restart') {
+          // Restart fallback path: stop + start (start path is proven stable on DSM).
+          await api('install_run', 'POST', { method: 'bun', action: 'stop' });
+          await new Promise(r => setTimeout(r, 700));
+          act = await api('install_run', 'POST', { method: 'bun', action: 'start' });
+        } else {
+          act = await api('install_run', 'POST', { method: 'bun', action: actionName });
+        }
         if (actionName === 'start' && act && act.initialized) {
           setMsg('运行状态：正在初始化', 'ok');
         }
@@ -2634,13 +2642,9 @@ cat <<'HTML'
             try {
               const s = await api('status');
               if (actionName === 'restart') {
-                // 重启期间显示“正在重启”，直到状态发生一次“先停后起”转换，防止卡住。
+                // restart 走 stop+start 回退路径时，不强依赖先看到 down，再看到 running 即成功。
                 setMsg('运行状态：正在重启', 'ok');
-                if (!runInstallAction.__seenRestartDown && s && s.running === false) {
-                  runInstallAction.__seenRestartDown = true;
-                }
-                if (s && s.running && runInstallAction.__seenRestartDown) {
-                  runInstallAction.__seenRestartDown = false;
+                if (s && s.running) {
                   if (currentTab === 'status') await load('status');
                   return;
                 }
