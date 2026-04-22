@@ -304,6 +304,7 @@ elif isinstance(paths[0], dict):
 # after workspace change, always write into target workspace config path
 cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
 # persist workspace pointer outside workspace directory to survive workspace deletion
+pointer_write_err = ''
 try:
     ptr = '/var/packages/ainasclaw/var/workspace.path'
     home_ptr = '/var/packages/ainasclaw/var/workspace.home.path'
@@ -312,8 +313,8 @@ try:
         pf.write('$HOME')
     with open(home_ptr, 'w', encoding='utf-8') as hpf:
         hpf.write(workspace)
-except Exception:
-    pass
+except Exception as e:
+    pointer_write_err = str(e)
 providers_payload = payload.get('providers') or []
 apply_now = bool(payload.get('applyNow', True))
 existing_providers = ((cfg.get('models') or {}).get('providers') or {})
@@ -473,6 +474,16 @@ for pkg_name in ['feishu-openclaw-plugin', 'dingtalk', 'wecom', 'openclaw-qqbot'
         pass
 
 workspace_changed = bool(workspace and workspace != prev_workspace)
+ptr_val = ''
+hptr_val = ''
+try:
+    ptr_val = (open('/var/packages/ainasclaw/var/workspace.path', 'r', encoding='utf-8').read() or '').strip()
+except Exception:
+    pass
+try:
+    hptr_val = (open('/var/packages/ainasclaw/var/workspace.home.path', 'r', encoding='utf-8').read() or '').strip()
+except Exception:
+    pass
 out = {
     'configuredProviders': providers_payload,
     'workspaceDir': workspace or '/volume1/openclaw',
@@ -480,7 +491,10 @@ out = {
     'configExists': True,
     'workspaceChanged': workspace_changed,
     'modelSyncTriggered': model_sync_triggered,
-    'modelSyncExit': model_sync_exit
+    'modelSyncExit': model_sync_exit,
+    'workspacePointer': ptr_val,
+    'workspaceHomePointer': hptr_val,
+    'pointerWriteErr': pointer_write_err
 }
 # applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
@@ -3020,6 +3034,9 @@ cat <<'HTML'
           // models_save now forces gateway restart when workspace changed.
         } else {
           setMsg('用户目录保存成功：' + workspaceDir, 'ok');
+        }
+        if (ret && ret.pointerWriteErr) {
+          setMsg('目录保存成功，但 pointer 写入失败：' + ret.pointerWriteErr, 'err');
         }
         // 立即重拉状态页，刷新“用户文件夹路径/配置文件”显示。
         await load('status');
