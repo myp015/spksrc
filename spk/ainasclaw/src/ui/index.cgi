@@ -1233,14 +1233,8 @@ try:
             except Exception as e2:
                 log(f'weixin_openclaw_json_update_err={e2}')
 
-            # 连接成功后重启一次包，使网关立刻切换到新账号
-            try:
-                pr = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'ainasclaw'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
-                rt = (pr.stdout or b'').decode('utf-8', 'ignore')
-                log(f'weixin_restart_after_confirm rc={pr.returncode} out={rt[-180:]}')
-            except Exception as e3:
-                log(f'weixin_restart_after_confirm_err={e3}')
-
+            # 不在扫码确认后重启包：避免 UI 额外等待 10~45 秒。
+            # 后续由前端即时保存 channels 配置并让网关按热重载策略生效。
             log(f'weixin_account_saved aid={aid} round={state_round or round_id} single_account=1')
         except Exception as e:
             log(f'weixin_account_save_err={e}')
