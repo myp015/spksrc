@@ -395,6 +395,20 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 service_postinst() {
     ensure_openclaw_in_path
 
+    # Normalize bundled channel plugin ownership to root:root so OpenClaw trust checks pass.
+    for path in \
+        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
+        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
+        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
+    do
+        [ -d "${path}" ] || continue
+        chown -R root:root "${path}" 2>/dev/null || true
+        find "${path}" -type d -exec chmod 755 {} \; 2>/dev/null || true
+        find "${path}" -type f -exec chmod 644 {} \; 2>/dev/null || true
+    done
+
     # Install DSM nginx alias for bundled terminal entry (root context during postinst/upgrade).
     mkdir -p "${SYNOPKG_PKGDEST}/var" 2>/dev/null || true
     cat > "${SYNOPKG_PKGDEST}/var/alias.openclaw-terminal.conf" <<'NGINX_EOF'
