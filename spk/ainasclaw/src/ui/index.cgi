@@ -367,7 +367,7 @@ try:
 except Exception:
     pass
 
-# create channel plugin symlinks into bundled app plugins (trusted source + dependency-resolvable)
+# copy channel plugins into workspace/extensions for stable discovery on DSM
 for pkg_rel in [
     '@larksuiteoapi/feishu-openclaw-plugin',
     '@soimy/dingtalk',
@@ -387,7 +387,7 @@ for pkg_rel in [
                 os.unlink(dst)
             else:
                 shutil.rmtree(dst, ignore_errors=True)
-        os.symlink(src, dst)
+        shutil.copytree(src, dst, dirs_exist_ok=True)
     except Exception:
         pass
 

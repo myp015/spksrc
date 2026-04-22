@@ -67,8 +67,8 @@ sync_bundled_channel_plugins_to_extensions() {
     rm -f "${ext_dir}/node_modules"
     ln -s "${OPENCLAW_APP_DIR}/node_modules" "${ext_dir}/node_modules"
 
-    # Re-create trusted symlink entries for channel plugins so loader/doctor can discover ids,
-    # while dependencies still resolve from app/node_modules.
+    # Copy channel plugins into workspace/extensions so OpenClaw plugin discovery
+    # consistently sees them as extension roots on DSM.
     for src in \
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
@@ -81,7 +81,7 @@ sync_bundled_channel_plugins_to_extensions() {
         pkg_name="$(basename "${src}")"
         target_dir="${ext_dir}/${pkg_name}"
         rm -rf "${target_dir}" 2>/dev/null || true
-        ln -s "${src}" "${target_dir}"
+        cp -a "${src}" "${target_dir}"
     done
 }
 
@@ -95,14 +95,7 @@ harden_extension_permissions() {
     for path in "${ext_dir}"/*; do
         [ -e "${path}" ] || continue
         [ "$(basename "${path}")" = "node_modules" ] && continue
-        if [ -L "${path}" ]; then
-            # keep symlink candidate itself trusted (doctor/plugin loader may check lstat owner)
-            chown -h root:root "${path}" 2>/dev/null || true
-            # and keep target trusted
-            chown -R root:root "${path}" 2>/dev/null || true
-        else
-            chown -R root:root "${path}" 2>/dev/null || true
-        fi
+        chown -R root:root "${path}" 2>/dev/null || true
     done
 
     # Also harden bundled plugin directories under app/node_modules to avoid "plugin not found"
