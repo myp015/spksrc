@@ -53,6 +53,8 @@ urldecode() {
 read_body() {
     if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
         dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null
+    else
+        cat
     fi
 }
 
