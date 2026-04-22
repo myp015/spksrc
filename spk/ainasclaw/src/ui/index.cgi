@@ -341,6 +341,32 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 
+# user requirement: after adding/updating model providers, trigger provider-model sync script automatically
+try:
+    import subprocess
+    if providers_map:
+        sync_cmd = (
+            'OPENCLAW_CONFIG_FILE="{cfg}" '
+            'OPENCLAW_CONFIG_PATH="{cfg}" '
+            'OPENCLAW_STATE_DIR="{state}" '
+            'HOME="{state}" '
+            'bash -lc "source /var/packages/ainasclaw/scripts/service-setup >/dev/null 2>&1; '
+            'sync_provider_models_from_upstream"'
+        ).format(cfg=cfg_path, state=os.path.dirname(cfg_path))
+        subprocess.run(sync_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+except Exception:
+    pass
+
+# keep default workspace clean when active workspace is non-default
+try:
+    default_state = '/volume1/openclaw/.openclaw'
+    if (workspace or '/volume1/openclaw') != '/volume1/openclaw':
+        import shutil
+        shutil.rmtree(os.path.join(default_state, 'agents'), ignore_errors=True)
+        shutil.rmtree(os.path.join(default_state, 'flows'), ignore_errors=True)
+except Exception:
+    pass
+
 # Initialize workspace runtime assets immediately after workspace switch/save
 state_dir = os.path.dirname(cfg_path) if cfg_path else os.path.join(workspace or '/volume1/openclaw', '.openclaw')
 skills_dir = os.path.join(state_dir, 'skills', '_bundled')
@@ -399,6 +425,7 @@ if apply_now:
         env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
         env['OPENCLAW_CONFIG_PATH'] = cfg_path
         env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        env['OPENCLAW_WORKSPACE_DIR'] = env['OPENCLAW_STATE_DIR']
         env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
         env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
         env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'

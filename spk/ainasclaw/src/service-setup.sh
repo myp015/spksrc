@@ -858,6 +858,7 @@ try {
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
+    export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR}"
     export HOME="${runtime_home_dir}"
     export NPM_CONFIG_CACHE="${runtime_home_dir}/.npm"
     export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
@@ -1390,6 +1391,7 @@ service_postuninst() {
 # Default exports before prestart recalculates runtime paths.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
+export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export HOME="${OPENCLAW_STATE_DIR_BASE}"
 export NPM_CONFIG_CACHE="${OPENCLAW_STATE_DIR_BASE}/.npm"
 export XDG_CACHE_HOME="${OPENCLAW_STATE_DIR_BASE}/.cache"
