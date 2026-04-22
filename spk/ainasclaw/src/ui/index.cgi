@@ -26,8 +26,11 @@ except Exception:
 # normalize: workspace should be user directory, not nested .openclaw path
 if workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
-cfg_path = os.path.join(workspace, '.openclaw', 'openclaw.json')
-os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
+try:
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+except Exception:
+    pass
 if base and os.path.exists(base) and base != cfg_path and not os.path.exists(cfg_path):
     try:
         import shutil
@@ -204,12 +207,12 @@ PY
             body=$(read_body)
             cfg_file="${CFG_FILE}"
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body" "$cfg_file" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
+            python3 - <<'PY' "$body" "$cfg_file" "${APP_VAR_DIR}/openclaw-gateway.spawn.log" "${BASE_CFG_FILE}"
 import json, os, sys
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
-try:
+base_cfg_path = sys.argv[4] if len(sys.argv) > 4 else '/volume1/openclaw/.openclaw/openclaw.json'
 try:
     payload = json.loads(raw or '{}')
 except Exception:
@@ -223,14 +226,36 @@ if workspace:
     # normalize user input: if user accidentally passes .../.openclaw, store parent dir as workspace
     if workspace.endswith('/.openclaw'):
         workspace = workspace[:-10]
-    cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
-    qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
-    paths = qmd.setdefault('paths', [])
-    state_path = os.path.join(workspace, '.openclaw')
-    if not paths:
-        paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
-    elif isinstance(paths[0], dict):
-        paths[0]['path'] = state_path
+else:
+    workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw').strip()
+
+if not cfg_path:
+    cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
+
+cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
+qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
+paths = qmd.setdefault('paths', [])
+state_path = os.path.join(workspace, '.openclaw')
+if not paths:
+    paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
+elif isinstance(paths[0], dict):
+    paths[0]['path'] = state_path
+
+# keep bootstrap config in sync so resolver follows latest workspace
+try:
+    os.makedirs(os.path.dirname(base_cfg_path), exist_ok=True)
+    base_cfg = {}
+    if os.path.exists(base_cfg_path):
+        try:
+            base_cfg = json.load(open(base_cfg_path, 'r', encoding='utf-8')) or {}
+        except Exception:
+            base_cfg = {}
+    base_cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
+    with open(base_cfg_path, 'w', encoding='utf-8') as bf:
+        json.dump(base_cfg, bf, ensure_ascii=False, indent=2)
+        bf.write('\n')
+except Exception:
+    pass
 providers_payload = payload.get('providers') or []
 apply_now = bool(payload.get('applyNow', True))
 existing_providers = ((cfg.get('models') or {}).get('providers') or {})
