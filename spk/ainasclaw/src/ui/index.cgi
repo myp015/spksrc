@@ -241,6 +241,7 @@ try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
 except Exception:
     cfg = {}
+prev_workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
 workspace = (payload.get('workspaceDir') or '').strip()
 if workspace:
     # normalize user input: if user accidentally passes .../.openclaw, store parent dir as workspace
@@ -402,7 +403,14 @@ for pkg_rel in [
     except Exception:
         pass
 
-out = {'configuredProviders': providers_payload, 'workspaceDir': workspace or '/volume1/openclaw', 'configPath': cfg_path, 'configExists': True}
+workspace_changed = bool(workspace and workspace != prev_workspace)
+out = {
+    'configuredProviders': providers_payload,
+    'workspaceDir': workspace or '/volume1/openclaw',
+    'configPath': cfg_path,
+    'configExists': True,
+    'workspaceChanged': workspace_changed
+}
 # applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
     try:
@@ -436,8 +444,9 @@ if apply_now:
                 except Exception:
                     pass
 
-        # 如果已运行，避免重复拉起导致 EADDRINUSE。
-        if is_running(18789):
+        # 如果已运行且目录未变化，避免重复拉起导致 EADDRINUSE。
+        # 若目录变化则必须重启，确保 gateway 切到新 workspace。
+        if is_running(18789) and not workspace_changed:
             out['gatewayAutoStartTriggered'] = False
             out['gatewayRunning'] = True
             out['message'] = 'gateway already running'
@@ -2954,9 +2963,8 @@ cat <<'HTML'
         }
         const ret = await api('models_save', 'POST', payload);
         if (workspaceChanged) {
-          setMsg('用户目录已更新，正在初始化并启动：' + workspaceDir, 'ok');
-          // Ensure gateway starts even if models_save path only persisted config.
-          await runInstallAction('start');
+          setMsg('用户目录已更新，正在初始化并切换运行目录：' + workspaceDir, 'ok');
+          // models_save now forces gateway restart when workspace changed.
         } else {
           setMsg('用户目录保存成功：' + workspaceDir, 'ok');
         }
