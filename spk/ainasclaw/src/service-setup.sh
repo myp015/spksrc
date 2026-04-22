@@ -842,7 +842,7 @@ try {
   const c = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
   c.agents = c.agents || {};
   c.agents.defaults = c.agents.defaults || {};
-  c.agents.defaults.workspace = ws;
+  c.agents.defaults.workspace = statePath;
   c.memory = c.memory || {};
   c.memory.qmd = c.memory.qmd || {};
   c.memory.qmd.paths = Array.isArray(c.memory.qmd.paths) ? c.memory.qmd.paths : [];

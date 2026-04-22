@@ -249,10 +249,10 @@ else:
 if not cfg_path:
     cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
 
-cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
 qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
 paths = qmd.setdefault('paths', [])
 state_path = os.path.join(workspace, '.openclaw')
+cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = state_path
 if not paths:
     paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
 elif isinstance(paths[0], dict):
@@ -312,10 +312,10 @@ os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json'):
     try:
         cfg = json.load(open('/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json', 'r', encoding='utf-8'))
-        cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace or '/volume1/openclaw'
         qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
         paths = qmd.setdefault('paths', [])
         state_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw')
+        cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = state_path
         if not paths:
             paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
         elif isinstance(paths[0], dict):
@@ -1726,10 +1726,10 @@ if action in ('start','restart'):
             else:
                 c0 = {}
             ws = os.path.dirname(os.path.dirname(cfg))
-            c0.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = ws
+            state_path = os.path.dirname(cfg)
+            c0.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = state_path
             qmd = c0.setdefault('memory', {}).setdefault('qmd', {})
             paths = qmd.setdefault('paths', [])
-            state_path = os.path.join(ws, '.openclaw')
             if not paths:
                 paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
             elif isinstance(paths[0], dict):
@@ -1757,6 +1757,7 @@ if action in ('start','restart'):
     cu['allowedOrigins'] = ['*']
     # 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
     defs = c.setdefault('agents', {}).setdefault('defaults', {})
+    defs['workspace'] = os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw'
     if isinstance(defs, dict) and 'fallbackModels' in defs:
         defs.pop('fallbackModels', None)
     # 外部命令权限：默认开启 full + elevated（用户要求“完整权限”）
