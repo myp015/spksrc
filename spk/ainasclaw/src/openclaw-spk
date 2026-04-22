@@ -2,10 +2,11 @@
 set -eu
 
 BASE_DEFAULT="/volume1/openclaw"
-PACKAGE_HOME="/var/packages/ainasclaw/home"
+WORKSPACE_PTR_FILE="/var/packages/ainasclaw/var/workspace.path"
+WORKSPACE_HOME_PTR_FILE="/var/packages/ainasclaw/var/workspace.home.path"
+WORKSPACE_HOME_DEFAULT="$BASE_DEFAULT"
 BASE_STATE_DIR="${BASE_DEFAULT}/.openclaw"
 BASE_CFG="${BASE_STATE_DIR}/openclaw.json"
-WORKSPACE_PTR_FILE="/var/packages/ainasclaw/var/workspace.path"
 LEGACY_CFG="/var/packages/openclaw/var/openclaw.json"
 LEGACY_WORKSPACE_CFG="${BASE_DEFAULT}/openclaw.json"
 APP_NODE="/volume1/@appstore/ainasclaw/bin/node"
@@ -50,9 +51,14 @@ WORKSPACE_FROM_PTR="0"
 if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ] && [ -f "$WORKSPACE_PTR_FILE" ]; then
   PWS="$(cat "$WORKSPACE_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
   if [ -n "$PWS" ]; then
+    WS_HOME="$WORKSPACE_HOME_DEFAULT"
+    if [ -f "$WORKSPACE_HOME_PTR_FILE" ]; then
+      WS_HOME_RAW="$(cat "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+      [ -n "$WS_HOME_RAW" ] && WS_HOME="$WS_HOME_RAW"
+    fi
     case "$PWS" in
-      '$HOME') PWS="$PACKAGE_HOME" ;;
-      '$HOME'/*) PWS="$PACKAGE_HOME/${PWS#\$HOME/}" ;;
+      '$HOME') PWS="$WS_HOME" ;;
+      '$HOME'/*) PWS="$WS_HOME/${PWS#\$HOME/}" ;;
       */.openclaw) PWS="${PWS%/.openclaw}" ;;
     esac
     WORKSPACE_DIR="$PWS"
@@ -114,9 +120,8 @@ mkdir -p "$WORKDIR"
 chmod 700 "$WORKDIR" 2>/dev/null || true
 # Keep a durable workspace pointer independent from workspace files.
 mkdir -p "$(dirname "$WORKSPACE_PTR_FILE")" 2>/dev/null || true
-PTR_WRITE="$WORKSPACE_DIR"
-[ "$PTR_WRITE" = "$PACKAGE_HOME" ] && PTR_WRITE='$HOME'
-printf '%s' "$PTR_WRITE" > "$WORKSPACE_PTR_FILE" 2>/dev/null || true
+printf '%s' '$HOME' > "$WORKSPACE_PTR_FILE" 2>/dev/null || true
+printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null || true
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"

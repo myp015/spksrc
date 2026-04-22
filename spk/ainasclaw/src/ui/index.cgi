@@ -16,15 +16,24 @@ import json, os, sys
 base = sys.argv[1] if len(sys.argv) > 1 else '/volume1/openclaw/.openclaw/openclaw.json'
 workspace = '/volume1/openclaw'
 ptr = '/var/packages/ainasclaw/var/workspace.path'
+home_ptr = '/var/packages/ainasclaw/var/workspace.home.path'
 ptr_hit = False
 try:
     if os.path.exists(ptr):
         ws_ptr = (open(ptr, 'r', encoding='utf-8').read() or '').strip()
         if ws_ptr:
+            ws_home = '/volume1/openclaw'
+            try:
+                if os.path.exists(home_ptr):
+                    ws_home_raw = (open(home_ptr, 'r', encoding='utf-8').read() or '').strip()
+                    if ws_home_raw:
+                        ws_home = ws_home_raw
+            except Exception:
+                pass
             if ws_ptr == '$HOME':
-                ws_ptr = '/var/packages/ainasclaw/home'
+                ws_ptr = ws_home
             elif ws_ptr.startswith('$HOME/'):
-                ws_ptr = '/var/packages/ainasclaw/home/' + ws_ptr[len('$HOME/'):]
+                ws_ptr = ws_home.rstrip('/') + '/' + ws_ptr[len('$HOME/'):]
             workspace = ws_ptr
             ptr_hit = True
 except Exception:
@@ -297,12 +306,12 @@ cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw
 # persist workspace pointer outside workspace directory to survive workspace deletion
 try:
     ptr = '/var/packages/ainasclaw/var/workspace.path'
+    home_ptr = '/var/packages/ainasclaw/var/workspace.home.path'
     os.makedirs(os.path.dirname(ptr), exist_ok=True)
-    ptr_write = workspace
-    if workspace == '/var/packages/ainasclaw/home':
-        ptr_write = '$HOME'
     with open(ptr, 'w', encoding='utf-8') as pf:
-        pf.write(ptr_write)
+        pf.write('$HOME')
+    with open(home_ptr, 'w', encoding='utf-8') as hpf:
+        hpf.write(workspace)
 except Exception:
     pass
 providers_payload = payload.get('providers') or []
