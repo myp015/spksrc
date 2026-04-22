@@ -39,17 +39,23 @@ if ! printf '%s' "$REQ_COOKIE" | grep -Eq '(^|;[[:space:]]*)id='; then
     exit 0
 fi
 
-# 禁止浏览器直接打开配置面板页面（无论来源）。
-# 仅允许 native_api=1 的后台接口请求通过。
+# 禁止“直接 URL 打开”配置面板；允许 DSM 内部打开链路（iframe/referer/launchApp）。
 if [ "$native_api" != "1" ]; then
-    printf "Status: 404 Not Found
+    REQ_REF="${HTTP_REFERER:-}"
+    REQ_DEST="${HTTP_SEC_FETCH_DEST:-}"
+    HAS_LAUNCHAPP="$(printf '%s' "$QUERY" | grep -Eo '(^|&)launchApp=[^&]*' || true)"
+    HAS_SYNOTOKEN="$(printf '%s' "$QUERY" | grep -Eo '(^|&)(SynoToken|synotoken)=[^&]*' || true)"
+
+    if [ -z "$REQ_REF" ] && [ -z "$HAS_LAUNCHAPP" ] && [ -z "$HAS_SYNOTOKEN" ] && [ "$REQ_DEST" != "iframe" ]; then
+        printf "Status: 404 Not Found
 "
-    printf "Content-Type: text/plain; charset=UTF-8
+        printf "Content-Type: text/plain; charset=UTF-8
 
 "
-    printf "Sorry, the page you are looking for is not found.
+        printf "Sorry, the page you are looking for is not found.
 "
-    exit 0
+        exit 0
+    fi
 fi
 
 # 入口访问放宽：避免误伤 DSM 套件中心打开链路。
