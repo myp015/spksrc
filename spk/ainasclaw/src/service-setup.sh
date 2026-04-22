@@ -174,6 +174,7 @@ start_gateway_if_needed() {
     local spawn_log="${SYNOPKG_PKGVAR}/openclaw-gateway.spawn.log"
     mkdir -p "$(dirname "${spawn_log}")" >/dev/null 2>&1 || true
     nohup "${oc_cli}" gateway run --allow-unconfigured --port 18789 >>"${spawn_log}" 2>&1 &
+    sleep 1
 }
 
 ensure_openclaw_in_path() {
