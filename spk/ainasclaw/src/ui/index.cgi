@@ -2903,19 +2903,31 @@ cat <<'HTML'
     }
     async function saveWorkspaceQuick() {
       let hotReloadTriggered = false;
+      const saveBtn = document.querySelector('#userSettingsMask .btn.primary');
+      const oldText = saveBtn ? saveBtn.textContent : '';
       try {
         const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/openclaw';
         const m = await api('models');
+        const prevWorkspace = (m.workspaceDir || '').trim();
+        const workspaceChanged = !!workspaceDir && workspaceDir !== prevWorkspace;
         const payload = { providers: (m.configuredProviders || []), workspaceDir, applyNow: true };
         hotReloadTriggered = true;
         setHotReloadBusy(true);
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = workspaceChanged ? '正在初始化…' : '保存中…';
+        }
         await api('models_save', 'POST', payload);
-        setMsg('用户目录保存成功：' + workspaceDir, 'ok');
+        setMsg(workspaceChanged ? ('用户目录已更新并开始初始化：' + workspaceDir) : ('用户目录保存成功：' + workspaceDir), 'ok');
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
       finally {
         if (hotReloadTriggered) {
           await waitHotReloadSettled(30000);
           setHotReloadBusy(false);
+        }
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = oldText || '保存';
         }
       }
     }

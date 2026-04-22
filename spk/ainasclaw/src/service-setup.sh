@@ -10,6 +10,7 @@ OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 WORKSPACE_PTR_FILE="${SYNOPKG_PKGVAR}/workspace.path"
+AUTO_INIT_ON_INSTALL_MARKER="${SYNOPKG_PKGVAR}/auto-init-on-install.flag"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
 
@@ -143,6 +144,36 @@ ensure_session_store_dir() {
 
     mkdir -p "${sessions_dir}" 2>/dev/null || true
     chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
+}
+
+gateway_port_up() {
+    python3 - <<'PY'
+import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+s.settimeout(0.5)
+try:
+    s.connect(('127.0.0.1',18789))
+    print('1')
+except Exception:
+    print('0')
+finally:
+    s.close()
+PY
+}
+
+start_gateway_if_needed() {
+    # Best-effort auto-start for install/init flows only.
+    if [ "$(gateway_port_up)" = "1" ]; then
+        return 0
+    fi
+
+    local oc_cli="/var/packages/ainasclaw/target/bin/openclaw"
+    [ -x "${oc_cli}" ] || oc_cli="/var/packages/openclaw/target/bin/openclaw"
+    [ -x "${oc_cli}" ] || return 0
+
+    local spawn_log="${SYNOPKG_PKGVAR}/openclaw-gateway.spawn.log"
+    mkdir -p "$(dirname "${spawn_log}")" >/dev/null 2>&1 || true
+    nohup "${oc_cli}" gateway run --allow-unconfigured --port 18789 >>"${spawn_log}" 2>&1 &
 }
 
 ensure_openclaw_in_path() {
@@ -433,6 +464,9 @@ NGINX_EOF
     fi
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
         mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
+        if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
+            touch "${AUTO_INIT_ON_INSTALL_MARKER}" 2>/dev/null || true
+        fi
 
         if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
             if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
@@ -754,6 +788,11 @@ EOF
     OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
+    # When active workspace is not default, keep default state dir clean to avoid confusion.
+    if [ "${OPENCLAW_WORKSPACE}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
+        rm -rf "${OPENCLAW_STATE_DIR_BASE}/agents" "${OPENCLAW_STATE_DIR_BASE}/flows" 2>/dev/null || true
+    fi
+
     # Persist workspace pointer outside workspace tree; survives workspace deletion.
     mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
     printf '%s' "${OPENCLAW_WORKSPACE}" > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
@@ -816,6 +855,14 @@ try {
 
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
+
+    # Fresh install convenience: if default workspace exists, auto-init then start gateway once.
+    if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ]; then
+        if [ -d "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
+            start_gateway_if_needed
+        fi
+        rm -f "${AUTO_INIT_ON_INSTALL_MARKER}" 2>/dev/null || true
+    fi
 
     # Avoid duplicate-plugin diagnostics when active workspace is not default workspace.
     if [ "${OPENCLAW_WORKSPACE}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
