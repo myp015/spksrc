@@ -45,15 +45,18 @@ elif [ -f "$LEGACY_CFG" ]; then
 fi
 
 WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$BASE_DEFAULT}"
+WORKSPACE_FROM_PTR="0"
 if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ] && [ -f "$WORKSPACE_PTR_FILE" ]; then
   PWS="$(cat "$WORKSPACE_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
   if [ -n "$PWS" ]; then
     WORKSPACE_DIR="$PWS"
+    WORKSPACE_FROM_PTR="1"
   fi
 fi
 if [ -n "$CONFIG_PATH" ]; then
   # Prefer explicit workspace when provided; otherwise derive from config.workspace.
-  if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+  # If workspace pointer exists, do not let stale base config override it.
+  if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ] && [ "$WORKSPACE_FROM_PTR" != "1" ]; then
     W=$(python3 - "$CONFIG_PATH" <<'PY'
 import json,sys
 p=sys.argv[1]
