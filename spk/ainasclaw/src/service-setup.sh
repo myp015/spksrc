@@ -451,9 +451,9 @@ NGINX_EOF
             export WIZARD_API_KEY="${wizard_api_key}"
         else
             export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/openclaw}"
-            export WIZARD_MODEL_ID="${wizard_model_id:-Pro/MiniMaxAI/MiniMax-M2.5}"
-            export WIZARD_BASE_URL="${wizard_base_url:-http://127.0.0.1:8317/v1}"
-            export WIZARD_API_KEY="${wizard_api_key:-sk-V5zPkG6MJrIpxgmDw}"
+            export WIZARD_MODEL_ID="${wizard_model_id:-}"
+            export WIZARD_BASE_URL="${wizard_base_url:-}"
+            export WIZARD_API_KEY="${wizard_api_key:-}"
         fi
 
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
@@ -522,24 +522,29 @@ const workspace = workspaceInput ? (workspaceInput.endsWith("/.openclaw") ? work
 
 cfg.models = cfg.models || {};
 cfg.models.providers = cfg.models.providers || {};
-cfg.models.providers.default = cfg.models.providers.default || {};
-cfg.models.providers.default.models = cfg.models.providers.default.models || [];
-if (!cfg.models.providers.default.models.length) cfg.models.providers.default.models.push({});
-if (modelIdInput) {
-  cfg.models.providers.default.models[0].id = modelIdInput;
-  cfg.models.providers.default.models[0].name = modelIdInput;
+if (modelIdInput || baseUrlInput || apiKeyInput) {
+  cfg.models.providers.default = cfg.models.providers.default || {};
+  cfg.models.providers.default.models = cfg.models.providers.default.models || [];
+  if (!cfg.models.providers.default.models.length) cfg.models.providers.default.models.push({});
+  if (modelIdInput) {
+    cfg.models.providers.default.models[0].id = modelIdInput;
+    cfg.models.providers.default.models[0].name = modelIdInput;
+  }
+  if (baseUrlInput) cfg.models.providers.default.baseUrl = baseUrlInput;
+  if (apiKeyInput) cfg.models.providers.default.apiKey = apiKeyInput;
 }
-if (baseUrlInput) cfg.models.providers.default.baseUrl = baseUrlInput;
-if (apiKeyInput) cfg.models.providers.default.apiKey = apiKeyInput;
 
 cfg.agents = cfg.agents || {};
 cfg.agents.defaults = cfg.agents.defaults || {};
 if (workspace) cfg.agents.defaults.workspace = workspace;
-cfg.agents.defaults.model = cfg.agents.defaults.model || {};
-cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};
 if (modelIdInput) {
+  cfg.agents.defaults.model = cfg.agents.defaults.model || {};
+  cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};
   cfg.agents.defaults.model.primary = `default/${modelIdInput}`;
   cfg.agents.defaults.imageModel.primary = `default/${modelIdInput}`;
+} else {
+  if (cfg.agents.defaults.model && typeof cfg.agents.defaults.model === "object") delete cfg.agents.defaults.model.primary;
+  if (cfg.agents.defaults.imageModel && typeof cfg.agents.defaults.imageModel === "object") delete cfg.agents.defaults.imageModel.primary;
 }
 
 cfg.memory = cfg.memory || {};

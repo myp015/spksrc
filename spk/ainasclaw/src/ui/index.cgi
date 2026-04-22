@@ -324,6 +324,19 @@ if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/ainasclaw/ta
             paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
         elif isinstance(paths[0], dict):
             paths[0]['path'] = state_path
+        # no model configured => remove stale primaries/default provider remnants
+        try:
+            if not providers_map:
+                defaults = (cfg.get('agents') or {}).get('defaults') or {}
+                if isinstance(defaults.get('model'), dict):
+                    defaults['model'].pop('primary', None)
+                if isinstance(defaults.get('imageModel'), dict):
+                    defaults['imageModel'].pop('primary', None)
+                models_obj = cfg.get('models') or {}
+                if isinstance(models_obj, dict):
+                    models_obj['providers'] = {}
+        except Exception:
+            pass
         cfg.setdefault('models', {})['providers'] = providers_map
     except Exception:
         pass

@@ -14,32 +14,7 @@
   },
   "models": {
     "mode": "merge",
-    "providers": {
-      "default": {
-        "models": [
-          {
-            "id": "Pro/MiniMaxAI/MiniMax-M2.5",
-            "name": "Pro/MiniMaxAI/MiniMax-M2.5",
-            "reasoning": false,
-            "input": [
-              "text",
-              "image"
-            ],
-            "cost": {
-              "input": 0,
-              "output": 0,
-              "cacheRead": 0,
-              "cacheWrite": 0
-            },
-            "contextWindow": 200000,
-            "maxTokens": 8192
-          }
-        ],
-        "apiKey": "sk-V5zPkG6MJrIpxgmDw",
-        "baseUrl": "http://127.0.0.1:8317/v1",
-        "api": "openai-completions"
-      }
-    }
+    "providers": {}
   },
   "agents": {
     "defaults": {
@@ -56,13 +31,7 @@
       "subagents": {
         "maxConcurrent": 8
       },
-      "model": {
-        "primary": "default/Pro/MiniMaxAI/MiniMax-M2.5"
-      },
-      "imageModel": {
-        "primary": "default/Pro/MiniMaxAI/MiniMax-M2.5"
-      },
-      "workspace": "/volume1/docker/openclaw/.openclaw"
+      "workspace": "/volume1/openclaw"
     }
   },
   "messages": {
@@ -144,7 +113,7 @@
       "command": "/usr/local/bin/qmd",
       "paths": [
         {
-          "path": "/volume1/docker/openclaw/.openclaw",
+          "path": "/volume1/openclaw/.openclaw",
           "name": "workspace",
           "pattern": "**/*.md"
         }
