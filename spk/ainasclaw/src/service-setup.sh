@@ -1201,6 +1201,13 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     fi
 }
 
+stop_gateway_processes() {
+    # best-effort stop for any detached gateway process (may survive package stop/uninstall)
+    pkill -f 'openclaw-gatew' >/dev/null 2>&1 || true
+    pkill -f '/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -f 'openclaw gateway' >/dev/null 2>&1 || true
+}
+
 service_poststop() {
     # stop bundled ttyd if still alive
     if [ -f "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" ]; then
@@ -1214,10 +1221,23 @@ service_poststop() {
         rm -f "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" >/dev/null 2>&1 || true
     fi
 
+    stop_gateway_processes
+
     rm -f /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
+    rm -f /etc/nginx/conf.d/alias.openclaw2-terminal.conf >/dev/null 2>&1 || true
     if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || true
     fi
+}
+
+service_preuninst() {
+    # uninstall hook: ensure detached gateway and terminal are cleaned first
+    service_poststop
+}
+
+service_postuninst() {
+    # second-pass cleanup for edge cases where processes get re-parented to systemd
+    stop_gateway_processes
 }
 
 # Default exports before prestart recalculates runtime paths.
