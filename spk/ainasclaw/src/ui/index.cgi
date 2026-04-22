@@ -1846,13 +1846,16 @@ cat <<'HTML'
     html, body { scroll-behavior: auto; overscroll-behavior: contain; height:100%; }
     body { margin:0; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:#f5f6f8; color:#222; }
     body.modal-open { overflow: hidden; }
-    .wrap { padding:12px; height:100%; box-sizing:border-box; display:flex; flex-direction:column; zoom:.93; }
-    .title { font-size:24px; font-weight:700; margin-bottom:6px; }
-    .sub { color:#667085; font-size:13px; margin-bottom:14px; }
-    .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
-    .tab { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:10px 14px; cursor:pointer; }
-    .tab.active { background:#1677ff; color:#fff; border-color:#1677ff; }
-    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    .wrap { padding:10px; height:100%; box-sizing:border-box; zoom:.93; }
+    .layout { height:100%; display:flex; gap:12px; }
+    .sidebar { width:220px; min-width:220px; background:#fff; border:1px solid #dfe3ea; border-radius:12px; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; }
+    .title { font-size:20px; font-weight:700; margin:0 0 10px; }
+    .sub { color:#667085; font-size:12px; margin:0 0 10px; }
+    .tabs { display:flex; flex-direction:column; gap:6px; }
+    .tab { text-align:left; border:1px solid #d0d5dd; background:#fff; border-radius:8px; padding:9px 10px; cursor:pointer; }
+    .tab.active { background:#eaf2ff; color:#175cd3; border-color:#b7cdfa; font-weight:600; }
+    .main { min-width:0; flex:1; display:flex; }
+    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
     .toolbar { display:flex; gap:8px; margin-bottom:12px; align-items:center; }
     #content { flex:1; min-height:0; overflow:hidden; }
     .btn { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:8px 12px; cursor:pointer; }
@@ -1886,21 +1889,34 @@ cat <<'HTML'
     .modal.model-modal { width:min(560px,90vw); }
     .modal h3 { margin:0 0 14px; font-size:18px; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+    @media (max-width: 900px) {
+      .layout { flex-direction:column; }
+      .sidebar { width:100%; min-width:0; }
+      .tabs { flex-direction:row; flex-wrap:wrap; }
+      .tab { min-width:120px; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="title">AiNasClaw</div>
-    <div class="tabs">
-      <button class="tab active" data-tab="status">概览</button>
-      <button class="tab" data-tab="models">模型配置</button>
-      <button class="tab" data-tab="channels">渠道配置</button>
-      <button class="tab" data-tab="terminal">终端</button>
-      <button class="tab" data-tab="logs">运行日志</button>
-    </div>
-    <div class="panel">
-      <div id="msg" class="msg"></div>
-      <div id="content"></div>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="title">AiNasClaw</div>
+        <div class="sub">DSM 风格控制台</div>
+        <div class="tabs">
+          <button class="tab active" data-tab="status">概览</button>
+          <button class="tab" data-tab="models">模型配置</button>
+          <button class="tab" data-tab="channels">渠道配置</button>
+          <button class="tab" data-tab="terminal">终端</button>
+          <button class="tab" data-tab="logs">运行日志</button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="panel">
+          <div id="msg" class="msg"></div>
+          <div id="content"></div>
+        </div>
+      </main>
     </div>
   </div>
 
