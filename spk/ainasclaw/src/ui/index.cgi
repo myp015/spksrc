@@ -391,8 +391,6 @@ else:
     out['gatewayAutoStartTriggered'] = False
     out['message'] = '配置已保存（未自动启用）'
 print(json.dumps(out, ensure_ascii=False))
-except Exception as e:
-    print(json.dumps({'ok': False, 'error': str(e), 'configPath': cfg_path if 'cfg_path' in globals() else ''}, ensure_ascii=False))
 PY
             exit 0
             ;;
