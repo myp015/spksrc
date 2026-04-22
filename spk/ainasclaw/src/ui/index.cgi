@@ -1137,7 +1137,7 @@ if not qrcode:
 
 connected = False
 status = 'pending'
-message = '等待扫码确认'
+message = ''
 try:
     req = urllib.request.Request(f"{base_url}/ilink/bot/get_qrcode_status?qrcode={qrcode}", headers={'iLink-App-ClientVersion': '1'})
     with urllib.request.urlopen(req, timeout=4) as r:
@@ -1240,11 +1240,11 @@ try:
     else:
         connected = False
         status = 'pending'
-        message = '等待扫码确认'
+        message = ''
 except Exception as e:
     connected = False
     status = 'pending'
-    message = '等待扫码确认'
+    message = ''
     log(f'weixin_qr_status_poll_err={e}')
 
 log(f'weixin_login_wait connected={bool(connected)} status={status} message={message}')
@@ -3062,7 +3062,7 @@ cat <<'HTML'
         window.__weixinConnected = false;
         window.__weixinLoginActive = true;
         window.__weixinHadChannelBefore = !!((data.configuredChannelIds || []).includes('openclaw-weixin') || (data.configuredChannelIds || []).includes('weixin'));
-        area.innerHTML = '<div style="font-size:13px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin(false)">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="regenerateWeixinQr()">重新生成</button></div><div id="weixin_status" style="font-size:13px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
+        area.innerHTML = '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin(false)">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="regenerateWeixinQr()">重新生成</button></div><div id="weixin_status" style="font-size:13px;color:#667085;margin-top:8px;"></div><div id="weixin_qr" style="margin-top:8px;"></div>';
       }
       syncChannelSaveButtonState();
     }
@@ -3244,15 +3244,15 @@ cat <<'HTML'
           // 微信面板未展开时静默忽略，避免弹错误提示打断流程。
           return;
         }
-        statusEl.textContent = '正在获取二维码...';
-        qrEl.innerHTML = '<div style="font-size:13px;color:#667085;">二维码加载中...</div>';
+        statusEl.textContent = '';
+        qrEl.innerHTML = '';
         console.info('[channels:weixin:start] request login start');
         const data = await api('weixin_login_start', 'POST', { force: !!force });
         console.info('[channels:weixin:start:timing]', { elapsedMs: Date.now() - startTs, force: !!force });
         if (data && data.qrUrl) {
           if (!isWeixinDialogActive()) return;
           await renderWeixinQr(data.qrUrl, qrEl);
-          statusEl.textContent = '请扫码。';
+          statusEl.textContent = '';
           window.__weixinSessionKey = data.sessionKey || '';
           window.__weixinRoundId = data.roundId || '';
           window.__weixinAutoSaveArmed = true;
@@ -3312,6 +3312,8 @@ cat <<'HTML'
               if (sv && sv.error) throw new Error(sv.error);
               if (currentTab === 'channels') await load('channels');
               setMsg('微信已连接（已立即保存）', 'ok');
+              // 用户要求：保存后立即刷新页面，确保新加渠道马上可见。
+              setTimeout(() => { try { window.location.reload(); } catch (_) {} }, 50);
               // 第二步：后台再做热加载（不阻塞 UI）
               api('channels_save', 'POST', { weixin: { enabled: true } }).catch(() => {});
             } catch (e) {
