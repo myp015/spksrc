@@ -747,6 +747,25 @@ EOF
     # 若用户清空目录，也会在此自动重建并拷贝配置。
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
         cp -f "${selected_source_config}" "${OPENCLAW_CONFIG_FILE}"
+        # 初始化后强制写入当前用户目录，避免沿用旧配置中的 workspace。
+        "${OPENCLAW_NODE}" -e '
+const fs = require("fs");
+const cfgPath = process.argv[1];
+const ws = process.argv[2];
+const statePath = ws.endsWith("/.openclaw") ? ws : `${ws}/.openclaw`;
+try {
+  const c = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  c.agents = c.agents || {};
+  c.agents.defaults = c.agents.defaults || {};
+  c.agents.defaults.workspace = ws;
+  c.memory = c.memory || {};
+  c.memory.qmd = c.memory.qmd || {};
+  c.memory.qmd.paths = Array.isArray(c.memory.qmd.paths) ? c.memory.qmd.paths : [];
+  if (!c.memory.qmd.paths.length) c.memory.qmd.paths.push({ path: statePath, name: "workspace", pattern: "**/*.md" });
+  else c.memory.qmd.paths[0].path = statePath;
+  fs.writeFileSync(cfgPath, JSON.stringify(c, null, 2) + "\n", "utf8");
+} catch {}
+' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_WORKSPACE}"
     fi
 
     local resolved_home_dir
