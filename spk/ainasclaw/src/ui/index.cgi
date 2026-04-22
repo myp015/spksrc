@@ -1005,17 +1005,8 @@ if not isinstance(entry, dict):
 entry['enabled'] = True
 entries['openclaw-weixin'] = entry
 plugins['entries'] = entries
-chs = cfg.setdefault('channels', {})
-wx = chs.get('openclaw-weixin')
-if not isinstance(wx, dict):
-    wx = {}
-wx['enabled'] = True
-chs['openclaw-weixin'] = wx
-if 'weixin' in chs:
-    try:
-        chs.pop('weixin', None)
-    except Exception:
-        pass
+# 注意：扫码“开始”阶段不自动创建 channels.openclaw-weixin，
+# 避免用户取消后配置里残留微信通道。
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
@@ -1149,7 +1140,7 @@ status = 'pending'
 message = '等待扫码确认'
 try:
     req = urllib.request.Request(f"{base_url}/ilink/bot/get_qrcode_status?qrcode={qrcode}", headers={'iLink-App-ClientVersion': '1'})
-    with urllib.request.urlopen(req, timeout=12) as r:
+    with urllib.request.urlopen(req, timeout=4) as r:
         body = (r.read() or b'').decode('utf-8', 'ignore')
     st = json.loads(body or '{}')
     s = str(st.get('status') or 'wait')
@@ -3018,11 +3009,18 @@ cat <<'HTML'
       document.getElementById('channelModalMask').dataset.editId = '';
       document.body.classList.remove('modal-open');
       // 用户主动取消微信扫码时，立即撤销自动保存触发器。
+      const wasActive = !!window.__weixinLoginActive;
+      const wasConnected = !!window.__weixinConnected;
+      const hadBefore = !!window.__weixinHadChannelBefore;
       window.__weixinLoginActive = false;
       window.__weixinAutoSaveArmed = false;
       if (__weixinPollTimer) {
         clearInterval(__weixinPollTimer);
         __weixinPollTimer = null;
+      }
+      // 若本次是新建微信通道流程且未连接就取消，清掉临时残留配置。
+      if (wasActive && !wasConnected && !hadBefore) {
+        api('channels_delete', 'POST', { id: 'openclaw-weixin' }).catch(() => {});
       }
     }
     function syncChannelSaveButtonState() {
@@ -3063,6 +3061,7 @@ cat <<'HTML'
       } else {
         window.__weixinConnected = false;
         window.__weixinLoginActive = true;
+        window.__weixinHadChannelBefore = !!((data.configuredChannelIds || []).includes('openclaw-weixin') || (data.configuredChannelIds || []).includes('weixin'));
         area.innerHTML = '<div style="font-size:13px;color:#667085;">微信通过 openclaw-weixin 插件扫码登录。</div><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button id="btn_wx_start" class="btn" onclick="startWeixinLogin(false)">开始微信登录</button><button id="btn_wx_poll" class="btn" onclick="regenerateWeixinQr()">重新生成</button></div><div id="weixin_status" style="font-size:13px;color:#667085;margin-top:8px;">未查询</div><div id="weixin_qr" style="margin-top:8px;"></div>';
       }
       syncChannelSaveButtonState();
@@ -3253,7 +3252,7 @@ cat <<'HTML'
         if (data && data.qrUrl) {
           if (!isWeixinDialogActive()) return;
           await renderWeixinQr(data.qrUrl, qrEl);
-          statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
+          statusEl.textContent = '请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
           window.__weixinRoundId = data.roundId || '';
           window.__weixinAutoSaveArmed = true;
