@@ -287,6 +287,11 @@ if apply_now:
 
             os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
             try:
+                with open(spawn_log, 'a', encoding='utf-8') as sf:
+                    sf.write('[gateway-spawn] request start\n')
+            except Exception:
+                pass
+            try:
                 logf = open(spawn_log, 'ab', buffering=0)
             except Exception:
                 logf = None
@@ -301,6 +306,11 @@ if apply_now:
             )
             out['gatewayAutoStartTriggered'] = True
             out['gatewayAutoStartPid'] = p.pid
+            try:
+                with open(spawn_log, 'a', encoding='utf-8') as sf:
+                    sf.write(f'[gateway-spawn] started pid={p.pid}\n')
+            except Exception:
+                pass
 
             running = False
             for _ in range(12):
