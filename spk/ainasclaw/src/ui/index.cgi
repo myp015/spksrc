@@ -1902,7 +1902,6 @@ cat <<'HTML'
     <div class="layout">
       <aside class="sidebar">
         <div class="title">AiNasClaw</div>
-        <div class="sub">DSM 风格控制台</div>
         <div class="tabs">
           <button class="tab active" data-tab="status">概览</button>
           <button class="tab" data-tab="models">模型配置</button>
@@ -2135,12 +2134,11 @@ cat <<'HTML'
         if (tab === 'terminal') {
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">当前终端为 AiNasClaw 内置 ttyd 模式（/openclaw-terminal/）。已移除旧版回退终端 UI。</div>'
             + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
             + '    <iframe src="/openclaw-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
             + '  </div>'
             + '</div>';
-          setMsg('终端已切换为 AiNasClaw 内置 ttyd 模式', 'ok');
+          setMsg('');
           return;
         }
         if (tab === 'models') {
@@ -2636,11 +2634,16 @@ cat <<'HTML'
         const payload = { providers, applyNow: true };
         hotReloadTriggered = true;
         setHotReloadBusy(true);
-        await api('models_save', 'POST', payload);
-        setModelDialogHint('保存成功，正在刷新列表...', 'ok');
+        const ret = await api('models_save', 'POST', payload);
+        if (ret && ret.gatewayRunning === false) {
+          await runInstallAction('restart');
+          setModelDialogHint('保存成功，已执行网关重启并应用模型', 'ok');
+        } else {
+          setModelDialogHint('保存成功，已热重启并应用模型', 'ok');
+        }
         closeModelDialog();
         await load('models');
-        setMsg('模型服务器保存成功', 'ok');
+        setMsg('模型服务器保存成功，模型已立即生效', 'ok');
       } catch (e) {
         setModelDialogHint('保存失败：' + (e.message || e), 'err');
         setMsg('模型服务器保存失败：' + (e.message || e), 'err');
