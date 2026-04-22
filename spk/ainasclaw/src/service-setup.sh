@@ -792,7 +792,9 @@ try {
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
     export HOME="${resolved_home_dir}"
 
+    # 初始化/切换目录时，确保插件与技能都完整落在 /xxx/.openclaw 下
     sync_bundled_channel_plugins_to_extensions
+    sync_skills_to_workspace
     harden_extension_permissions
 
     # Safety: if a channel config exists but its plugin is unavailable in current runtime,
