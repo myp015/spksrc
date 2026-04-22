@@ -253,46 +253,57 @@ if apply_now:
         env['OPENCLAW_ELEVATED_DEFAULT'] = 'full'
         env['OPENCLAW_EXEC_SECURITY_DEFAULT'] = 'full'
 
-        # 保存后自动启用：先停旧进程，再拉起 gateway。
-        for cmd in (
-            ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'stop', '--json'],
-            ['pkill', '-f', 'openclaw-gatew'],
-            ['pkill', '-f', '/app/openclaw/dist/index.js gateway'],
-            ['pkill', '-f', 'openclaw gateway'],
-        ):
-            try:
-                subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8)
-            except Exception:
-                pass
-
-        p = subprocess.Popen(
-            ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', '18789'],
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
-            start_new_session=True,
-        )
-        out['gatewayAutoStartTriggered'] = True
-        out['gatewayAutoStartPid'] = p.pid
-
-        running = False
-        for _ in range(12):
+        def is_running(port=18789):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(0.6)
             try:
-                s.connect(('127.0.0.1', 18789))
-                running = True
-                s.close()
-                break
+                s.connect(('127.0.0.1', port))
+                return True
             except Exception:
+                return False
+            finally:
                 try:
                     s.close()
                 except Exception:
                     pass
+
+        # 如果已运行，避免重复拉起导致 EADDRINUSE。
+        if is_running(18789):
+            out['gatewayAutoStartTriggered'] = False
+            out['gatewayRunning'] = True
+            out['message'] = 'gateway already running'
+        else:
+            # 保存后自动启用：先停旧进程，再拉起 gateway。
+            for cmd in (
+                ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'stop', '--json'],
+                ['pkill', '-f', 'openclaw-gatew'],
+                ['pkill', '-f', '/app/openclaw/dist/index.js gateway'],
+                ['pkill', '-f', 'openclaw gateway'],
+            ):
+                try:
+                    subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8)
+                except Exception:
+                    pass
+
+            p = subprocess.Popen(
+                ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', '18789'],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+            out['gatewayAutoStartTriggered'] = True
+            out['gatewayAutoStartPid'] = p.pid
+
+            running = False
+            for _ in range(12):
+                if is_running(18789):
+                    running = True
+                    break
                 time.sleep(1)
-        out['gatewayRunning'] = running
+            out['gatewayRunning'] = running
     except Exception as e:
         out['gatewayAutoStartTriggered'] = False
         out['gatewayAutoStartErr'] = str(e)
@@ -1633,7 +1644,9 @@ PY
             ;;
         logs)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            OCL_LOG="/tmp/openclaw-0/openclaw-$(date +%Y-%m-%d).log"
+            OCL_LOG="/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log"
+            [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw/openclaw-$(date -d yesterday +%Y-%m-%d 2>/dev/null).log"
+            [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date +%Y-%m-%d).log"
             [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date -d yesterday +%Y-%m-%d 2>/dev/null).log"
             APP_LOG="$LOG_FILE"
             SPAWN_LOG="/tmp/openclaw-gateway.spawn.log"
