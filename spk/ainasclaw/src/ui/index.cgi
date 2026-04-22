@@ -722,6 +722,7 @@ try:
     payload = json.loads(raw or '{}')
 except Exception:
     payload = {}
+skip_reload = bool(payload.get('noReload', False))
 try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
 except Exception:
@@ -819,28 +820,29 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 
-# 保存渠道后自动热重载 gateway，尽量做到“保存后直接可用”。
+# 保存渠道后默认热重载 gateway；微信扫码自动保存可传 noReload=true，避免等待 30~60s。
 reload_ok = False
 reload_out = ''
-try:
-    import subprocess
-    env = os.environ.copy()
-    env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-    env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-    env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-    env['OPENCLAW_CONFIG_PATH'] = cfg_path
-    env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-    env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
-    env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
-    env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
-    env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
-    cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
-    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
-    reload_ok = (p.returncode == 0)
-    reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-500:]
-except Exception as e:
-    reload_ok = False
-    reload_out = str(e)
+if not skip_reload:
+    try:
+        import subprocess
+        env = os.environ.copy()
+        env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
+        env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
+        env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        env['OPENCLAW_CONFIG_PATH'] = cfg_path
+        env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
+        env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
+        env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
+        env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+        cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
+        p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+        reload_ok = (p.returncode == 0)
+        reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-500:]
+    except Exception as e:
+        reload_ok = False
+        reload_out = str(e)
 
 channels_obj = (cfg.get('channels') or {})
 out = {
@@ -3310,13 +3312,14 @@ cat <<'HTML'
             setMsg('微信已连接，正在自动保存...', 'ok');
             if (statusEl) statusEl.textContent = '已连接，正在自动保存...';
             // 后台检测到 connected 后立即写入当前微信渠道配置（不依赖面板保存按钮）
-            const sv = await api('channels_save', 'POST', { weixin: { enabled: true } });
+            const sv = await api('channels_save', 'POST', { weixin: { enabled: true }, noReload: true });
             if (sv && sv.error) throw new Error(sv.error);
           } catch (e) {
             setMsg('微信已连接，但自动保存失败：' + (e.message || e), 'err');
           }
           setMsg('微信已连接（已自动保存）', 'ok');
           closeChannelDialog();
+          if (currentTab === 'channels') await load('channels');
         }
       } catch (e) {
         if (!silent) setMsg('查询微信状态失败：' + (e.message || e), 'err');
