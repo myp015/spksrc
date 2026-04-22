@@ -15,22 +15,28 @@ CFG_FILE="$(python3 - <<'PY' "$BASE_CFG_FILE"
 import json, os, sys
 base = sys.argv[1] if len(sys.argv) > 1 else '/volume1/openclaw/.openclaw/openclaw.json'
 workspace = '/volume1/openclaw'
+ptr = '/var/packages/ainasclaw/var/workspace.path'
 try:
-    if os.path.exists(base):
-        c = json.load(open(base, 'r', encoding='utf-8'))
-        ws = (((c.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
-        if ws:
-            workspace = ws
+    if os.path.exists(ptr):
+        ws_ptr = (open(ptr, 'r', encoding='utf-8').read() or '').strip()
+        if ws_ptr:
+            workspace = ws_ptr
 except Exception:
     pass
+# base cfg is fallback only; do not override explicit persisted pointer
+if workspace == '/volume1/openclaw':
+    try:
+        if os.path.exists(base):
+            c = json.load(open(base, 'r', encoding='utf-8'))
+            ws = (((c.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
+            if ws:
+                workspace = ws
+    except Exception:
+        pass
 # normalize: workspace should be user directory, not nested .openclaw path
 if workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
 cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
-try:
-    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-except Exception:
-    pass
 print(cfg_path)
 PY
 )"
@@ -1660,6 +1666,30 @@ env['OPENCLAW_TOOLS_PROFILE']='full'
 env['OPENCLAW_TOOLS_ELEVATED_ENABLED']='1'
 env['OPENCLAW_ELEVATED_DEFAULT']='full'
 env['OPENCLAW_EXEC_SECURITY_DEFAULT']='full'
+
+# On start/restart only, create runtime config if missing.
+if action in ('start','restart'):
+    try:
+        if cfg and (not os.path.exists(cfg)):
+            os.makedirs(os.path.dirname(cfg), exist_ok=True)
+            template = '/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json'
+            if os.path.exists(template):
+                c0 = json.load(open(template,'r',encoding='utf-8'))
+            else:
+                c0 = {}
+            ws = os.path.dirname(os.path.dirname(cfg))
+            c0.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = ws
+            qmd = c0.setdefault('memory', {}).setdefault('qmd', {})
+            paths = qmd.setdefault('paths', [])
+            state_path = os.path.join(ws, '.openclaw')
+            if not paths:
+                paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
+            elif isinstance(paths[0], dict):
+                paths[0]['path'] = state_path
+            with open(cfg,'w',encoding='utf-8') as wf:
+                json.dump(c0,wf,ensure_ascii=False,indent=2); wf.write('\n')
+    except Exception:
+        pass
 
 # 强制保持 LAN 可访问（44539）
 try:
