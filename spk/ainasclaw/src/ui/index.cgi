@@ -1548,7 +1548,7 @@ if action in ('start','restart'):
     try:
         logf = open('/tmp/openclaw-gateway.spawn.log','ab', buffering=0)
         p = subprocess.Popen(
-            ['/var/packages/ainasclaw/target/bin/openclaw','gateway'],
+            ['/var/packages/ainasclaw/target/bin/openclaw','gateway','run','--allow-unconfigured','--port','18789'],
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=logf,
@@ -1564,7 +1564,7 @@ if action in ('start','restart'):
 
 import socket
 
-def is_running(port=44539):
+def is_running(port=18789):
     s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.settimeout(0.6)
     try:
         s.connect(('127.0.0.1',port)); return True
@@ -1573,11 +1573,11 @@ def is_running(port=44539):
     finally:
         s.close()
 
-running = is_running(44539)
+running = is_running(18789)
 if action in ('start','restart') and not running:
     for _ in range(12):
         time.sleep(1)
-        running = is_running(44539)
+        running = is_running(18789)
         if running:
             break
 print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running}, ensure_ascii=False))
