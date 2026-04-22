@@ -16,15 +16,17 @@ import json, os, sys
 base = sys.argv[1] if len(sys.argv) > 1 else '/volume1/openclaw/.openclaw/openclaw.json'
 workspace = '/volume1/openclaw'
 ptr = '/var/packages/ainasclaw/var/workspace.path'
+ptr_hit = False
 try:
     if os.path.exists(ptr):
         ws_ptr = (open(ptr, 'r', encoding='utf-8').read() or '').strip()
         if ws_ptr:
             workspace = ws_ptr
+            ptr_hit = True
 except Exception:
     pass
-# base cfg is fallback only; do not override explicit persisted pointer
-if workspace == '/volume1/openclaw':
+# base cfg is fallback only; never override explicit persisted pointer
+if (not ptr_hit) and workspace == '/volume1/openclaw':
     try:
         if os.path.exists(base):
             c = json.load(open(base, 'r', encoding='utf-8'))
