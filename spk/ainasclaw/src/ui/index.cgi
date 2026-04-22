@@ -657,7 +657,7 @@ out = {
   'wecom': ch.get('wecom') or {},
   'dingtalk': ch.get('dingtalk') or {},
   'qqbot': ch.get('qqbot') or {},
-  'weixin': ch.get('weixin') or {}
+  'weixin': ch.get('openclaw-weixin') or ch.get('weixin') or {}
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -714,9 +714,10 @@ if isinstance(payload.get('qqbot'), dict):
     if aid: q['appId'] = aid
     if sec: q['clientSecret'] = sec
     q['enabled'] = True; q['dmPolicy']='open'; q['groupPolicy']='open'; q['allowFrom']=['*']
-if isinstance(payload.get('weixin'), dict):
+wx_payload = payload.get('openclaw-weixin') if isinstance(payload.get('openclaw-weixin'), dict) else payload.get('weixin')
+if isinstance(wx_payload, dict):
     w = ch.setdefault('openclaw-weixin', {})
-    w['enabled'] = bool(payload['weixin'].get('enabled', True))
+    w['enabled'] = bool(wx_payload.get('enabled', True))
 
 # 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
 plugins = cfg.setdefault('plugins', {})
