@@ -3301,18 +3301,23 @@ cat <<'HTML'
             clearInterval(__weixinPollTimer);
             __weixinPollTimer = null;
           }
-          try {
-            setMsg('微信已连接，正在自动保存...', 'ok');
-            if (statusEl) statusEl.textContent = '已连接，正在自动保存...';
-            // 后台检测到 connected 后立即写入当前微信渠道配置（不依赖面板保存按钮）
-            const sv = await api('channels_save', 'POST', { weixin: { enabled: true }, noReload: true });
-            if (sv && sv.error) throw new Error(sv.error);
-          } catch (e) {
-            setMsg('微信已连接，但自动保存失败：' + (e.message || e), 'err');
-          }
-          setMsg('微信已连接（已自动保存）', 'ok');
+          setMsg('微信已连接，正在立即保存...', 'ok');
+          if (statusEl) statusEl.textContent = '已连接，正在立即保存...';
+          // 先立刻关闭弹窗，保存与热加载在后台串行执行，避免用户感知等待。
           closeChannelDialog();
-          if (currentTab === 'channels') await load('channels');
+          (async () => {
+            try {
+              // 第一步：立即落配置（不重载）
+              const sv = await api('channels_save', 'POST', { weixin: { enabled: true }, noReload: true });
+              if (sv && sv.error) throw new Error(sv.error);
+              if (currentTab === 'channels') await load('channels');
+              setMsg('微信已连接（已立即保存）', 'ok');
+              // 第二步：后台再做热加载（不阻塞 UI）
+              api('channels_save', 'POST', { weixin: { enabled: true } }).catch(() => {});
+            } catch (e) {
+              setMsg('微信已连接，但自动保存失败：' + (e.message || e), 'err');
+            }
+          })();
         }
       } catch (e) {
         if (!silent) setMsg('查询微信状态失败：' + (e.message || e), 'err');
