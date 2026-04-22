@@ -2121,7 +2121,8 @@ cat <<'HTML'
         }
         if (tab === 'logs') {
           content.innerHTML = ''
-            + '<div style="height:100%;display:flex;flex-direction:column;">'
+            + '<div style="height:100%;display:flex;flex-direction:column;gap:8px;">'
+            + '  <div style="font-size:13px;color:#667085;">实时显示网关与套件日志（自动刷新）。</div>'
             + '  <pre id="log_pre" style="flex:1;min-height:0;max-height:none;margin:0;">' + esc(data.log || '') + '</pre>'
             + '</div>';
           const pre = document.getElementById('log_pre');
