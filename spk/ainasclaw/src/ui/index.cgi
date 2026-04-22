@@ -241,6 +241,8 @@ if not paths:
 elif isinstance(paths[0], dict):
     paths[0]['path'] = state_path
 
+# after workspace change, always write into target workspace config path
+cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
 # keep bootstrap config in sync so resolver follows latest workspace
 try:
     os.makedirs(os.path.dirname(base_cfg_path), exist_ok=True)
@@ -298,7 +300,7 @@ os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
-out = {'configuredProviders': providers_payload, 'workspaceDir': ((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw', 'configPath': cfg_path, 'configExists': True}
+out = {'configuredProviders': providers_payload, 'workspaceDir': workspace or '/volume1/openclaw', 'configPath': cfg_path, 'configExists': True}
 # applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
     try:
