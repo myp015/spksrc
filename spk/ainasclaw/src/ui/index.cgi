@@ -163,6 +163,8 @@ try:
 except Exception:
     cfg = {}
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
+if isinstance(workspace, str) and workspace.endswith('/.openclaw'):
+    workspace = workspace[:-10]
 token = ((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '123456')
 binary_path = '/var/packages/ainasclaw/target/bin/openclaw' if os.path.exists('/var/packages/ainasclaw/target/bin/openclaw') else ''
 out = {
@@ -216,6 +218,8 @@ for pid, p in providers_map.items():
                 item['models'].append({'id': mid, 'modelId': mid})
     providers.append(item)
 workspace_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
+if isinstance(workspace_dir, str) and workspace_dir.endswith('/.openclaw'):
+    workspace_dir = workspace_dir[:-10]
 print(json.dumps({'configuredProviders': providers, 'workspaceDir': workspace_dir, 'configPath': cfg_path, 'configExists': bool(cfg)}, ensure_ascii=False))
 PY
             exit 0
@@ -3306,8 +3310,11 @@ cat <<'HTML'
           }
           setMsg('微信已连接，正在立即保存...', 'ok');
           if (statusEl) statusEl.textContent = '已连接，正在立即保存...';
-          // 先立刻关闭弹窗，保存与热加载在后台串行执行，避免用户感知等待。
+          // 先立刻关闭弹窗并立即刷新渠道页，保存与热加载在后台串行执行，避免用户感知等待。
           closeChannelDialog();
+          if (currentTab === 'channels') {
+            load('channels').catch(() => {});
+          }
           (async () => {
             try {
               // 第一步：立即落配置（不重载）
