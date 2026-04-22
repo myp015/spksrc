@@ -363,9 +363,12 @@ location ~ ^/openclaw-terminal(.*)$ {
         return 403;
     }
 
-    # 仅拦截“入口页”直链；放行 token/ws 等子路径，避免终端握手被误伤
+    # 仅拦截“入口页”直链（含多余斜杠变体）；放行 token/ws 等子路径，避免终端握手被误伤
     set $oc2_block 0;
-    if ($request_uri ~ "^/openclaw-terminal/?$") {
+    if ($request_uri ~ "^//+openclaw-terminal/*(\?|$)") {
+        set $oc2_block 1;
+    }
+    if ($request_uri ~ "^/openclaw-terminal/?(\?|$)") {
         set $oc2_block 1;
     }
     if ($http_referer != "") {
