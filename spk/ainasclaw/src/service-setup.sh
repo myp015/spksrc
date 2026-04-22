@@ -67,8 +67,8 @@ sync_bundled_channel_plugins_to_extensions() {
     rm -f "${ext_dir}/node_modules"
     ln -s "${OPENCLAW_APP_DIR}/node_modules" "${ext_dir}/node_modules"
 
-    # Keep channel plugins discoverable under workspace/extensions while preserving
-    # Node module resolution from app/node_modules via symlink (avoids missing hoisted deps).
+    # Use symlink-to-bundle for channel plugins so ownership remains trusted (root-owned in app bundle),
+    # avoiding doctor/plugin loader rejection in workspace paths.
     for src in \
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
@@ -84,8 +84,7 @@ sync_bundled_channel_plugins_to_extensions() {
         local target_dir="${ext_dir}/${pkg_name}"
 
         rm -rf "${target_dir}"
-        mkdir -p "${target_dir}"
-        cp -a "${src}/." "${target_dir}/"
+        ln -s "${src}" "${target_dir}"
     done
 }
 
@@ -707,7 +706,6 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 }
 
 service_prestart() {
-    mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
 
     # AiNasClaw bundled terminal (ttyd) integration (no dependency on external terminal package).
     # nginx alias is prepared in service_postinst (root context); here we only ensure ttyd process.
@@ -723,17 +721,6 @@ service_prestart() {
                 nohup "${ttyd_bin}" ${ttyd_args} ${shell_cmd} -l >"${LOG_FILE}" 2>&1 &
             echo "[ainasclaw] terminal proxy up via ${ttyd_bin} at /openclaw-terminal/" >> "${LOG_FILE}"
             echo $! > "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid"
-        fi
-    fi
-
-    # Ensure bootstrap config exists at fixed base path.
-    if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
-        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
-            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
-        elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
-            cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
-        else
-            echo "{}" > "${OPENCLAW_CONFIG_FILE_BASE}"
         fi
     fi
 

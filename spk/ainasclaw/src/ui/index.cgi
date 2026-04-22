@@ -368,6 +368,7 @@ except Exception:
     pass
 
 # sync selected bundled channel plugins into workspace extensions
+# use symlink to bundled plugin path to preserve trusted ownership and avoid stale/blocked plugin diagnostics
 for pkg_rel in [
     '@larksuiteoapi/feishu-openclaw-plugin',
     '@soimy/dingtalk',
@@ -382,9 +383,12 @@ for pkg_rel in [
         pkg_name = os.path.basename(src)
         dst = os.path.join(ext_dir, pkg_name)
         import shutil
-        if os.path.exists(dst):
-            shutil.rmtree(dst, ignore_errors=True)
-        shutil.copytree(src, dst, dirs_exist_ok=True)
+        if os.path.lexists(dst):
+            if os.path.islink(dst) or os.path.isfile(dst):
+                os.unlink(dst)
+            else:
+                shutil.rmtree(dst, ignore_errors=True)
+        os.symlink(src, dst)
     except Exception:
         pass
 

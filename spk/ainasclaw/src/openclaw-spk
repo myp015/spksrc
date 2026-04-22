@@ -90,16 +90,8 @@ if [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
   CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
 
-# Migrate legacy workspace/openclaw.json into workspace/.openclaw/openclaw.json once.
-if [ ! -f "$CONFIG_PATH" ] && [ -f "$LEGACY_WORKSPACE_CFG" ]; then
-  mkdir -p "$(dirname "$CONFIG_PATH")"
-  cp -f "$LEGACY_WORKSPACE_CFG" "$CONFIG_PATH"
-fi
-
-if [ ! -f "$CONFIG_PATH" ] && [ -f "$BASE_CFG" ]; then
-  mkdir -p "$(dirname "$CONFIG_PATH")"
-  cp -f "$BASE_CFG" "$CONFIG_PATH"
-fi
+# No implicit config migration from default workspace when switching user workspace.
+# New/empty workspace should be initialized explicitly by start/setup flow.
 
 mkdir -p "$WORKDIR"
 # Keep a durable workspace pointer independent from workspace files.
