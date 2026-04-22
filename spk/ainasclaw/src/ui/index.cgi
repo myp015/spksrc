@@ -2614,19 +2614,14 @@ cat <<'HTML'
               const s = await api('status');
               if (s && !!s.running === wantRunning) {
                 setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
-                if (currentTab === 'status') await load('status');
                 return;
               }
             } catch {}
           }
-          // 超时后再拉一次真实状态，避免停留在旧显示。
-          if (currentTab === 'status') await load('status');
           return;
         }
-        if (currentTab === 'status') await load('status');
       } catch (e) {
-        // 概览页按要求不展示其它提示。
-        if (currentTab === 'status') await load('status');
+        // 保持当前页，不触发整页重绘。
       } finally {
         setInstallButtonsBusy('', false);
       }
