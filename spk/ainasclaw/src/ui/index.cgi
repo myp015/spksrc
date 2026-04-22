@@ -3217,7 +3217,7 @@ cat <<'HTML'
           console.info('[channels:weixin:inline-qr:server-fallback]', { qrUrl: qrUrl, hasDataUrl: !!dataUrl });
         }
         window.__weixinQrDataUrl = dataUrl;
-        renderWeixinQrInline(dataUrl, qrUrl, qrEl, '请使用微信扫码完成登录（已在本地/服务端重绘）');
+        renderWeixinQrInline(dataUrl, qrUrl, qrEl, '请使用微信扫码完成登录');
       } catch (e) {
         console.error('[channels:weixin:inline-qr:error]', e);
         qrEl.innerHTML = '<div style="font-size:13px;color:#b42318;margin-bottom:8px;">二维码重绘失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
@@ -3225,6 +3225,11 @@ cat <<'HTML'
       }
     }
     let __weixinPollTimer = null;
+    function isWeixinDialogActive() {
+      const m = document.getElementById('channelModalMask');
+      const sel = document.getElementById('dlg_channel_type');
+      return !!(m && m.style.display !== 'none' && sel && sel.value === 'openclaw-weixin');
+    }
     async function startWeixinLogin(force) {
       const startTs = Date.now();
       // 新一轮登录开始：重置连接态，避免旧轮询导致“未刷新二维码就自动保存”。
@@ -3250,6 +3255,7 @@ cat <<'HTML'
         const data = await api('weixin_login_start', 'POST', { force: !!force });
         console.info('[channels:weixin:start:timing]', { elapsedMs: Date.now() - startTs, force: !!force });
         if (data && data.qrUrl) {
+          if (!isWeixinDialogActive()) return;
           await renderWeixinQr(data.qrUrl, qrEl);
           statusEl.textContent = '会话：' + (data.sessionKey || '-') + '，请扫码。';
           window.__weixinSessionKey = data.sessionKey || '';
@@ -3292,7 +3298,7 @@ cat <<'HTML'
           window.__weixinQrUrl = latestQr;
           await renderWeixinQr(latestQr, qrEl);
         }
-        if (data.connected && window.__weixinAutoSaveArmed && window.__weixinLoginActive) {
+        if (data.connected && window.__weixinAutoSaveArmed && window.__weixinLoginActive && isWeixinDialogActive()) {
           window.__weixinConnected = true;
           window.__weixinAutoSaveArmed = false;
           syncChannelSaveButtonState();
@@ -3310,6 +3316,7 @@ cat <<'HTML'
             setMsg('微信已连接，但自动保存失败：' + (e.message || e), 'err');
           }
           setMsg('微信已连接（已自动保存）', 'ok');
+          closeChannelDialog();
         }
       } catch (e) {
         if (!silent) setMsg('查询微信状态失败：' + (e.message || e), 'err');
