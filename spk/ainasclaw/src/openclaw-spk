@@ -48,54 +48,28 @@ fi
 
 WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$BASE_DEFAULT}"
 WORKSPACE_FROM_PTR="0"
-if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ] && [ -f "$WORKSPACE_PTR_FILE" ]; then
-  PWS="$(cat "$WORKSPACE_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
-  if [ -n "$PWS" ]; then
-    WS_HOME="$WORKSPACE_HOME_DEFAULT"
-    if [ -f "$WORKSPACE_HOME_PTR_FILE" ]; then
-      WS_HOME_RAW="$(cat "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
-      [ -n "$WS_HOME_RAW" ] && WS_HOME="$WS_HOME_RAW"
+if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+  # Single source of truth: workspace.home.path (real user dir).
+  if [ -f "$WORKSPACE_HOME_PTR_FILE" ]; then
+    WS_HOME_RAW="$(cat "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+    if [ -n "$WS_HOME_RAW" ]; then
+      WORKSPACE_DIR="$WS_HOME_RAW"
+      WORKSPACE_FROM_PTR="1"
     fi
-    # Auto-heal: when $HOME still points to default, prefer a better existing workspace
-    # that already has gateway.mode/token/models, so doctor/env follow the active config.
-    if [ "$WS_HOME" = "$WORKSPACE_HOME_DEFAULT" ]; then
-      WS_DISCOVERED="$(python3 - "$WORKSPACE_HOME_DEFAULT" <<'PY'
-import glob, json, os, sys
-base = sys.argv[1] if len(sys.argv) > 1 else '/volume1/openclaw'
-best = None
-for p in glob.glob(base + '/*/.openclaw/openclaw.json') + [base + '/.openclaw/openclaw.json']:
-    if '/#recycle/' in p:
-        continue
-    try:
-        c = json.load(open(p, 'r', encoding='utf-8'))
-        st = os.stat(p)
-    except Exception:
-        continue
-    gw = c.get('gateway') or {}
-    auth = gw.get('auth') or {}
-    score = 0
-    if gw.get('mode'): score += 2
-    if auth.get('token'): score += 2
-    if (c.get('models') or {}).get('providers'): score += 1
-    wd = p[:-len('/.openclaw/openclaw.json')]
-    sub = 0 if wd == base else 1
-    cand = (score, sub, st.st_mtime, wd)
-    if best is None or cand > best:
-        best = cand
-print(best[3] if best else base)
-PY
-)"
-      [ -n "$WS_DISCOVERED" ] && WS_HOME="$WS_DISCOVERED"
+  fi
+  # Backward compatibility: if no home-pointer yet, fallback to legacy workspace.path rules.
+  if [ "$WORKSPACE_FROM_PTR" != "1" ] && [ -f "$WORKSPACE_PTR_FILE" ]; then
+    PWS="$(cat "$WORKSPACE_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+    if [ -n "$PWS" ]; then
+      case "$PWS" in
+        '$HOME'|'/var/packages/ainasclaw/home') PWS="$WORKSPACE_HOME_DEFAULT" ;;
+        '$HOME'/*) PWS="$WORKSPACE_HOME_DEFAULT/${PWS#\$HOME/}" ;;
+        '/var/packages/ainasclaw/home'/*) PWS="$WORKSPACE_HOME_DEFAULT/${PWS#/var/packages/ainasclaw/home/}" ;;
+        */.openclaw) PWS="${PWS%/.openclaw}" ;;
+      esac
+      WORKSPACE_DIR="$PWS"
+      WORKSPACE_FROM_PTR="1"
     fi
-    case "$PWS" in
-      '$HOME') PWS="$WS_HOME" ;;
-      '$HOME'/*) PWS="$WS_HOME/${PWS#\$HOME/}" ;;
-      '/var/packages/ainasclaw/home') PWS="$WS_HOME" ;;
-      '/var/packages/ainasclaw/home'/*) PWS="$WS_HOME/${PWS#/var/packages/ainasclaw/home/}" ;;
-      */.openclaw) PWS="${PWS%/.openclaw}" ;;
-    esac
-    WORKSPACE_DIR="$PWS"
-    WORKSPACE_FROM_PTR="1"
   fi
 fi
 if [ -n "$CONFIG_PATH" ]; then
