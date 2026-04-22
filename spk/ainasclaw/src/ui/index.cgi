@@ -1114,18 +1114,11 @@ env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
 env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
 env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
 env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
-cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'status', '--json']
+# 性能优化：轮询接口不再调用 channels status（该命令可阻塞数秒），
+# 直接走二维码状态 API 判断连接结果。
 raw = ''
-try:
-    p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
-    raw = (p.stdout or b'').decode('utf-8', 'ignore')
-except Exception as e:
-    raw = str(e)
-text = raw
-if raw.strip().startswith('202') and '\n{' in raw:
-    text = raw[raw.find('\n{')+1:]
 connected = False
-message = '等待扫码确认'
+message = ''
 
 # 新实现：直接轮询二维码状态接口（对齐 sc-openclaw_v0.0.10），不再依赖日志关键字判定连接。
 import urllib.request, urllib.error
@@ -2395,7 +2388,7 @@ cat <<'HTML'
             + '    <div class="field"><label>用户目录</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/openclaw') + '" placeholder="/volume1/openclaw"></div>'
             + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="closeUserSettingsDialog()">取消</button>'
-            + '      <button class="btn primary" onclick="saveWorkspaceQuick();closeUserSettingsDialog();">保存</button>'
+            + '      <button class="btn primary" onclick="saveWorkspaceQuick();">保存</button>'
             + '    </div>'
             + '  </div>'
             + '</div>';
@@ -2656,6 +2649,9 @@ cat <<'HTML'
     }
     function applyProviderPresetDialog() {
       const presetId = document.getElementById('dlg_provider_preset').value;
+      // 用户要求：切换服务商时，先清空当前已选模型，再切到该服务商模型集。
+      window.__modelOptionPool = [];
+      setSelectedModelIdsToHidden([]);
       if (presetId === 'custom-openai') {
         document.getElementById('dlg_provider_id').value = 'custom-openai';
         document.getElementById('dlg_api').value = 'openai-completions';
@@ -2664,7 +2660,7 @@ cat <<'HTML'
         if (keyEl && !keyEl.value) keyEl.value = 'sk-V5zPkG6MJrIpxgmDw';
         setModelSelectOptions([], []);
         document.getElementById('dlg_model_ids').value = '';
-        setMsg('已切换到 custom-openai 默认模板', 'ok');
+        setMsg('已切换到 custom-openai 默认模板（已清空已选模型）', 'ok');
         return;
       }
       const preset = PROVIDER_PRESETS[presetId];
@@ -2673,8 +2669,9 @@ cat <<'HTML'
       document.getElementById('dlg_base_url').value = preset.baseUrl || '';
       document.getElementById('dlg_api').value = preset.api || 'openai-completions';
       const builtin = (preset.models || []).filter(Boolean);
+      window.__modelOptionPool = builtin.slice();
       setModelSelectOptions(builtin, builtin);
-      setMsg('已按内置模板填充服务商模型列表（不联网拉取）', 'ok');
+      setMsg('已切换服务商并重置为该服务商模型列表', 'ok');
     }
     function getSelectedModelIdsFromHidden() {
       const raw = (document.getElementById('dlg_model_ids').value || '').trim();
@@ -2992,6 +2989,9 @@ cat <<'HTML'
         } else {
           setMsg('用户目录保存成功：' + workspaceDir, 'ok');
         }
+        // 立即重拉状态页，刷新“用户文件夹路径/配置文件”显示。
+        await load('status');
+        closeUserSettingsDialog();
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
       finally {
         if (hotReloadTriggered) {
@@ -3334,9 +3334,6 @@ cat <<'HTML'
               // 第一步：立即落配置（不重载）
               const sv = await api('channels_save', 'POST', { weixin: { enabled: true }, noReload: true });
               if (sv && sv.error) throw new Error(sv.error);
-              if (currentTab === 'channels') {
-                await load('channels');
-              }
               setMsg('微信已连接（已立即保存）', 'ok');
               // 第二步：后台再做热加载（不阻塞 UI）
               api('channels_save', 'POST', { weixin: { enabled: true } }).catch(() => {});
