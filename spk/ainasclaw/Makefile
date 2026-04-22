@@ -40,9 +40,9 @@ DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
 SERVICE_PORT = 18700
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
-# Force Package Center "Open" to DSM same-origin proxy entry to avoid backend nesting.
+# Package Center "Open" target URL.
 ADMIN_PORT = $(SERVICE_PORT)
-ADMIN_URL = /webman/3rdparty/ainasclaw/index.cgi
+ADMIN_URL = http://127.0.0.1:18789
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
