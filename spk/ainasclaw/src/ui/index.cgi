@@ -26,7 +26,15 @@ except Exception:
 # normalize: workspace should be user directory, not nested .openclaw path
 if workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
-print(os.path.join(workspace, '.openclaw', 'openclaw.json'))
+cfg_path = os.path.join(workspace, '.openclaw', 'openclaw.json')
+os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+if base and os.path.exists(base) and base != cfg_path and not os.path.exists(cfg_path):
+    try:
+        import shutil
+        shutil.copy2(base, cfg_path)
+    except Exception:
+        pass
+print(cfg_path)
 PY
 )"
 
@@ -202,6 +210,7 @@ raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
 try:
+try:
     payload = json.loads(raw or '{}')
 except Exception:
     payload = {}
@@ -217,10 +226,11 @@ if workspace:
     cfg.setdefault('agents', {}).setdefault('defaults', {})['workspace'] = workspace
     qmd = cfg.setdefault('memory', {}).setdefault('qmd', {})
     paths = qmd.setdefault('paths', [])
+    state_path = os.path.join(workspace, '.openclaw')
     if not paths:
-        paths.append({'path': workspace, 'name': 'workspace', 'pattern': '**/*.md'})
+        paths.append({'path': state_path, 'name': 'workspace', 'pattern': '**/*.md'})
     elif isinstance(paths[0], dict):
-        paths[0]['path'] = workspace
+        paths[0]['path'] = state_path
 providers_payload = payload.get('providers') or []
 apply_now = bool(payload.get('applyNow', True))
 existing_providers = ((cfg.get('models') or {}).get('providers') or {})
@@ -356,6 +366,8 @@ else:
     out['gatewayAutoStartTriggered'] = False
     out['message'] = '配置已保存（未自动启用）'
 print(json.dumps(out, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({'ok': False, 'error': str(e), 'configPath': cfg_path if 'cfg_path' in globals() else ''}, ensure_ascii=False))
 PY
             exit 0
             ;;
