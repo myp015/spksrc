@@ -91,7 +91,9 @@ openclaw_prepare_bundle:
 		@soimy/dingtalk@3.5.3 \
 		@sunnoy/wecom@3.0.0 \
 		@tencent-connect/openclaw-qqbot@1.7.1 \
-		@tencent-weixin/openclaw-weixin@2.1.8
+		@tencent-weixin/openclaw-weixin@2.1.8 \
+		acpx@0.5.3 \
+		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o bun-linux-$(BUN_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(BUN_DIST_ARCH).zip
