@@ -90,6 +90,8 @@ PY
     case "$PWS" in
       '$HOME') PWS="$WS_HOME" ;;
       '$HOME'/*) PWS="$WS_HOME/${PWS#\$HOME/}" ;;
+      '/var/packages/ainasclaw/home') PWS="$WS_HOME" ;;
+      '/var/packages/ainasclaw/home'/*) PWS="$WS_HOME/${PWS#/var/packages/ainasclaw/home/}" ;;
       */.openclaw) PWS="${PWS%/.openclaw}" ;;
     esac
     WORKSPACE_DIR="$PWS"
