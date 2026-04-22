@@ -285,12 +285,17 @@ if apply_now:
                 except Exception:
                     pass
 
+            os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
+            try:
+                logf = open(spawn_log, 'ab', buffering=0)
+            except Exception:
+                logf = None
             p = subprocess.Popen(
                 ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', '18789'],
                 env=env,
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=(logf if logf is not None else subprocess.DEVNULL),
+                stderr=(logf if logf is not None else subprocess.DEVNULL),
                 close_fds=True,
                 start_new_session=True,
             )
@@ -1430,10 +1435,11 @@ PY
         install_run)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body" "/volume1/docker/openclaw/.openclaw/openclaw.json"
+            python3 - <<'PY' "$body" "/volume1/docker/openclaw/.openclaw/openclaw.json" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
 import json, os, subprocess, sys, time
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
-cfg = sys.argv[2]
+cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/docker/openclaw/.openclaw/openclaw.json'
+spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
 try:
     payload = json.loads(raw or '{}')
 except Exception:
@@ -1648,7 +1654,8 @@ PY
             [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date +%Y-%m-%d).log"
             [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date -d yesterday +%Y-%m-%d 2>/dev/null).log"
             APP_LOG="$LOG_FILE"
-            SPAWN_LOG="/tmp/openclaw-gateway.spawn.log"
+            SPAWN_LOG="${APP_VAR_DIR}/openclaw-gateway.spawn.log"
+            [ -f "$SPAWN_LOG" ] || SPAWN_LOG="/tmp/openclaw-gateway.spawn.log"
             [ -f "$OCL_LOG" ] || touch "$OCL_LOG"
             [ -f "$APP_LOG" ] || touch "$APP_LOG"
             [ -f "$SPAWN_LOG" ] || touch "$SPAWN_LOG"
