@@ -53,32 +53,23 @@ urldecode() {
 read_body() {
     if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
         # Read exact bytes from stdin (more reliable than dd across DSM CGI variants).
-        python3 - <<'PY' "$CONTENT_LENGTH"
-import sys
-try:
-    n = int(sys.argv[1])
-except Exception:
-    n = 0
-if n > 0:
-    sys.stdout.buffer.write(sys.stdin.buffer.read(n))
-PY
+        python3 -c 'import sys
+n=int(sys.argv[1]) if len(sys.argv)>1 else 0
+sys.stdout.buffer.write(sys.stdin.buffer.read(n) if n>0 else b"")
+' "$CONTENT_LENGTH"
     else
         # Some DSM CGI flows don't provide CONTENT_LENGTH for JSON POST.
         # Read stdin in non-blocking/idle-timeout mode to avoid hanging forever.
-        python3 - <<'PY'
-import os, sys, select
-fd = sys.stdin.fileno()
-chunks = []
+        python3 -c 'import os,sys,select
+fd=sys.stdin.fileno(); chunks=[]
 while True:
-    r, _, _ = select.select([fd], [], [], 0.15)
-    if not r:
-        break
-    data = os.read(fd, 65536)
-    if not data:
-        break
-    chunks.append(data)
-sys.stdout.buffer.write(b''.join(chunks))
-PY
+  r,_,_=select.select([fd],[],[],0.15)
+  if not r: break
+  data=os.read(fd,65536)
+  if not data: break
+  chunks.append(data)
+sys.stdout.buffer.write(b"".join(chunks))
+'
     fi
 }
 
