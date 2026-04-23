@@ -28,11 +28,11 @@ jobs:
 
       - name: Prepare signing key
         run: |
-          mkdir -p /root/.openclaw/keys/ainasclaw
-          cat > /root/.openclaw/keys/ainasclaw/spk-signing-private.pem <<'EOF'
+          mkdir -p .openclaw/keys/ainasclaw
+          cat > .openclaw/keys/ainasclaw/spk-signing-private.pem <<'EOF'
           ${{ secrets.AINASCLAW_SPK_SIGN_KEY }}
           EOF
-          chmod 600 /root/.openclaw/keys/ainasclaw/spk-signing-private.pem
+          chmod 600 .openclaw/keys/ainasclaw/spk-signing-private.pem
 
       - name: Cache toolchains
         uses: actions/cache@v5
@@ -44,7 +44,7 @@ jobs:
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
           entrypoint: /bin/bash
-          args: -lc "set -e; cd /github/workspace/spk/ainasclaw && make arch-x64-7.2"
+          args: -lc "set -e; cd /github/workspace/spk/ainasclaw && SPK_SIGN_KEY_PATH=/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem make arch-x64-7.2"
 
       - name: Upload SPK artifact
         uses: actions/upload-artifact@v6
