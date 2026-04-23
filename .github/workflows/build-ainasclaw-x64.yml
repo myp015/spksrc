@@ -6,7 +6,7 @@ on:
       - master
     paths:
       - 'spk/ainasclaw/**'
-      - '.github/workflows/build-openclaw2-x64.yml'
+      - '.github/workflows/build-ainasclaw-x64.yml'
   workflow_dispatch:
     inputs:
       ref:
@@ -25,6 +25,14 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref || 'master' }}
           fetch-depth: 0
+
+      - name: Prepare signing key
+        run: |
+          mkdir -p /root/.openclaw/keys/ainasclaw
+          cat > /root/.openclaw/keys/ainasclaw/spk-signing-private.pem <<'EOF'
+          ${{ secrets.AINASCLAW_SPK_SIGN_KEY }}
+          EOF
+          chmod 600 /root/.openclaw/keys/ainasclaw/spk-signing-private.pem
 
       - name: Cache toolchains
         uses: actions/cache@v5
