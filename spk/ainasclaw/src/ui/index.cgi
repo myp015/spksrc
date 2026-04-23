@@ -1401,6 +1401,9 @@ try:
             workspace_dir = ws
 except Exception:
     pass
+# Terminal default path must be HOME/workspace root, not state dir.
+if isinstance(workspace_dir, str) and workspace_dir.endswith('/.openclaw'):
+    workspace_dir = workspace_dir[:-10] or '/volume1/openclaw'
 try:
     os.makedirs(workspace_dir, exist_ok=True)
 except Exception:
