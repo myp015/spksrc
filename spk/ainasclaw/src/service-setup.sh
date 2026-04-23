@@ -73,11 +73,18 @@ validate_preinst() {
       exit 1
     }
 
-    # 3) verify INFO hash (covers package metadata tampering)
-    # INFO may be outside package root during install phase (e.g. .../install.xxxx/INFO).
-    local manifest_info info_path info_sum
-    manifest_info="$(awk '$2=="INFO"{print $1}' "${manifest}" | tail -n1)"
-    if [ -n "${manifest_info}" ]; then
+    # 3) verify outer INFO integrity by detached signature + checksum file in SPK root
+    local info_path info_manifest info_sig info_pub info_sum expected_info_sum
+    info_manifest="$(dirname "${check_root}")/spk-info.sha256"
+    info_sig="$(dirname "${check_root}")/spk-info.sig"
+    info_pub="${pubkey}"
+
+    if [ -f "${info_manifest}" ] && [ -f "${info_sig}" ]; then
+      openssl dgst -sha256 -verify "${info_pub}" -signature "${info_sig}" "${info_manifest}" >/dev/null 2>&1 || {
+        echo "[ainasclaw] INFO signature verification failed" 1>&2
+        exit 1
+      }
+
       info_path=""
       for cand in \
         "${check_root}/INFO" \
@@ -94,8 +101,9 @@ validate_preinst() {
         echo "[ainasclaw] INFO missing for integrity verification" 1>&2
         exit 1
       fi
+      expected_info_sum="$(awk '$2=="INFO"{print $1}' "${info_manifest}" | tail -n1)"
       info_sum="$(sha256sum "${info_path}" | awk '{print $1}')"
-      if [ "${info_sum}" != "${manifest_info}" ]; then
+      if [ -z "${expected_info_sum}" ] || [ "${info_sum}" != "${expected_info_sum}" ]; then
         echo "[ainasclaw] INFO integrity check failed: package metadata was modified" 1>&2
         exit 1
       fi
