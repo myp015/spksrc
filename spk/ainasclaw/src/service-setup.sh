@@ -342,6 +342,29 @@ finally:
 PY
 }
 
+sync_dsm_package_info_port() {
+    local gw_port="$1"
+    [ -n "${gw_port}" ] || return 0
+
+    # Keep DSM package detail page in sync with runtime gateway port.
+    local info_file="/var/packages/ainasclaw/INFO"
+    [ -f "${info_file}" ] || info_file="/var/packages/openclaw/INFO"
+    if [ -f "${info_file}" ]; then
+        if grep -q '^adminport="' "${info_file}" 2>/dev/null; then
+            sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${gw_port}\"/" "${info_file}" 2>/dev/null || true
+        else
+            printf '\nadminport="%s"\n' "${gw_port}" >> "${info_file}" 2>/dev/null || true
+        fi
+    fi
+
+    local resource_file="/var/packages/ainasclaw/conf/resource"
+    [ -f "${resource_file}" ] || resource_file="/var/packages/openclaw/conf/resource"
+    if [ -f "${resource_file}" ]; then
+        sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${gw_port}/" "${resource_file}" 2>/dev/null || true
+        sed -i -E "s/(\"service_port\"\s*:\s*)[0-9]+/\1${gw_port}/" "${resource_file}" 2>/dev/null || true
+    fi
+}
+
 start_gateway_if_needed() {
     local gw_port="$(get_gateway_port_from_config)"
     # Best-effort auto-start for install/init flows only.
@@ -679,6 +702,9 @@ NGINX_EOF
         if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
             ensure_gateway_port_in_config 1 "${OPENCLAW_CONFIG_FILE_BASE}" >/dev/null 2>&1 || true
         fi
+
+        # 同步 DSM 套件详情页端口展示（adminport）到当前 runtime 端口。
+        sync_dsm_package_info_port "$(get_gateway_port_from_config "${OPENCLAW_CONFIG_FILE_BASE}")"
 
         # Wizard defaults
         if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
@@ -1145,6 +1171,9 @@ EOF
         # 非首次安装流程（start/restart/upgrade）保留既有端口。
         assigned_gateway_port="$(ensure_gateway_port_in_config 0 "${OPENCLAW_CONFIG_FILE}")"
     fi
+
+    # 每次 prestart 同步 DSM 套件详情页端口展示。
+    sync_dsm_package_info_port "${assigned_gateway_port}"
 
     # 始终将当前用户目录规则写回配置：
     # workspace=/xxx
