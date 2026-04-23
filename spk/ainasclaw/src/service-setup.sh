@@ -14,6 +14,35 @@ WORKSPACE_HOME_PTR_FILE="${SYNOPKG_PKGVAR}/workspace.home.path"
 AUTO_INIT_ON_INSTALL_MARKER="${SYNOPKG_PKGVAR}/auto-init-on-install.flag"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
+INTEGRITY_MANIFEST="${OPENCLAW_APP_DIR}/config/spk-integrity.sha256"
+
+validate_preinst() {
+    # Package-level integrity check (install/upgrade time, no SSH needed by user).
+    # If tracked files were modified inside SPK payload, block install/upgrade.
+    if [ ! -f "${INTEGRITY_MANIFEST}" ]; then
+        echo "[ainasclaw] integrity manifest missing: ${INTEGRITY_MANIFEST}" 1>&2
+        exit 1
+    fi
+
+    local check_root="${SYNOPKG_PKGDEST}"
+    [ -d "${check_root}" ] || check_root="${SYNOPKG_PKGTEMP}"
+    if [ ! -d "${check_root}" ]; then
+        echo "[ainasclaw] integrity check root not found: ${check_root}" 1>&2
+        exit 1
+    fi
+
+    (
+      cd "${check_root}" || exit 1
+      sha256sum -c "${INTEGRITY_MANIFEST}" >/dev/null
+    ) || {
+      echo "[ainasclaw] integrity check failed: package payload was modified" 1>&2
+      exit 1
+    }
+}
+
+validate_preupgrade() {
+    validate_preinst
+}
 
 resolve_state_dir_from_workspace() {
     local ws="$1"

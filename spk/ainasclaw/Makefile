@@ -129,6 +129,12 @@ openclaw_copy_target:
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
+	@cd $(STAGING_DIR) && sha256sum \
+		bin/openclaw \
+		ui/index.cgi \
+		app/openclaw/dist/index.js \
+		app/openclaw/config/openclaw.template.json \
+		> app/openclaw/config/spk-integrity.sha256
 
 .PHONY: openclaw_extra_install
 openclaw_extra_install:
