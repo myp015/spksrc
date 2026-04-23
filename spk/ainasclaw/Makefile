@@ -22,9 +22,9 @@ REQUIRED_MIN_DSM = 7.2
 
 MAINTAINER = ainas
 MAINTAINER_URL = https://ainas.taobao.com
-DESCRIPTION = AiNasClaw for Synology (ported from sc-openclaw_v0.0.10.fpk with fn monitor assets + DSM runtime integration). 默认 Token: 123456（安装后可修改）。
+DESCRIPTION = AiNasClaw for Synology，淘宝店铺：https://ainas.taobao.com  默认 Token: 123456（安装后可修改）。
 DISPLAY_NAME = AiNasClaw
-CHANGELOG = "Initial AiNasClaw package: migrated fn.sc-openclaw monitor/ui assets from sc-openclaw_v0.0.10.fpk and integrated with DSM OpenClaw runtime bundle."
+CHANGELOG = "integrated with DSM OpenClaw runtime bundle."
 
 HOMEPAGE = https://ainas.taobao.com
 LICENSE = MIT
@@ -37,7 +37,7 @@ NO_SERVICE_SHORTCUT = yes
 DSM_UI_DIR = app
 DSM_UI_CONFIG = src/app/config
 DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
-SERVICE_PORT = 18700
+SERVICE_PORT = 18789
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
 # Package Center "Open" should use DSM webman entry (same-origin with session).
