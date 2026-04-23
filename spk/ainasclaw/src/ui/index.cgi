@@ -2556,14 +2556,43 @@ cat <<'HTML'
         }
 
         if (tab === 'terminal') {
+          const dsmTerminalOk = await probeDsmTerminal();
+          if (dsmTerminalOk) {
+            content.innerHTML = ''
+              + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
+              + '  <div style="font-size:13px;color:#667085;">终端说明：此终端运行在套件内部环境，默认进入用户目录；关闭页面后会话会自动结束。</div>'
+              + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
+              + '    <iframe src="/openclaw-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
+              + '  </div>'
+              + '</div>';
+            setMsg('');
+            return;
+          }
+
+          // 永久兜底：当 nginx alias 不可用时，自动切到内置终端（不依赖 /openclaw-terminal/ 路由）。
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">终端说明：此终端运行在套件内部环境，默认进入用户目录；关闭页面后会话会自动结束。</div>'
-            + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
-            + '    <iframe src="/openclaw-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
+            + '  <div style="font-size:13px;color:#667085;">检测到 DSM 终端路由不可用，已自动切换到内置终端模式（功能一致，可直接使用）。</div>'
+            + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+            + '    <button class="btn" onclick="restartTerminalSession()">重连会话</button>'
+            + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
+            + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
+            + '    <button class="btn" onclick="clearTerminalView()">清空显示</button>'
+            + '    <span id="terminal_cwd" style="font-size:12px;color:#667085;">当前目录：-</span>'
+            + '  </div>'
+            + '  <div id="terminal_box" tabindex="0" style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:auto;background:#111827;color:#e5e7eb;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.45;">'
+            + '    <div id="terminal_prompt_line" style="color:#9ca3af;margin-bottom:6px;">root@localhost:~$</div>'
+            + '    <pre id="terminal_pre" style="margin:0;white-space:pre-wrap;word-break:break-word;"></pre>'
+            + '  </div>'
+            + '  <div style="display:flex;gap:8px;">'
+            + '    <input id="terminal_fallback_input" style="flex:1;" placeholder="输入命令后回车（例如 openclaw doctor）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}">'
+            + '    <button class="btn primary" onclick="sendTerminalLineFromInput()">执行</button>'
             + '  </div>'
             + '</div>';
-          setMsg('');
+          setMsg('终端已切换为内置模式（无需 nginx alias）', 'ok');
+          hookTerminalGlobalKeys();
+          setTimeout(() => { focusTerminal(); }, 0);
+          await ensureTerminalSession();
           return;
         }
         if (tab === 'models') {
