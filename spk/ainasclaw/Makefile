@@ -139,7 +139,16 @@ openclaw_copy_target:
 		app/openclaw/dist/index.js \
 		app/openclaw/config/openclaw.template.json \
 		> app/openclaw/config/spk-integrity.sha256
-	@sha256sum $(WORK_DIR)/INFO | awk '{print $$1 "  INFO"}' > $(WORK_DIR)/spk-info.sha256
+	@if [ ! -f "$(WORK_DIR)/INFO" ]; then \
+		echo "Missing INFO for spk-info manifest: $(WORK_DIR)/INFO"; \
+		exit 1; \
+	fi
+	@info_sum=$$(sha256sum "$(WORK_DIR)/INFO" | awk '{print $$1}'); \
+	if [ -z "$$info_sum" ]; then \
+		echo "Empty INFO checksum, aborting"; \
+		exit 1; \
+	fi; \
+	printf '%s  INFO\n' "$$info_sum" > "$(WORK_DIR)/spk-info.sha256"
 	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
 	if [ -f "$$SPK_SIGN_KEY_PATH" ]; then \
 		openssl dgst -sha256 -sign "$$SPK_SIGN_KEY_PATH" \
