@@ -10,6 +10,7 @@ OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 WORKSPACE_PTR_FILE="${SYNOPKG_PKGVAR}/workspace.path"
+WORKSPACE_HOME_PTR_FILE="${SYNOPKG_PKGVAR}/workspace.home.path"
 AUTO_INIT_ON_INSTALL_MARKER="${SYNOPKG_PKGVAR}/auto-init-on-install.flag"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
@@ -824,8 +825,26 @@ process.stdout.write(`${wsFromBase}|${sourcePath}`);
 ' "${OPENCLAW_CONFIG_FILE_BASE}")
 EOF
 
-    if [ -z "${selected_workspace}" ] && [ -f "${WORKSPACE_PTR_FILE}" ]; then
-        selected_workspace="$(cat "${WORKSPACE_PTR_FILE}" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+    # Prefer explicit workspace.home.path (authoritative user home dir), then fallback to workspace.path.
+    local ws_home="${OPENCLAW_WORKSPACE_DEFAULT}"
+    if [ -f "${WORKSPACE_HOME_PTR_FILE}" ]; then
+        ws_home="$(cat "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+        [ -n "${ws_home}" ] || ws_home="${OPENCLAW_WORKSPACE_DEFAULT}"
+    fi
+    if [ -z "${selected_workspace}" ]; then
+        selected_workspace="${ws_home}"
+    fi
+    if [ -f "${WORKSPACE_PTR_FILE}" ]; then
+        local ws_ptr
+        ws_ptr="$(cat "${WORKSPACE_PTR_FILE}" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+        if [ -n "${ws_ptr}" ]; then
+            case "${ws_ptr}" in
+                '$HOME'|'/var/packages/ainasclaw/home') ws_ptr="${ws_home}" ;;
+                '$HOME'/*) ws_ptr="${ws_home}/${ws_ptr#\$HOME/}" ;;
+                '/var/packages/ainasclaw/home'/*) ws_ptr="${ws_home}/${ws_ptr#/var/packages/ainasclaw/home/}" ;;
+            esac
+            selected_workspace="${ws_ptr}"
+        fi
     fi
     if [ -z "${selected_workspace}" ]; then
         selected_workspace="${OPENCLAW_WORKSPACE_DEFAULT}"
@@ -852,13 +871,14 @@ EOF
         rm -rf "${OPENCLAW_STATE_DIR_BASE}/agents" "${OPENCLAW_STATE_DIR_BASE}/flows" 2>/dev/null || true
     fi
 
-    # Persist workspace pointer outside workspace tree; survives workspace deletion.
+    # Persist workspace pointers outside workspace tree; survives workspace deletion.
     mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
-    printf '%s' "${OPENCLAW_WORKSPACE}" > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
+    # Keep workspace.path symbolic and workspace.home.path as actual resolved dir.
+    printf '%s' '$HOME' > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
+    printf '%s' "${OPENCLAW_WORKSPACE}" > "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
     # Keep both pointer files writable by Control-UI web account to avoid save-no-effect.
-    local workspace_home_ptr_file="${SYNOPKG_PKGVAR}/workspace.home.path"
     [ -f "${WORKSPACE_PTR_FILE}" ] && chmod 666 "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
-    [ -f "${workspace_home_ptr_file}" ] && chmod 666 "${workspace_home_ptr_file}" 2>/dev/null || true
+    [ -f "${WORKSPACE_HOME_PTR_FILE}" ] && chmod 666 "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
 
     # 初始化规则：
     # - 用户目录= /xxx
