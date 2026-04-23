@@ -73,18 +73,32 @@ validate_preinst() {
       exit 1
     }
 
-    # 3) verify root INFO hash (covers package metadata tampering)
-    if [ -f "${check_root}/INFO" ]; then
-      local info_sum manifest_info
-      info_sum="$(sha256sum "${check_root}/INFO" | awk '{print $1}')"
-      manifest_info="$(awk '$2=="INFO"{print $1}' "${manifest}" | tail -n1)"
-      if [ -z "${manifest_info}" ] || [ "${info_sum}" != "${manifest_info}" ]; then
+    # 3) verify INFO hash (covers package metadata tampering)
+    # INFO may be outside package root during install phase (e.g. .../install.xxxx/INFO).
+    local manifest_info info_path info_sum
+    manifest_info="$(awk '$2=="INFO"{print $1}' "${manifest}" | tail -n1)"
+    if [ -n "${manifest_info}" ]; then
+      info_path=""
+      for cand in \
+        "${check_root}/INFO" \
+        "$(dirname "${check_root}")/INFO" \
+        "${SYNOPKG_PKGTEMP:-}/INFO"
+      do
+        [ -n "${cand}" ] || continue
+        if [ -f "${cand}" ]; then
+          info_path="${cand}"
+          break
+        fi
+      done
+      if [ -z "${info_path}" ]; then
+        echo "[ainasclaw] INFO missing for integrity verification" 1>&2
+        exit 1
+      fi
+      info_sum="$(sha256sum "${info_path}" | awk '{print $1}')"
+      if [ "${info_sum}" != "${manifest_info}" ]; then
         echo "[ainasclaw] INFO integrity check failed: package metadata was modified" 1>&2
         exit 1
       fi
-    else
-      echo "[ainasclaw] INFO missing in package root" 1>&2
-      exit 1
     fi
 }
 
