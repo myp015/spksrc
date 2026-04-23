@@ -37,12 +37,14 @@ NO_SERVICE_SHORTCUT = yes
 DSM_UI_DIR = app
 DSM_UI_CONFIG = src/app/config
 DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
-SERVICE_PORT = 18789
+# DSM package metadata port (for conflict precheck) uses a fixed fallback.
+# Runtime gateway port is dynamically assigned on fresh install in service-setup.sh.
+SERVICE_PORT = 28789
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
 # Package Center "Open" should use DSM webman entry (same-origin with session).
 # Package Center detail/open URL should point to gateway instead of config panel.
-ADMIN_PORT = 18789
+ADMIN_PORT = 28789
 ADMIN_URL = /default/chat?session=main
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
@@ -149,7 +151,7 @@ openclaw_copy_target:
 		exit 1; \
 	fi
 
-$(WORK_DIR)/spk-info.sha256: $(WORK_DIR)/INFO
+$(WORK_DIR)/spk-info.sha256: $(WORK_DIR)/INFO info-checksum
 	@info_sum=$$(sha256sum "$(WORK_DIR)/INFO" | awk '{print $$1}'); \
 	if [ -z "$$info_sum" ]; then \
 		echo "Empty INFO checksum, aborting"; \

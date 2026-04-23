@@ -258,13 +258,82 @@ ensure_session_store_dir() {
     chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
 }
 
+get_gateway_port_from_config() {
+    local cfg_path="${1:-${OPENCLAW_CONFIG_FILE}}"
+    python3 - <<'PY' "${cfg_path}"
+import json, os, sys
+p = sys.argv[1] if len(sys.argv) > 1 else ''
+port = 28789
+try:
+    if p and os.path.exists(p):
+        c = json.load(open(p, 'r', encoding='utf-8'))
+        v = int((((c.get('gateway') or {}).get('port')) or 0))
+        if 1024 <= v <= 65535:
+            port = v
+except Exception:
+    pass
+print(port)
+PY
+}
+
+ensure_gateway_port_in_config() {
+    local force_new="${1:-0}"
+    local cfg_path="${2:-${OPENCLAW_CONFIG_FILE}}"
+    python3 - <<'PY' "${cfg_path}" "${force_new}"
+import json, os, socket, sys
+cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
+force_new = (sys.argv[2] if len(sys.argv) > 2 else '0') == '1'
+
+os.makedirs(os.path.dirname(cfg_path) or '/', exist_ok=True)
+try:
+    c = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
+except Exception:
+    c = {}
+if not isinstance(c, dict):
+    c = {}
+if not isinstance(c.get('gateway'), dict):
+    c['gateway'] = {}
+
+def pick_ephemeral():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(('127.0.0.1', 0))
+        p = int(s.getsockname()[1])
+        if 1024 <= p <= 65535:
+            return p
+    except Exception:
+        pass
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+    return 28789
+
+cur = c['gateway'].get('port')
+try:
+    cur = int(cur)
+except Exception:
+    cur = 0
+has_valid = 1024 <= cur <= 65535
+port = pick_ephemeral() if (force_new or not has_valid) else cur
+c['gateway']['port'] = port
+with open(cfg_path, 'w', encoding='utf-8') as f:
+    json.dump(c, f, ensure_ascii=False, indent=2)
+    f.write('\n')
+print(port)
+PY
+}
+
 gateway_port_up() {
-    python3 - <<'PY'
-import socket
+    local port="${1:-28789}"
+    python3 - <<'PY' "${port}"
+import socket,sys
+port=int(sys.argv[1]) if len(sys.argv)>1 else 28789
 s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 s.settimeout(0.5)
 try:
-    s.connect(('127.0.0.1',18789))
+    s.connect(('127.0.0.1',port))
     print('1')
 except Exception:
     print('0')
@@ -274,8 +343,9 @@ PY
 }
 
 start_gateway_if_needed() {
+    local gw_port="$(get_gateway_port_from_config)"
     # Best-effort auto-start for install/init flows only.
-    if [ "$(gateway_port_up)" = "1" ]; then
+    if [ "$(gateway_port_up "${gw_port}")" = "1" ]; then
         return 0
     fi
 
@@ -285,7 +355,7 @@ start_gateway_if_needed() {
 
     local spawn_log="${SYNOPKG_PKGVAR}/openclaw-gateway.spawn.log"
     mkdir -p "$(dirname "${spawn_log}")" >/dev/null 2>&1 || true
-    nohup "${oc_cli}" gateway run --allow-unconfigured --port 18789 >>"${spawn_log}" 2>&1 &
+    nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
     sleep 1
 }
 
@@ -603,6 +673,11 @@ NGINX_EOF
             else
                 echo "{}" > "${OPENCLAW_CONFIG_FILE_BASE}"
             fi
+        fi
+
+        # 安装阶段立即分配随机 gateway 端口（不依赖 start），避免后续启动命中固定端口冲突。
+        if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
+            ensure_gateway_port_in_config 1 "${OPENCLAW_CONFIG_FILE_BASE}" >/dev/null 2>&1 || true
         fi
 
         # Wizard defaults
@@ -1045,12 +1120,30 @@ EOF
 
     # 用户要求：切换目录时仅按默认模板初始化，不做迁移。
     # 若目标目录未初始化（无 config）或被清空，则使用模板（或最小空配置）重建。
+    local fresh_install_config="0"
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
         if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
             cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
         else
             echo "{}" > "${OPENCLAW_CONFIG_FILE}"
         fi
+        fresh_install_config="1"
+    fi
+
+    # 全新安装/新目录初始化时自动分配网关端口，避免与 DSM 现有端口声明冲突。
+    # 升级或已有配置默认保留原端口不改。
+    local assigned_gateway_port=""
+    local force_reassign_port="0"
+    # 首次安装后第一次 prestart 会带着 marker，强制随机分配一次端口。
+    if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ] || [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
+        force_reassign_port="1"
+    fi
+
+    if [ "${force_reassign_port}" = "1" ]; then
+        assigned_gateway_port="$(ensure_gateway_port_in_config 1 "${OPENCLAW_CONFIG_FILE}")"
+    else
+        # 非首次安装流程（start/restart/upgrade）保留既有端口。
+        assigned_gateway_port="$(ensure_gateway_port_in_config 0 "${OPENCLAW_CONFIG_FILE}")"
     fi
 
     # 始终将当前用户目录规则写回配置：

@@ -5,7 +5,7 @@ if [ -d "/volume1/@appdata/ainasclaw" ]; then
 fi
 
 LOG_FILE="${APP_VAR_DIR}/ainasclaw.log"
-GATEWAY_PORT="18789"
+GATEWAY_PORT="28789"
 QUERY="${QUERY_STRING:-}"
 BASE_CFG_FILE="/volume1/openclaw/.openclaw/openclaw.json"
 
@@ -53,6 +53,23 @@ if workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
 cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
 print(cfg_path)
+PY
+)"
+
+# Dynamic gateway port from active config (fallback 28789)
+GATEWAY_PORT="$(python3 - <<'PY' "$CFG_FILE"
+import json, os, sys
+cfg = sys.argv[1] if len(sys.argv) > 1 else ''
+port = 28789
+try:
+    if cfg and os.path.exists(cfg):
+        c = json.load(open(cfg, 'r', encoding='utf-8'))
+        v = int((((c.get('gateway') or {}).get('port')) or 0))
+        if 1024 <= v <= 65535:
+            port = v
+except Exception:
+    pass
+print(port)
 PY
 )"
 
@@ -532,7 +549,10 @@ if apply_now:
         env['OPENCLAW_ELEVATED_DEFAULT'] = 'full'
         env['OPENCLAW_EXEC_SECURITY_DEFAULT'] = 'full'
 
-        def is_running(port=18789):
+        gw_port = int(os.environ.get('GATEWAY_PORT', '28789') or '28789')
+
+        def is_running(port=None):
+            port = gw_port if port is None else port
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(0.6)
             try:
@@ -546,7 +566,7 @@ if apply_now:
                 except Exception:
                     pass
 
-        currently_running = is_running(18789)
+        currently_running = is_running(gw_port)
         # 如果已运行且目录未变化，避免重复拉起导致 EADDRINUSE。
         # 若目录变化则必须重启，确保 gateway 切到新 workspace。
         if currently_running and not workspace_changed:
@@ -578,7 +598,7 @@ if apply_now:
             except Exception:
                 logf = None
             p = subprocess.Popen(
-                ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', '18789'],
+                ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', str(gw_port)],
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=(logf if logf is not None else subprocess.DEVNULL),
@@ -596,7 +616,7 @@ if apply_now:
 
             running = False
             for _ in range(12):
-                if is_running(18789):
+                if is_running(gw_port):
                     running = True
                     break
                 time.sleep(1)
@@ -1823,7 +1843,24 @@ if action in ('start','restart'):
     gw = c.setdefault('gateway', {})
     gw['bind'] = 'lan'
     gw['mode'] = 'local'
-    gw['port'] = 18789
+    try:
+        gw_port = int((((c.get('gateway') or {}).get('port')) or 0))
+    except Exception:
+        gw_port = 0
+    if not (1024 <= gw_port <= 65535):
+        import socket as _s
+        _sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        try:
+            _sock.bind(('127.0.0.1', 0))
+            gw_port = int(_sock.getsockname()[1])
+        except Exception:
+            gw_port = 28789
+        finally:
+            try:
+                _sock.close()
+            except Exception:
+                pass
+    gw['port'] = gw_port
     cu = gw.setdefault('controlUi', {})
     cu['basePath'] = '/default'
     cu['allowInsecureAuth'] = True
@@ -1989,7 +2026,7 @@ if action in ('start','restart'):
         except Exception:
             logf = None
         p = subprocess.Popen(
-            ['/var/packages/ainasclaw/target/bin/openclaw','gateway','run','--allow-unconfigured','--port','18789'],
+            ['/var/packages/ainasclaw/target/bin/openclaw','gateway','run','--allow-unconfigured','--port',str(gw_port)],
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=(logf if logf is not None else subprocess.DEVNULL),
@@ -2010,7 +2047,8 @@ if action in ('start','restart'):
 
 import socket
 
-def is_running(port=18789):
+def is_running(port=None):
+    port = gw_port if port is None else port
     s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.settimeout(0.6)
     try:
         s.connect(('127.0.0.1',port)); return True
@@ -2019,11 +2057,11 @@ def is_running(port=18789):
     finally:
         s.close()
 
-running = is_running(18789)
+running = is_running(gw_port)
 if action in ('start','restart') and not running:
     for _ in range(12):
         time.sleep(1)
-        running = is_running(18789)
+        running = is_running(gw_port)
         if running:
             break
 print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': initialized}, ensure_ascii=False))
@@ -2428,6 +2466,7 @@ cat <<'HTML'
       try {
         const data = await api(tab);
         if (tab === 'status') {
+          window.__ainasGatewayPort = data.port || 28789;
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
           const mappedDashboard = String(data.dashboardUrl || '').replace(/127\.0\.0\.1|localhost/g, hostFix);
@@ -2447,7 +2486,8 @@ cat <<'HTML'
             ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
-          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || 'http://LAN_HOST:18789/default/chat?session=main').replace('LAN_HOST', window.location.hostname);
+          const fallbackPort = (data.port || 28789);
+          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || ('http://LAN_HOST:' + fallbackPort + '/default/chat?session=main')).replace('LAN_HOST', window.location.hostname);
           const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
@@ -2704,7 +2744,10 @@ cat <<'HTML'
     // 按用户要求："打开 OpenClaw Web" 按钮始终可用，不做状态检测。
     function openOpenclawWeb(url) {
       let u = (url || '').trim();
-      if (!u) u = 'http://' + window.location.hostname + ':18789/default/chat?session=main';
+      if (!u) {
+        const p = (window.__ainasGatewayPort || 28789);
+        u = 'http://' + window.location.hostname + ':' + p + '/default/chat?session=main';
+      }
       u = u.replace('LAN_HOST', window.location.hostname);
       if (!/[?&]token=/.test(u)) {
         const token = '123456';
