@@ -139,8 +139,41 @@ fi
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
 OPENCLAW_WORKSPACE_DIR="$WORKDIR"
+
+resolve_service_user() {
+  # Canonical runtime account for this package is sc-openclaw.
+  # Fallback: read DSM generated privilege username when suffixing occurs (e.g. sc-openclaw2).
+  local preferred="sc-openclaw"
+  if id "$preferred" >/dev/null 2>&1; then
+    printf '%s' "$preferred"
+    return 0
+  fi
+
+  local p
+  for p in /var/packages/ainasclaw/conf/privilege /var/packages/openclaw/conf/privilege; do
+    [ -f "$p" ] || continue
+    local u
+    u="$(python3 - "$p" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+  v=(json.load(open(p,'r',encoding='utf-8')) or {}).get('username') or ''
+  print(v.strip())
+except Exception:
+  print('')
+PY
+)"
+    if [ -n "$u" ] && id "$u" >/dev/null 2>&1; then
+      printf '%s' "$u"
+      return 0
+    fi
+  done
+
+  printf '%s' "$preferred"
+}
+
 # Force runtime identity vars to package service user context.
-OPENCLAW_SERVICE_USER="sc-openclaw"
+OPENCLAW_SERVICE_USER="$(resolve_service_user)"
 USER="$OPENCLAW_SERVICE_USER"
 LOGNAME="$OPENCLAW_SERVICE_USER"
 # Keep runtime artifacts under .openclaw as requested.
@@ -151,8 +184,9 @@ mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/agents/main/sessions"
 chmod 700 "$HOME" "$OPENCLAW_STATE_DIR" 2>/dev/null || true
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME OPENCLAW_SERVICE_USER USER LOGNAME
 
-# No automatic user switching here. If needed, run manually as sc-openclaw:
-#   su -s /bin/sh sc-openclaw
+# No automatic user switching here. If needed, run manually as service user with 2 commands:
+#   su -s /bin/sh <service-user>
+#   openclaw env
 
 show_help() {
   cat <<'EOF'
