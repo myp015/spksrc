@@ -843,6 +843,14 @@ wx_payload = payload.get('openclaw-weixin') if isinstance(payload.get('openclaw-
 if isinstance(wx_payload, dict):
     w = ch.setdefault('openclaw-weixin', {})
     w['enabled'] = bool(wx_payload.get('enabled', True))
+    # Auto-heal doctor requirement: channels.openclaw-weixin.accounts.default
+    acc = w.get('accounts')
+    if isinstance(acc, dict):
+        cur_default = acc.get('default') if isinstance(acc.get('default'), str) else ''
+        account_ids = [k for k, v in acc.items() if k != 'default' and isinstance(v, dict)]
+        if (not cur_default or cur_default not in acc) and account_ids:
+            acc['default'] = account_ids[0]
+            w['accounts'] = acc
 
 # 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
 plugins = cfg.setdefault('plugins', {})
@@ -1267,7 +1275,8 @@ try:
                     wx = {}
                 wx['enabled'] = True
                 wx['defaultAccount'] = aid
-                wx['accounts'] = {aid: {'enabled': True}}
+                # Keep both legacy defaultAccount and schema-required accounts.default.
+                wx['accounts'] = {aid: {'enabled': True}, 'default': aid}
                 chs['openclaw-weixin'] = wx
 
                 # 同步强制插件 allow/entries，避免网关重启后只剩 browser。
