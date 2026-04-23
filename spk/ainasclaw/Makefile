@@ -131,6 +131,7 @@ openclaw_copy_target:
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
 	@cp -f src/spk-integrity.pub.pem $(STAGING_DIR)/app/openclaw/config/spk-integrity.pub.pem
 	@cd $(STAGING_DIR) && sha256sum \
+		INFO \
 		bin/openclaw \
 		ui/index.cgi \
 		app/openclaw/dist/index.js \
