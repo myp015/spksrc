@@ -435,8 +435,8 @@ service_postinst() {
     done
 
     # Install DSM nginx alias for bundled terminal entry (root context during postinst/upgrade).
-    mkdir -p "${SYNOPKG_PKGDEST}/var" 2>/dev/null || true
-    cat > "${SYNOPKG_PKGDEST}/var/alias.openclaw-terminal.conf" <<'NGINX_EOF'
+    mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
+    cat > "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" <<'NGINX_EOF'
 location ~ ^/openclaw-terminal(.*)$ {
     # 必须是 DSM 登录会话
     if ($http_cookie !~* "(^|;\\s*)id=") {
@@ -486,7 +486,7 @@ location ~ ^/openclaw-terminal(.*)$ {
     proxy_buffering         off;
 }
 NGINX_EOF
-    ln -sf "${SYNOPKG_PKGDEST}/var/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf
+    ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf
     if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || true
     fi
@@ -735,6 +735,63 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 }
 
 service_prestart() {
+
+    # Ensure nginx alias survives DSM reboot/service start (postinst is not called on reboot).
+    mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
+    cat > "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" <<'NGINX_EOF'
+location ~ ^/openclaw-terminal(.*)$ {
+    # 必须是 DSM 登录会话
+    if ($http_cookie !~* "(^|;\\s*)id=") {
+        return 403;
+    }
+
+    # 仅拦截“入口页”直链（含多余斜杠变体）；放行 token/ws 等子路径，避免终端握手被误伤
+    set $oc2_block 0;
+    if ($request_uri ~ "^//+openclaw-terminal/*(\\?|$)") {
+        set $oc2_block 1;
+    }
+    if ($request_uri ~ "^/openclaw-terminal/?(\\?|$)") {
+        set $oc2_block 1;
+    }
+    if ($http_referer != "") {
+        set $oc2_block 0;
+    }
+    if ($http_sec_fetch_dest = "iframe") {
+        set $oc2_block 0;
+    }
+    if ($oc2_block = 1) {
+        return 404;
+    }
+
+    proxy_http_version      1.1;
+    proxy_set_header        Host $host;
+    proxy_set_header        Upgrade $http_upgrade;
+    proxy_set_header        Connection "upgrade";
+    proxy_set_header        X-Real-IP $remote_addr;
+    proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header        X-Forwarded-Proto $scheme;
+    proxy_set_header        X-Forwarded-Host $host;
+    proxy_set_header        Cookie $http_cookie;
+    proxy_read_timeout      3600s;
+    proxy_send_timeout      3600s;
+    proxy_connect_timeout   60s;
+
+    add_header              'Access-Control-Allow-Origin' $scheme://$http_host always;
+    add_header              'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+    add_header              'Access-Control-Allow-Headers' 'Authorization,Content-Type,Accept,Origin,User-Agent,DNT,Cache-Control,X-Mx-ReqToken,Keep-Alive,X-Requested-With,If-Modified-Since';
+    add_header              'Access-Control-Allow-Credentials' 'true';
+    add_header              'Cross-Origin-Embedder-Policy' 'require-corp';
+    add_header              'Cross-Origin-Opener-Policy' 'same-origin';
+    add_header              'Cross-Origin-Resource-Policy' 'same-site';
+
+    proxy_pass              http://127.0.0.1:17682;
+    proxy_buffering         off;
+}
+NGINX_EOF
+    ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf 2>/dev/null || true
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1 || true
+    fi
 
     # AiNasClaw bundled terminal (ttyd) integration (no dependency on external terminal package).
     # nginx alias is prepared in service_postinst (root context); here we only ensure ttyd process.
@@ -1439,16 +1496,17 @@ service_poststop() {
 
     stop_gateway_processes
 
-    rm -f /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
-    rm -f /etc/nginx/conf.d/alias.openclaw2-terminal.conf >/dev/null 2>&1 || true
-    if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx >/dev/null 2>&1 || true
-    fi
+    # Keep nginx alias across package stop/reboot; only remove on uninstall.
 }
 
 service_preuninst() {
     # uninstall hook: ensure detached gateway and terminal are cleaned first
     service_poststop
+    rm -f /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
+    rm -f /etc/nginx/conf.d/alias.openclaw2-terminal.conf >/dev/null 2>&1 || true
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1 || true
+    fi
 }
 
 service_postuninst() {
