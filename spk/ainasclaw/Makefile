@@ -139,28 +139,33 @@ openclaw_copy_target:
 		app/openclaw/dist/index.js \
 		app/openclaw/config/openclaw.template.json \
 		> app/openclaw/config/spk-integrity.sha256
-	@if [ ! -f "$(WORK_DIR)/INFO" ]; then \
-		echo "Missing INFO for spk-info manifest: $(WORK_DIR)/INFO"; \
-		exit 1; \
-	fi
-	@info_sum=$$(sha256sum "$(WORK_DIR)/INFO" | awk '{print $$1}'); \
-	if [ -z "$$info_sum" ]; then \
-		echo "Empty INFO checksum, aborting"; \
-		exit 1; \
-	fi; \
-	printf '%s  INFO\n' "$$info_sum" > "$(WORK_DIR)/spk-info.sha256"
 	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
 	if [ -f "$$SPK_SIGN_KEY_PATH" ]; then \
 		openssl dgst -sha256 -sign "$$SPK_SIGN_KEY_PATH" \
 			-out $(STAGING_DIR)/app/openclaw/config/spk-integrity.sig \
 			$(STAGING_DIR)/app/openclaw/config/spk-integrity.sha256; \
-		openssl dgst -sha256 -sign "$$SPK_SIGN_KEY_PATH" \
-			-out $(WORK_DIR)/spk-info.sig \
-			$(WORK_DIR)/spk-info.sha256; \
 	else \
 		echo "Missing signing key: $$SPK_SIGN_KEY_PATH"; \
 		exit 1; \
 	fi
+
+$(WORK_DIR)/spk-info.sha256: $(WORK_DIR)/INFO
+	@info_sum=$$(sha256sum "$(WORK_DIR)/INFO" | awk '{print $$1}'); \
+	if [ -z "$$info_sum" ]; then \
+		echo "Empty INFO checksum, aborting"; \
+		exit 1; \
+	fi; \
+	printf '%s  INFO\n' "$$info_sum" > "$@"
+
+$(WORK_DIR)/spk-info.sig: $(WORK_DIR)/spk-info.sha256
+	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
+	if [ ! -f "$$SPK_SIGN_KEY_PATH" ]; then \
+		echo "Missing signing key: $$SPK_SIGN_KEY_PATH"; \
+		exit 1; \
+	fi; \
+	openssl dgst -sha256 -sign "$$SPK_SIGN_KEY_PATH" -out "$@" "$<"
+
+$(SPK_FILE_NAME): $(WORK_DIR)/spk-info.sha256 $(WORK_DIR)/spk-info.sig
 
 .PHONY: openclaw_extra_install
 openclaw_extra_install:
