@@ -129,12 +129,21 @@ openclaw_copy_target:
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
+	@cp -f src/spk-integrity.pub.pem $(STAGING_DIR)/app/openclaw/config/spk-integrity.pub.pem
 	@cd $(STAGING_DIR) && sha256sum \
 		bin/openclaw \
 		ui/index.cgi \
 		app/openclaw/dist/index.js \
 		app/openclaw/config/openclaw.template.json \
 		> app/openclaw/config/spk-integrity.sha256
+	@if [ -f /root/.openclaw/keys/ainasclaw/spk-signing-private.pem ]; then \
+		openssl dgst -sha256 -sign /root/.openclaw/keys/ainasclaw/spk-signing-private.pem \
+			-out $(STAGING_DIR)/app/openclaw/config/spk-integrity.sig \
+			$(STAGING_DIR)/app/openclaw/config/spk-integrity.sha256; \
+	else \
+		echo "Missing signing key: /root/.openclaw/keys/ainasclaw/spk-signing-private.pem"; \
+		exit 1; \
+	fi
 
 .PHONY: openclaw_extra_install
 openclaw_extra_install:

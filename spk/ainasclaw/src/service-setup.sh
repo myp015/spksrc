@@ -15,14 +15,30 @@ AUTO_INIT_ON_INSTALL_MARKER="${SYNOPKG_PKGVAR}/auto-init-on-install.flag"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
 INTEGRITY_MANIFEST="${OPENCLAW_APP_DIR}/config/spk-integrity.sha256"
+INTEGRITY_SIG="${OPENCLAW_APP_DIR}/config/spk-integrity.sig"
+INTEGRITY_PUBKEY="${OPENCLAW_APP_DIR}/config/spk-integrity.pub.pem"
 
 validate_preinst() {
-    # Package-level integrity check (install/upgrade time, no SSH needed by user).
-    # If tracked files were modified inside SPK payload, block install/upgrade.
+    # Package-level signature + integrity check (install/upgrade time, no SSH needed by user).
+    # If tracked files were modified or signature is invalid, block install/upgrade.
     if [ ! -f "${INTEGRITY_MANIFEST}" ]; then
         echo "[ainasclaw] integrity manifest missing: ${INTEGRITY_MANIFEST}" 1>&2
         exit 1
     fi
+    if [ ! -f "${INTEGRITY_SIG}" ]; then
+        echo "[ainasclaw] integrity signature missing: ${INTEGRITY_SIG}" 1>&2
+        exit 1
+    fi
+    if [ ! -f "${INTEGRITY_PUBKEY}" ]; then
+        echo "[ainasclaw] integrity public key missing: ${INTEGRITY_PUBKEY}" 1>&2
+        exit 1
+    fi
+
+    # 1) verify detached signature of manifest
+    openssl dgst -sha256 -verify "${INTEGRITY_PUBKEY}" -signature "${INTEGRITY_SIG}" "${INTEGRITY_MANIFEST}" >/dev/null 2>&1 || {
+        echo "[ainasclaw] signature verification failed: package is not trusted" 1>&2
+        exit 1
+    }
 
     local check_root="${SYNOPKG_PKGDEST}"
     [ -d "${check_root}" ] || check_root="${SYNOPKG_PKGTEMP}"
@@ -31,6 +47,7 @@ validate_preinst() {
         exit 1
     fi
 
+    # 2) verify file hashes listed in manifest
     (
       cd "${check_root}" || exit 1
       sha256sum -c "${INTEGRITY_MANIFEST}" >/dev/null
