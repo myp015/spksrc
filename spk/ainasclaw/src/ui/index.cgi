@@ -2556,11 +2556,15 @@ cat <<'HTML'
         }
 
         if (tab === 'terminal') {
-          const dsmTerminalOk = await probeDsmTerminal();
+          const forceBuiltin = (window.__forceBuiltinTerminal === true);
+          const dsmTerminalOk = forceBuiltin ? false : await probeDsmTerminal();
           if (dsmTerminalOk) {
             content.innerHTML = ''
               + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-              + '  <div style="font-size:13px;color:#667085;">终端说明：此终端运行在套件内部环境，默认进入用户目录；关闭页面后会话会自动结束。</div>'
+              + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+              + '    <div style="font-size:13px;color:#667085;">终端说明：优先使用 ttyd 终端（/openclaw-terminal/）；可手动切换到内置终端。</div>'
+              + '    <button class="btn" onclick="window.__forceBuiltinTerminal=true;load(\'terminal\');">切换内置终端</button>'
+              + '  </div>'
               + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
               + '    <iframe src="/openclaw-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
               + '  </div>'
@@ -2569,10 +2573,13 @@ cat <<'HTML'
             return;
           }
 
-          // 永久兜底：当 nginx alias 不可用时，自动切到内置终端（不依赖 /openclaw-terminal/ 路由）。
+          // 兜底：当 ttyd 路由不可用或用户手动切换时，使用内置终端（移植 ttyd 风格交互）。
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">检测到 DSM 终端路由不可用，已自动切换到内置终端模式（功能一致，可直接使用）。</div>'
+            + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+            + '    <div style="font-size:13px;color:#667085;">内置终端模式（不依赖 /openclaw-terminal/ 路由）：支持快捷键、实时输出、会话重连。</div>'
+            + '    <button class="btn" onclick="window.__forceBuiltinTerminal=false;load(\'terminal\');">重试 ttyd 终端</button>'
+            + '  </div>'
             + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '    <button class="btn" onclick="restartTerminalSession()">重连会话</button>'
             + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
@@ -2589,7 +2596,7 @@ cat <<'HTML'
             + '    <button class="btn primary" onclick="sendTerminalLineFromInput()">执行</button>'
             + '  </div>'
             + '</div>';
-          setMsg('终端已切换为内置模式（无需 nginx alias）', 'ok');
+          setMsg('已切换到内置终端模式', 'ok');
           hookTerminalGlobalKeys();
           setTimeout(() => { focusTerminal(); }, 0);
           await ensureTerminalSession();
