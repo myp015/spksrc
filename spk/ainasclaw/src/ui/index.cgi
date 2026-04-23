@@ -319,6 +319,18 @@ try:
             hpf.write(workspace)
 except Exception as e:
     pointer_write_err = str(e)
+
+# 目录显式修改时，pointer 写失败必须直接报错，避免“保存成功但实际不生效”。
+if workspace_explicit and pointer_write_err:
+    print(json.dumps({
+        'ok': False,
+        'error': 'workspace pointer 写入失败: ' + pointer_write_err,
+        'workspaceDir': workspace,
+        'configPath': cfg_path,
+        'pointerWriteErr': pointer_write_err
+    }, ensure_ascii=False))
+    raise SystemExit
+
 providers_payload = payload.get('providers') or []
 apply_now = bool(payload.get('applyNow', True))
 existing_providers = ((cfg.get('models') or {}).get('providers') or {})
@@ -1399,7 +1411,11 @@ env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-env['HOME'] = env['OPENCLAW_STATE_DIR']
+# Align terminal env with wrapper semantics: HOME=workspace root, state under HOME/.openclaw
+state_dir = env['OPENCLAW_STATE_DIR']
+workspace_root = state_dir[:-10] if state_dir.endswith('/.openclaw') else '/volume1/openclaw'
+env['OPENCLAW_WORKSPACE_DIR'] = workspace_root
+env['HOME'] = workspace_root
 env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
 env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
 env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
@@ -1851,8 +1867,8 @@ if action in ('start','restart'):
             ent = entries.get(pid)
             if not isinstance(ent, dict):
                 ent = {}
-            # openclaw-weixin 默认为关闭，避免在插件缺失/未配置时造成 doctor 报错。
-            ent['enabled'] = (False if pid == 'openclaw-weixin' else True)
+            # 微信插件默认启用，避免渠道已配置但插件被禁用导致 doctor 报错。
+            ent['enabled'] = True
             entries[pid] = ent
         plugins['entries'] = entries
 

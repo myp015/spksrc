@@ -46,9 +46,14 @@ elif [ -f "$LEGACY_CFG" ]; then
   CONFIG_PATH="$LEGACY_CFG"
 fi
 
-WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$BASE_DEFAULT}"
+# Do not trust inherited OPENCLAW_WORKSPACE_DIR by default (it may come from service env and accidentally reset pointers).
+# Set OPENCLAW_RESPECT_ENV_WORKSPACE=1 only for explicit one-shot override.
+WORKSPACE_DIR="$BASE_DEFAULT"
+if [ "${OPENCLAW_RESPECT_ENV_WORKSPACE:-0}" = "1" ] && [ -n "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+  WORKSPACE_DIR="$OPENCLAW_WORKSPACE_DIR"
+fi
 WORKSPACE_FROM_PTR="0"
-if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+if [ "${OPENCLAW_RESPECT_ENV_WORKSPACE:-0}" != "1" ] || [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
   # Single source of truth: workspace.home.path (real user dir).
   if [ -f "$WORKSPACE_HOME_PTR_FILE" ]; then
     WS_HOME_RAW="$(cat "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
@@ -131,14 +136,16 @@ mkdir -p "$(dirname "$WORKSPACE_PTR_FILE")" 2>/dev/null || true
 if [ ! -f "$WORKSPACE_PTR_FILE" ]; then
   { printf '%s' '$HOME' > "$WORKSPACE_PTR_FILE"; } 2>/dev/null || true
 fi
-# Do not clobber workspace.home.path on every command; only initialize or explicit override.
-if [ ! -f "$WORKSPACE_HOME_PTR_FILE" ] || [ -n "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+# Do not clobber workspace.home.path on every command; only initialize when missing.
+if [ ! -f "$WORKSPACE_HOME_PTR_FILE" ]; then
   { printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_HOME_PTR_FILE"; } 2>/dev/null || true
 fi
+# Control-UI save runs under web service account; keep pointer files writable to avoid silent save-no-effect.
+chmod 666 "$WORKSPACE_PTR_FILE" "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null || true
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
-OPENCLAW_WORKSPACE_DIR="$WORKDIR"
+OPENCLAW_WORKSPACE_DIR="$WORKSPACE_DIR"
 
 resolve_service_user() {
   # Canonical runtime account for this package is sc-openclaw.
@@ -176,12 +183,12 @@ PY
 OPENCLAW_SERVICE_USER="$(resolve_service_user)"
 USER="$OPENCLAW_SERVICE_USER"
 LOGNAME="$OPENCLAW_SERVICE_USER"
-# Keep runtime artifacts under .openclaw as requested.
-HOME_DEFAULT="$WORKDIR"
+# Keep runtime state under .openclaw, but HOME points to user workspace root.
+HOME_DEFAULT="$WORKSPACE_DIR"
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
 # Ensure doctor/session-store checks always pass regardless of HOME interpretation.
-mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/agents/main/sessions" 2>/dev/null || true
-chmod 700 "$HOME" "$OPENCLAW_STATE_DIR" 2>/dev/null || true
+mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/.openclaw/agents/main/sessions" 2>/dev/null || true
+chmod 700 "$OPENCLAW_STATE_DIR" "$HOME/.openclaw" 2>/dev/null || true
 export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME OPENCLAW_SERVICE_USER USER LOGNAME
 
 # No automatic user switching here. If needed, run manually as service user with 2 commands:
@@ -263,11 +270,17 @@ case "$1" in
   gateway)
     case "${2:-}" in
       restart)
-        # 用户最新要求：外部 restart 也必须“先停后启”。
+        # Always restart to running state: stop old process, then detached run.
         "$APP_NODE" "$APP_ENTRY" gateway stop --force >/dev/null 2>&1 || true
         sleep 1
+        # extra safety for stale detached processes
+        pkill -f '/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
         shift 2
-        exec "$APP_NODE" "$APP_ENTRY" gateway run --allow-unconfigured --port 18789 "$@"
+        SPAWN_LOG="${OPENCLAW_STATE_DIR}/gateway-restart.spawn.log"
+        mkdir -p "$(dirname "$SPAWN_LOG")" >/dev/null 2>&1 || true
+        nohup "$APP_NODE" "$APP_ENTRY" gateway run --allow-unconfigured --port 18789 "$@" >>"$SPAWN_LOG" 2>&1 &
+        echo "gateway restarting (pid=$!)"
+        exit 0
         ;;
     esac
     ;;

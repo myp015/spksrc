@@ -741,12 +741,55 @@ service_prestart() {
         if [ ! -f "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" ] || ! kill -0 "$(cat "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid" 2>/dev/null)" 2>/dev/null; then
             local ttyd_bin="${SYNOPKG_PKGDEST}/bin/ttyd"
             local ttyd_args="-p 17682 -6 -a -W --base-path /openclaw-terminal/ -t titleFixed=AiNasClaw -t allow-clipboard-read=true -t allow-clipboard-write=true -t rendererType=canvas"
-            local shell_cmd="/bin/sh"
-            [ -x /bin/bash ] && shell_cmd="/bin/bash"
             local terminfo_root="${SYNOPKG_PKGDEST}/share/terminfo"
             [ -d "${terminfo_root}" ] || terminfo_root="/usr/share/terminfo"
+            local term_entry="${SYNOPKG_PKGVAR}/openclaw-terminal-entry.sh"
+            cat > "${term_entry}" <<'TERM_EOF'
+#!/bin/sh
+set -eu
+base="/volume1/openclaw"
+ptr="/var/packages/ainasclaw/var/workspace.path"
+hptr="/var/packages/ainasclaw/var/workspace.home.path"
+ws="$base"
+ws_home="$base"
+if [ -f "$hptr" ]; then
+  ws_home="$(cat "$hptr" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+  [ -n "$ws_home" ] || ws_home="$base"
+  ws="$ws_home"
+fi
+if [ -f "$ptr" ]; then
+  p="$(cat "$ptr" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+  if [ -n "$p" ]; then
+    case "$p" in
+      '$HOME'|'/var/packages/ainasclaw/home') p="$ws_home" ;;
+      '$HOME'/*) p="$ws_home/${p#\$HOME/}" ;;
+      '/var/packages/ainasclaw/home'/*) p="$ws_home/${p#/var/packages/ainasclaw/home/}" ;;
+      */.openclaw) p="${p%/.openclaw}" ;;
+    esac
+    ws="$p"
+  fi
+fi
+case "$ws" in
+  */.openclaw) ws="${ws%/.openclaw}" ;;
+esac
+state="${ws}/.openclaw"
+mkdir -p "$ws" "$state" "$state/agents/main/sessions" 2>/dev/null || true
+export HOME="$ws"
+export OPENCLAW_WORKSPACE_DIR="$ws"
+export OPENCLAW_STATE_DIR="$state"
+export OPENCLAW_CONFIG_PATH="$state/openclaw.json"
+export NPM_CONFIG_CACHE="$state/.npm"
+export XDG_CACHE_HOME="$state/.cache"
+export XDG_CONFIG_HOME="$state/.config"
+export XDG_DATA_HOME="$state/.local/share"
+if [ -x /bin/bash ]; then
+  exec /bin/bash -l
+fi
+exec /bin/sh -l
+TERM_EOF
+            chmod 755 "${term_entry}" 2>/dev/null || true
             LD_LIBRARY_PATH="${SYNOPKG_PKGDEST}/lib:${LD_LIBRARY_PATH}" TERMINFO="${terminfo_root}" \
-                nohup "${ttyd_bin}" ${ttyd_args} ${shell_cmd} -l >"${LOG_FILE}" 2>&1 &
+                nohup "${ttyd_bin}" ${ttyd_args} "${term_entry}" >"${LOG_FILE}" 2>&1 &
             echo "[ainasclaw] terminal proxy up via ${ttyd_bin} at /openclaw-terminal/" >> "${LOG_FILE}"
             echo $! > "${SYNOPKG_PKGDEST}/var/openclaw-terminal.pid"
         fi
@@ -812,6 +855,10 @@ EOF
     # Persist workspace pointer outside workspace tree; survives workspace deletion.
     mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
     printf '%s' "${OPENCLAW_WORKSPACE}" > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
+    # Keep both pointer files writable by Control-UI web account to avoid save-no-effect.
+    local workspace_home_ptr_file="${SYNOPKG_PKGVAR}/workspace.home.path"
+    [ -f "${WORKSPACE_PTR_FILE}" ] && chmod 666 "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
+    [ -f "${workspace_home_ptr_file}" ] && chmod 666 "${workspace_home_ptr_file}" 2>/dev/null || true
 
     # 初始化规则：
     # - 用户目录= /xxx
@@ -874,11 +921,12 @@ try {
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
 
-    # Fresh install convenience: if default workspace exists, auto-init then start gateway once.
+    # Auto-start gateway when workspace exists and is writable (install + package restart/start cases).
+    if [ -d "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
+        start_gateway_if_needed
+    fi
+    # Keep install marker for backward compatibility; no-op after unified auto-start.
     if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ]; then
-        if [ -d "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
-            start_gateway_if_needed
-        fi
         rm -f "${AUTO_INIT_ON_INSTALL_MARKER}" 2>/dev/null || true
     fi
 
