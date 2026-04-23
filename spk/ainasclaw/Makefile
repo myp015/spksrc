@@ -131,12 +131,17 @@ openclaw_copy_target:
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
 	@cp -f src/spk-integrity.pub.pem $(STAGING_DIR)/app/openclaw/config/spk-integrity.pub.pem
 	@cd $(STAGING_DIR) && sha256sum \
-		INFO \
 		bin/openclaw \
 		ui/index.cgi \
 		app/openclaw/dist/index.js \
 		app/openclaw/config/openclaw.template.json \
 		> app/openclaw/config/spk-integrity.sha256
+	@if [ -f "$(WORK_DIR)/INFO" ]; then \
+		sha256sum "$(WORK_DIR)/INFO" | awk '{print $$1 "  INFO"}' >> $(STAGING_DIR)/app/openclaw/config/spk-integrity.sha256; \
+	else \
+		echo "Missing INFO at build-time: $(WORK_DIR)/INFO"; \
+		exit 1; \
+	fi
 	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
 	if [ -f "$$SPK_SIGN_KEY_PATH" ]; then \
 		openssl dgst -sha256 -sign "$$SPK_SIGN_KEY_PATH" \
