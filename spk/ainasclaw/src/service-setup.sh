@@ -72,6 +72,20 @@ validate_preinst() {
       echo "[ainasclaw] integrity check failed: package payload was modified" 1>&2
       exit 1
     }
+
+    # 3) verify root INFO hash (covers package metadata tampering)
+    if [ -f "${check_root}/INFO" ]; then
+      local info_sum manifest_info
+      info_sum="$(sha256sum "${check_root}/INFO" | awk '{print $1}')"
+      manifest_info="$(awk '$2=="INFO"{print $1}' "${manifest}" | tail -n1)"
+      if [ -z "${manifest_info}" ] || [ "${info_sum}" != "${manifest_info}" ]; then
+        echo "[ainasclaw] INFO integrity check failed: package metadata was modified" 1>&2
+        exit 1
+      fi
+    else
+      echo "[ainasclaw] INFO missing in package root" 1>&2
+      exit 1
+    fi
 }
 
 validate_preupgrade() {
