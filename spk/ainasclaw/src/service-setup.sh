@@ -352,24 +352,50 @@ sync_dsm_package_info_port() {
 
     local info_file="/var/packages/ainasclaw/INFO"
     [ -f "${info_file}" ] || info_file="/var/packages/openclaw/INFO"
-    if [ -f "${info_file}" ]; then
-        if grep -q '^adminport="' "${info_file}" 2>/dev/null; then
-            sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${panel_port}\"/" "${info_file}" 2>/dev/null || true
-        else
-            printf '\nadminport="%s"\n' "${panel_port}" >> "${info_file}" 2>/dev/null || true
-        fi
+    local resource_file="/var/packages/ainasclaw/conf/resource"
+    [ -f "${resource_file}" ] || resource_file="/var/packages/openclaw/conf/resource"
 
-        if grep -q '^adminurl="' "${info_file}" 2>/dev/null; then
-            sed -i -E "s#^adminurl=\".*\"#adminurl=\"${panel_url}\"#" "${info_file}" 2>/dev/null || true
+    # 关键修复：service_prestart 在 DSM7 通常以套件用户运行（非 root），
+    # 直接写 /var/packages/* 可能因权限失败。优先使用 sudo -n 提权写回，失败才尝试直接写。
+    local use_sudo=""
+    if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+        use_sudo="1"
+    fi
+
+    if [ -f "${info_file}" ]; then
+        if [ -n "${use_sudo}" ]; then
+            if grep -q '^adminport="' "${info_file}" 2>/dev/null; then
+                sudo -n sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${panel_port}\"/" "${info_file}" >/dev/null 2>&1 || true
+            else
+                printf '\nadminport="%s"\n' "${panel_port}" | sudo -n tee -a "${info_file}" >/dev/null 2>&1 || true
+            fi
+
+            if grep -q '^adminurl="' "${info_file}" 2>/dev/null; then
+                sudo -n sed -i -E "s#^adminurl=\".*\"#adminurl=\"${panel_url}\"#" "${info_file}" >/dev/null 2>&1 || true
+            else
+                printf 'adminurl="%s"\n' "${panel_url}" | sudo -n tee -a "${info_file}" >/dev/null 2>&1 || true
+            fi
         else
-            printf 'adminurl="%s"\n' "${panel_url}" >> "${info_file}" 2>/dev/null || true
+            if grep -q '^adminport="' "${info_file}" 2>/dev/null; then
+                sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${panel_port}\"/" "${info_file}" 2>/dev/null || true
+            else
+                printf '\nadminport="%s"\n' "${panel_port}" >> "${info_file}" 2>/dev/null || true
+            fi
+
+            if grep -q '^adminurl="' "${info_file}" 2>/dev/null; then
+                sed -i -E "s#^adminurl=\".*\"#adminurl=\"${panel_url}\"#" "${info_file}" 2>/dev/null || true
+            else
+                printf 'adminurl="%s"\n' "${panel_url}" >> "${info_file}" 2>/dev/null || true
+            fi
         fi
     fi
 
-    local resource_file="/var/packages/ainasclaw/conf/resource"
-    [ -f "${resource_file}" ] || resource_file="/var/packages/openclaw/conf/resource"
     if [ -f "${resource_file}" ]; then
-        sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${panel_port}/" "${resource_file}" 2>/dev/null || true
+        if [ -n "${use_sudo}" ]; then
+            sudo -n sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${panel_port}/" "${resource_file}" >/dev/null 2>&1 || true
+        else
+            sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${panel_port}/" "${resource_file}" 2>/dev/null || true
+        fi
     fi
 }
 
