@@ -1403,7 +1403,69 @@ PY
             printf '{"ok":true,"source":"local"}'
             exit 0
             ;;
+        terminal_health)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY'
+import json, socket
+port = 17682
+ok = False
+reason = ''
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.8)
+    s.connect(('127.0.0.1', port))
+    ok = True
+    s.close()
+except Exception as e:
+    reason = str(e)
+print(json.dumps({'ok': True, 'available': ok, 'port': port, 'reason': reason}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+        terminal_unlock)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body"
+import json, os, subprocess, socket, time, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+cmd = str(payload.get('command') or '').strip()
+expect = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw'
+if cmd != expect:
+    print(json.dumps({'ok': False, 'error': '解锁命令不匹配'}, ensure_ascii=False)); raise SystemExit
+
+# 执行“打补丁”动作：重启套件，并检测 ttyd 端口恢复
+p = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'ainasclaw'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+logs = (p.stdout or '')[-400:]
+
+def check_port(port=17682, tries=20, interval=0.5):
+    for _ in range(tries):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.8)
+        try:
+            s.connect(('127.0.0.1', port))
+            s.close()
+            return True
+        except Exception:
+            try: s.close()
+            except Exception: pass
+            time.sleep(interval)
+    return False
+
+avail = check_port()
+print(json.dumps({'ok': True, 'patched': True, 'available': bool(avail), 'logs': logs}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
         terminal_session_start)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"ok":false,"error":"builtin terminal removed"}'
+            exit 0
+            ;;
+        terminal_session_start_removed_backup)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "${APP_VAR_DIR}" "${CFG_FILE}"
 import json, os, signal, socket, subprocess, sys, time
@@ -1561,6 +1623,11 @@ PY
             exit 0
             ;;
         terminal_session_write)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"ok":false,"error":"builtin terminal removed"}'
+            exit 0
+            ;;
+        terminal_session_write_removed_backup)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${APP_VAR_DIR}"
@@ -1620,6 +1687,11 @@ PY
             exit 0
             ;;
         terminal_exec_line)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"ok":false,"error":"builtin terminal removed"}'
+            exit 0
+            ;;
+        terminal_exec_line_removed_backup)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${APP_VAR_DIR}"
@@ -1685,6 +1757,11 @@ PY
             exit 0
             ;;
         terminal_session_read)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"ok":false,"error":"builtin terminal removed"}'
+            exit 0
+            ;;
+        terminal_session_read_removed_backup)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${APP_VAR_DIR}"
@@ -1731,6 +1808,11 @@ PY
             exit 0
             ;;
         terminal_session_stop)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            printf '{"ok":false,"error":"builtin terminal removed"}'
+            exit 0
+            ;;
+        terminal_session_stop_removed_backup)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${APP_VAR_DIR}"
@@ -2281,6 +2363,7 @@ cat <<'HTML'
     .tabs { display:flex; flex-direction:column; gap:6px; }
     .tab { text-align:left; border:1px solid #d0d5dd; background:#fff; border-radius:8px; padding:9px 10px; cursor:pointer; }
     .tab.active { background:#eaf2ff; color:#175cd3; border-color:#b7cdfa; font-weight:600; }
+    .tab.disabled { opacity:.45; cursor:not-allowed; }
     .main { min-width:0; flex:1; display:flex; }
     .panel { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
     .toolbar { display:flex; gap:8px; margin-bottom:12px; align-items:center; }
@@ -2376,6 +2459,7 @@ cat <<'HTML'
     let terminalWriteQueue = Promise.resolve();
     let terminalSuggest = ['openclaw doctor', 'openclaw gateway status', 'openclaw gateway restart', 'openclaw config validate'];
     let terminalGlobalKeyHooked = false;
+    let terminalLocked = false;
     window.__ainasclawClientErrors = [];
 
     function captureClientError(type, payload) {
@@ -2439,6 +2523,31 @@ cat <<'HTML'
       parts.push(sec + '秒');
       return parts.join(' ');
     }
+    function getTerminalTabButton() {
+      return document.querySelector('.tab[data-tab="terminal"]');
+    }
+    function setTerminalTabDisabled(disabled) {
+      const btn = getTerminalTabButton();
+      if (!btn) return;
+      btn.classList.toggle('disabled', !!disabled);
+      btn.dataset.disabled = disabled ? '1' : '0';
+      if (disabled) {
+        btn.title = '外置 ttyd 不可用；输入补丁命令后可解锁终端';
+      } else {
+        btn.title = '';
+      }
+    }
+    async function refreshTerminalHealth() {
+      try {
+        const h = await api('terminal_health');
+        const available = !!(h && h.ok && h.available);
+        terminalLocked = !available;
+        setTerminalTabDisabled(!available);
+      } catch (_) {
+        terminalLocked = true;
+        setTerminalTabDisabled(true);
+      }
+    }
     function setTabs(tab) {
       currentTab = tab;
       if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
@@ -2457,6 +2566,28 @@ cat <<'HTML'
       const text = await resp.text();
       try { return text ? JSON.parse(text) : {}; } catch (e) { return { error: 'JSON parse failed', raw: text }; }
     }
+    async function unlockTerminalTab() {
+      const el = document.getElementById('terminal_unlock_input');
+      const v = String((el && el.value) || '').trim();
+      const patchCmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw';
+      if (v !== patchCmd) {
+        setMsg('解锁命令不正确。', 'err');
+        return;
+      }
+      setMsg('正在执行外置 ttyd 补丁并检测端口…');
+      const ret = await api('terminal_unlock', 'POST', { command: v });
+      if (!ret || !ret.ok) {
+        setMsg('补丁执行失败：' + ((ret && (ret.error || ret.message)) || 'unknown'), 'err');
+        return;
+      }
+      await refreshTerminalHealth();
+      if (terminalLocked) {
+        setMsg('补丁执行完成，但外置 ttyd 仍不可用。请稍后重试。', 'err');
+        return;
+      }
+      setMsg('外置 ttyd 已恢复，终端已解锁。', 'ok');
+      await load('terminal');
+    }
     async function load(tab) {
       setTabs(tab);
       if (tab === 'status') setMsg('');
@@ -2464,6 +2595,21 @@ cat <<'HTML'
       const content = document.getElementById('content');
       content.innerHTML = '';
       try {
+        if (tab === 'terminal' && terminalLocked) {
+          const content = document.getElementById('content');
+          content.innerHTML = ''
+            + '<div style="display:flex;flex-direction:column;gap:10px;max-width:720px;">'
+            + '  <div style="font-size:14px;color:#b42318;background:#fff5f6;border:1px solid #fda29b;border-radius:8px;padding:10px 12px;">外置 ttyd 当前不可用，终端页已锁定。</div>'
+            + '  <div style="font-size:13px;color:#667085;">请在下方输入补丁命令，系统会执行并自动检测外置 ttyd 是否恢复。</div>'
+            + '  <div style="display:flex;gap:8px;">'
+            + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n /usr/syno/bin/synopkg restart ainasclaw" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
+            + '    <button class="btn primary" onclick="unlockTerminalTab()">执行补丁并解锁</button>'
+            + '  </div>'
+            + '  <div style="font-size:12px;color:#667085;">解锁命令：<code>sudo -n /usr/syno/bin/synopkg restart ainasclaw</code></div>'
+            + '</div>';
+          setMsg('终端已锁定：外置 ttyd 不可用。', 'err');
+          return;
+        }
         const data = await api(tab);
         if (tab === 'status') {
           window.__ainasGatewayPort = data.port || 28789;
@@ -2556,68 +2702,36 @@ cat <<'HTML'
         }
 
         if (tab === 'terminal') {
-          const forceBuiltin = (window.__forceBuiltinTerminal === true);
           const terminalUrl = resolveTerminalUrl();
-          const dsmPanelCtx = isDsmPanelContext();
-          const dsmTerminalOk = forceBuiltin ? false : (dsmPanelCtx ? false : await probeDsmTerminal(terminalUrl));
-          const betterTerminalRecoverCmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw';
-          if (dsmTerminalOk) {
+          if (terminalLocked) {
             content.innerHTML = ''
-              + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-              + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
-              + '    <div style="font-size:13px;color:#667085;">终端说明：优先使用 ttyd 外置终端；可手动切换到内置终端。</div>'
-              + '    <div style="display:flex;gap:8px;">'
-              + '      <button class="btn" onclick="window.open(\'' + esc(terminalUrl) + '\',\'_blank\');">新窗口打开 ttyd</button>'
-              + '      <button class="btn" onclick="window.__forceBuiltinTerminal=true;load(\'terminal\');">切换内置终端</button>'
-              + '    </div>'
+              + '<div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">'
+              + '  <div style="font-size:14px;color:#b42318;background:#fff5f6;border:1px solid #fda29b;border-radius:8px;padding:10px 12px;">外置 ttyd 当前不可用，终端页已锁定。</div>'
+              + '  <div style="font-size:13px;color:#667085;">请执行补丁命令解锁（会自动重启套件并检测 17682 端口）。</div>'
+              + '  <div style="display:flex;gap:8px;">'
+              + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n /usr/syno/bin/synopkg restart ainasclaw" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
+              + '    <button class="btn primary" onclick="unlockTerminalTab()">执行补丁并解锁</button>'
               + '  </div>'
-              + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
-              + '    <iframe src="' + esc(terminalUrl) + '" style="width:100%;height:100%;border:none;"></iframe>'
-              + '  </div>'
+              + '  <div style="font-size:12px;color:#667085;">解锁命令：<code>sudo -n /usr/syno/bin/synopkg restart ainasclaw</code></div>'
               + '</div>';
-            setMsg('');
+            setMsg('终端已锁定：外置 ttyd 不可用。', 'err');
             return;
           }
 
-          // 兜底：当 ttyd 路由不可用或用户手动切换时，使用内置终端（移植 ttyd 风格交互）。
-          const dsmOpenHint = dsmPanelCtx
-            ? ('<div style="font-size:12px;color:#667085;background:#f8f9fc;border:1px solid #e4e7ec;border-radius:8px;padding:8px 10px;">'
-              + 'DSM 控制面板为 HTTPS 页面，浏览器会拦截内嵌 HTTP ttyd（混合内容）。请点击“新窗口打开 ttyd”。'
-              + '</div>')
-            : '';
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
             + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
-            + '    <div style="font-size:13px;color:#667085;">内置终端模式（不依赖 /openclaw-terminal/ 路由）：支持快捷键、实时输出、会话重连。</div>'
-            + '    <button class="btn" onclick="window.__forceBuiltinTerminal=false;load(\'terminal\');">重试 ttyd 终端</button>'
+            + '    <div style="font-size:13px;color:#667085;">仅提供外置 ttyd 终端（已移除内置终端）。</div>'
+            + '    <div style="display:flex;gap:8px;">'
+            + '      <button class="btn" onclick="window.location.href=\'' + esc(terminalUrl) + '\';">打开 ttyd 终端</button>'
+            + '      <button class="btn" onclick="refreshTerminalHealth().then(()=>load(\'terminal\'))">重试检测</button>'
+            + '    </div>'
             + '  </div>'
-            + '  <div style="font-size:12px;color:#b54708;background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 10px;">'
-            + '    当前使用内置终端。若外置终端不可用，可先点“内置终端一键打补丁”，再点“重试 ttyd 终端”。（补丁命令：<code>' + esc(betterTerminalRecoverCmd) + '</code>）'
-            + '  </div>'
-            + dsmOpenHint
-            + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-            + '    <button class="btn" onclick="window.open(\'' + esc(terminalUrl) + '\',\'_blank\');">新窗口打开 ttyd</button>'
-            + '    <button class="btn" onclick="restartTerminalSession()">重连会话</button>'
-            + '    <button class="btn" onclick="runTerminalOneClickPatch()">内置终端一键打补丁</button>'
-            + '    <button class="btn" onclick="runTerminalRecoverCommand()">sudo 提权重启</button>'
-            + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
-            + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
-            + '    <button class="btn" onclick="clearTerminalView()">清空显示</button>'
-            + '    <span id="terminal_cwd" style="font-size:12px;color:#667085;">当前目录：-</span>'
-            + '  </div>'
-            + '  <div id="terminal_box" tabindex="0" style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:auto;background:#111827;color:#e5e7eb;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.45;">'
-            + '    <div id="terminal_prompt_line" style="color:#9ca3af;margin-bottom:6px;">root@localhost:~$</div>'
-            + '    <pre id="terminal_pre" style="margin:0;white-space:pre-wrap;word-break:break-word;"></pre>'
-            + '  </div>'
-            + '  <div style="display:flex;gap:8px;">'
-            + '    <input id="terminal_fallback_input" style="flex:1;" placeholder="输入命令后回车（例如 openclaw doctor）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendTerminalLineFromInput();}">'
-            + '    <button class="btn primary" onclick="sendTerminalLineFromInput()">执行</button>'
+            + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
+            + '    <iframe src="' + esc(terminalUrl) + '" style="width:100%;height:100%;border:none;"></iframe>'
             + '  </div>'
             + '</div>';
-          setMsg('ttyd 不可用，已自动切换到内置终端。可点击“内置终端一键打补丁”，再点“重试 ttyd 终端”。', 'ok');
-          hookTerminalGlobalKeys();
-          setTimeout(() => { focusTerminal(); }, 0);
-          await ensureTerminalSession();
+          setMsg('');
           return;
         }
         if (tab === 'models') {
@@ -3603,11 +3717,7 @@ cat <<'HTML'
       }
     }
     function resolveTerminalUrl() {
-      try {
-        if (isDsmPanelContext()) {
-          return 'http://' + (window.location.hostname || '127.0.0.1') + ':17682/openclaw-terminal/';
-        }
-      } catch (_) {}
+      // 统一走 DSM nginx alias，避免 HTTPS 页面直连 HTTP:17682 触发混合内容拦截。
       return '/openclaw-terminal/';
     }
     async function probeDsmTerminal(url) {
@@ -3622,210 +3732,28 @@ cat <<'HTML'
         return false;
       }
     }
-    async function ensureTerminalSession() {
-      const pre = document.getElementById('terminal_pre');
-      if (!pre) return;
-      if (!terminalSessionId) {
-        const ret = await api('terminal_session_start', 'POST', {});
-        if (!ret || !ret.ok) {
-          pre.textContent = '终端启动失败：' + ((ret && (ret.error || ret.message)) || 'unknown');
-          return;
-        }
-        terminalSessionId = ret.sessionId || '';
-        terminalOffset = Number(ret.offset || 0);
-        window.__terminalUser = ret.user || 'root';
-        window.__terminalHost = ret.host || 'localhost';
-        const initCwd = (ret.cwd || '/volume1/@appdata/ainasclaw/data/home');
-        const initUser = (ret.user || 'root');
-        const initHost = (ret.host || 'localhost');
-        pre.textContent = '';
-        const promptEl = document.getElementById('terminal_prompt_line');
-        if (promptEl) promptEl.textContent = initUser + '@' + initHost + ':' + initCwd + '$';
-        const cwdEl = document.getElementById('terminal_cwd');
-        if (cwdEl) cwdEl.textContent = '当前目录：' + initCwd;
-      }
-      if (terminalPollTimer) clearInterval(terminalPollTimer);
-      terminalPollTimer = setInterval(readTerminalOutput, 500);
-      await readTerminalOutput();
-    }
-    async function readTerminalOutput() {
-      if (!terminalSessionId) return;
-      const pre = document.getElementById('terminal_pre');
-      if (!pre) return;
-      try {
-        const ret = await api('terminal_session_read', 'POST', { sessionId: terminalSessionId, offset: terminalOffset });
-        if (!ret || !ret.ok) return;
-        terminalOffset = Number(ret.nextOffset || terminalOffset);
-        if (ret.output) {
-          pre.textContent += sanitizeTerminalText(ret.output);
-          pre.scrollTop = pre.scrollHeight;
-        }
-        const cwdEl = document.getElementById('terminal_cwd');
-        if (cwdEl && ret.cwd) cwdEl.textContent = '当前目录：' + ret.cwd;
-        const promptEl = document.getElementById('terminal_prompt_line');
-        if (promptEl && ret.cwd) {
-          const user = (window.__terminalUser || 'root');
-          const host = (window.__terminalHost || 'localhost');
-          promptEl.textContent = user + '@' + host + ':' + ret.cwd + '$';
-        }
-        if (ret.alive === false && terminalPollTimer) {
-          clearInterval(terminalPollTimer);
-          terminalPollTimer = null;
-          pre.textContent += '\n[session ended]\n';
-        }
-      } catch (_) {}
-    }
-    function focusTerminal() {
-      const input = document.getElementById('terminal_fallback_input');
-      if (input) { input.focus(); return; }
-      const box = document.getElementById('terminal_box');
-      if (box) { box.focus(); return; }
-      const pre = document.getElementById('terminal_pre');
-      if (pre) pre.focus();
-    }
-    function hookTerminalGlobalKeys() {
-      if (terminalGlobalKeyHooked) return;
-      terminalGlobalKeyHooked = true;
-      window.addEventListener('keydown', function(ev) {
-        try {
-          if (currentTab !== 'terminal') return;
-          const t = ev && ev.target;
-          const tag = (t && t.tagName) ? String(t.tagName).toUpperCase() : '';
-          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
-          const box = document.getElementById('terminal_box');
-          if (!box) return;
-          handleTerminalKey(ev);
-        } catch (_) {}
-      }, true);
-    }
-    async function sendTerminalText(text) {
-      terminalWriteQueue = terminalWriteQueue.then(async () => {
-        if (!terminalSessionId) await ensureTerminalSession();
-        if (!terminalSessionId) return;
-        const ret = await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
-        if (!ret || !ret.ok) {
-          if (String((ret && ret.error) || '').includes('relay not alive')) {
-            await restartTerminalSession();
-            await api('terminal_session_write', 'POST', { sessionId: terminalSessionId, text: text });
-          } else {
-            throw new Error((ret && (ret.error || ret.message)) || 'terminal write failed');
-          }
-        }
-      }).catch((e) => {
-        setMsg('终端输入失败：' + (e && e.message ? e.message : e), 'err');
-      });
-      await terminalWriteQueue;
-      // 输入按键不立即强制读回，交给定时轮询，避免输入与输出错序串扰。
-    }
-    async function handleTerminalKey(ev) {
-      if (!ev) return;
-      const pre = document.getElementById('terminal_pre');
-      if (!pre) return;
-
-      // 全部按键直通 shell，确保 TAB/历史/路径补全与 SSH 一致。
-      if (ev.ctrlKey && !ev.metaKey && !ev.altKey) {
-        if (ev.key === 'c' || ev.key === 'C') { ev.preventDefault(); await sendTerminalText('\u0003'); return; }
-        if (ev.key === 'd' || ev.key === 'D') { ev.preventDefault(); await sendTerminalText('\u0004'); return; }
-      }
-
-      if (ev.key === 'Tab') { ev.preventDefault(); await sendTerminalText('\t'); return; }
-      if (ev.key === 'Enter') { ev.preventDefault(); await sendTerminalText('\r'); return; }
-      if (ev.key === 'Backspace') { ev.preventDefault(); await sendTerminalText('\u007f'); return; }
-
-      if (ev.key === 'ArrowUp') { ev.preventDefault(); await sendTerminalText('\u001b[A'); return; }
-      if (ev.key === 'ArrowDown') { ev.preventDefault(); await sendTerminalText('\u001b[B'); return; }
-      if (ev.key === 'ArrowRight') { ev.preventDefault(); await sendTerminalText('\u001b[C'); return; }
-      if (ev.key === 'ArrowLeft') { ev.preventDefault(); await sendTerminalText('\u001b[D'); return; }
-
-      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-      if (ev.key && ev.key.length === 1) {
+    async function ensureTerminalSession() { return; }
+    async function readTerminalOutput() { return; }
+    function focusTerminal() { return; }
+    function hookTerminalGlobalKeys() { return; }
+    async function sendTerminalText(text) { return; }
+    async function handleTerminalKey(ev) { return; }
+    async function sendTerminalCtrlC() { return; }
+    async function sendTerminalCtrlD() { return; }
+    async function runTerminalRecoverCommand() { return; }
+    async function runTerminalOneClickPatch() { return; }
+    function clearTerminalView() { return; }
+    async function restartTerminalSession() { return; }
+    document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', (ev) => {
+      if (btn.dataset && btn.dataset.tab === 'terminal' && btn.dataset.disabled === '1') {
         ev.preventDefault();
-        await sendTerminalText(ev.key);
-        pre.scrollTop = pre.scrollHeight;
+        setMsg('终端已锁定：外置 ttyd 不可用。请先输入解锁命令。', 'err');
+        load('terminal');
+        return;
       }
-    }
-    async function sendTerminalCtrlC() { await sendTerminalText('\u0003'); }
-    async function sendTerminalCtrlD() { await sendTerminalText('\u0004'); }
-    async function runTerminalRecoverCommand() {
-      const cmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw';
-      const pre = document.getElementById('terminal_pre');
-      if (pre) {
-        pre.textContent += cmd + '\n';
-        pre.scrollTop = pre.scrollHeight;
-      }
-      try {
-        await sendTerminalText(cmd + '\r');
-        setMsg('已发送 sudo 提权重启命令，请稍后点击“重试 ttyd 终端”', 'ok');
-      } catch (e) {
-        setMsg('发送 sudo 提权命令失败：' + (e && e.message ? e.message : e), 'err');
-      }
-    }
-    async function runTerminalOneClickPatch() {
-      const cmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw && sudo -n /usr/syno/bin/synopkg status ainasclaw';
-      const pre = document.getElementById('terminal_pre');
-      if (pre) {
-        pre.textContent += cmd + '\n';
-        pre.scrollTop = pre.scrollHeight;
-      }
-      try {
-        await sendTerminalText(cmd + '\r');
-        setMsg('已触发一键打补丁（提权重启+状态校验），可点击“重试 ttyd 终端”', 'ok');
-      } catch (e) {
-        setMsg('一键打补丁失败：' + (e && e.message ? e.message : e), 'err');
-      }
-    }
-    async function sendTerminalLineFromInput() {
-      const el = document.getElementById('terminal_fallback_input');
-      if (!el) return;
-      const line = String(el.value || '');
-      if (!line.trim()) return;
-      el.value = '';
-
-      // 可用优先：输入框走后端命令执行通道，确保“输入后有反应”。
-      const pre = document.getElementById('terminal_pre');
-      if (pre) {
-        pre.textContent += line + '\n';
-        pre.scrollTop = pre.scrollHeight;
-      }
-      try {
-        const ret = await api('terminal_exec_line', 'POST', { sessionId: terminalSessionId, line });
-        if (ret && ret.ok) {
-          if (pre && ret.output) {
-            pre.textContent += sanitizeTerminalText(ret.output);
-            pre.scrollTop = pre.scrollHeight;
-          }
-          if (ret && ret.cwd) {
-            const cwdEl = document.getElementById('terminal_cwd');
-            if (cwdEl) cwdEl.textContent = '当前目录：' + ret.cwd;
-            const promptEl = document.getElementById('terminal_prompt_line');
-            if (promptEl) {
-              const user = (window.__terminalUser || 'root');
-              const host = (window.__terminalHost || 'localhost');
-              promptEl.textContent = user + '@' + host + ':' + ret.cwd + '$';
-            }
-          }
-        } else {
-          setMsg('终端执行失败：' + ((ret && (ret.error || ret.message)) || 'unknown'), 'err');
-        }
-      } catch (e) {
-        setMsg('终端执行失败：' + (e && e.message ? e.message : e), 'err');
-      }
-    }
-    function clearTerminalView() {
-      const pre = document.getElementById('terminal_pre');
-      if (pre) pre.textContent = '';
-    }
-    async function restartTerminalSession() {
-      try {
-        if (terminalSessionId) await api('terminal_session_stop', 'POST', { sessionId: terminalSessionId });
-      } catch (_) {}
-      terminalSessionId = '';
-      terminalOffset = 0;
-      if (terminalPollTimer) { clearInterval(terminalPollTimer); terminalPollTimer = null; }
-      await ensureTerminalSession();
-    }
-    document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => load(btn.dataset.tab)));
-    load('status');
+      load(btn.dataset.tab);
+    }));
+    refreshTerminalHealth().finally(() => load('status'));
   </script>
 </body>
 </html>
