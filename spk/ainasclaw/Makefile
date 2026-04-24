@@ -7,8 +7,11 @@ $(error Failed to resolve latest stable openclaw version from upstream tags)
 endif
 # Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
 # Put custom build identity into numeric SPK_REV only.
+OPENCLAW_NPM_VERS := $(shell npm view openclaw version --silent 2>/dev/null)
+ifeq ($(strip $(OPENCLAW_NPM_VERS)),)
 OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
-SPK_VERS := $(LATEST_OPENCLAW_VERS)
+endif
+SPK_VERS := $(OPENCLAW_NPM_VERS)
 SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
 SPK_ICON = src/openclaw.png
 
@@ -39,11 +42,11 @@ DSM_UI_CONFIG = src/app/config
 DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
 # DSM package metadata port (for conflict precheck) uses a fixed fallback.
 # Runtime gateway port is dynamically assigned on fresh install in service-setup.sh.
-SERVICE_PORT = 28789
+SERVICE_PORT = 58689
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
 # Package Center details fallback metadata (runtime will sync to active gateway port).
-ADMIN_PORT = 28789
+ADMIN_PORT = 58689
 ADMIN_URL = /default/chat
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
