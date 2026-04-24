@@ -2557,17 +2557,22 @@ cat <<'HTML'
 
         if (tab === 'terminal') {
           const forceBuiltin = (window.__forceBuiltinTerminal === true);
-          const dsmTerminalOk = forceBuiltin ? false : await probeDsmTerminal();
+          const terminalUrl = resolveTerminalUrl();
+          const dsmPanelCtx = isDsmPanelContext();
+          const dsmTerminalOk = forceBuiltin ? false : (dsmPanelCtx ? false : await probeDsmTerminal(terminalUrl));
           const betterTerminalRecoverCmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw';
           if (dsmTerminalOk) {
             content.innerHTML = ''
               + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
               + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
-              + '    <div style="font-size:13px;color:#667085;">终端说明：优先使用 ttyd 终端（/openclaw-terminal/）；可手动切换到内置终端。</div>'
-              + '    <button class="btn" onclick="window.__forceBuiltinTerminal=true;load(\'terminal\');">切换内置终端</button>'
+              + '    <div style="font-size:13px;color:#667085;">终端说明：优先使用 ttyd 外置终端；可手动切换到内置终端。</div>'
+              + '    <div style="display:flex;gap:8px;">'
+              + '      <button class="btn" onclick="window.open(\'' + esc(terminalUrl) + '\',\'_blank\');">新窗口打开 ttyd</button>'
+              + '      <button class="btn" onclick="window.__forceBuiltinTerminal=true;load(\'terminal\');">切换内置终端</button>'
+              + '    </div>'
               + '  </div>'
               + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
-              + '    <iframe src="/openclaw-terminal/" style="width:100%;height:100%;border:none;"></iframe>'
+              + '    <iframe src="' + esc(terminalUrl) + '" style="width:100%;height:100%;border:none;"></iframe>'
               + '  </div>'
               + '</div>';
             setMsg('');
@@ -2575,6 +2580,11 @@ cat <<'HTML'
           }
 
           // 兜底：当 ttyd 路由不可用或用户手动切换时，使用内置终端（移植 ttyd 风格交互）。
+          const dsmOpenHint = dsmPanelCtx
+            ? ('<div style="font-size:12px;color:#667085;background:#f8f9fc;border:1px solid #e4e7ec;border-radius:8px;padding:8px 10px;">'
+              + 'DSM 控制面板为 HTTPS 页面，浏览器会拦截内嵌 HTTP ttyd（混合内容）。请点击“新窗口打开 ttyd”。'
+              + '</div>')
+            : '';
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
             + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
@@ -2584,7 +2594,9 @@ cat <<'HTML'
             + '  <div style="font-size:12px;color:#b54708;background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 10px;">'
             + '    当前使用内置终端。若外置终端不可用，可先点“内置终端一键打补丁”，再点“重试 ttyd 终端”。（补丁命令：<code>' + esc(betterTerminalRecoverCmd) + '</code>）'
             + '  </div>'
+            + dsmOpenHint
             + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+            + '    <button class="btn" onclick="window.open(\'' + esc(terminalUrl) + '\',\'_blank\');">新窗口打开 ttyd</button>'
             + '    <button class="btn" onclick="restartTerminalSession()">重连会话</button>'
             + '    <button class="btn" onclick="runTerminalOneClickPatch()">内置终端一键打补丁</button>'
             + '    <button class="btn" onclick="runTerminalRecoverCommand()">sudo 提权重启</button>'
@@ -3582,9 +3594,29 @@ cat <<'HTML'
       }
       return out.join('');
     }
-    async function probeDsmTerminal() {
+    function isDsmPanelContext() {
       try {
-        const r = await fetch('/openclaw-terminal/', { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
+        const p = String(window.location.pathname || '');
+        return p.indexOf('/webman/3rdparty/ainasclaw/') === 0 || p.indexOf('/webman/index.cgi') === 0;
+      } catch (_) {
+        return false;
+      }
+    }
+    function resolveTerminalUrl() {
+      try {
+        if (isDsmPanelContext()) {
+          return 'http://' + (window.location.hostname || '127.0.0.1') + ':17682/openclaw-terminal/';
+        }
+      } catch (_) {}
+      return '/openclaw-terminal/';
+    }
+    async function probeDsmTerminal(url) {
+      try {
+        const u = url || resolveTerminalUrl();
+        const target = new URL(u, window.location.href);
+        // 跨域 URL（如 DSM 面板下直连 17682）fetch 探测会受 CORS/混合内容影响，不作为可用性判断。
+        if (target.origin !== window.location.origin) return true;
+        const r = await fetch(target.toString(), { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
         return !!(r && r.ok);
       } catch (_) {
         return false;
