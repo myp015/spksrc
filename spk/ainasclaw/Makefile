@@ -42,10 +42,9 @@ DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
 SERVICE_PORT = 28789
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
-# Package Center "Open" should use DSM webman entry (same-origin with session).
-# Package Center detail/open URL should point to gateway instead of config panel.
-ADMIN_PORT = 28789
-ADMIN_URL = /default/chat?session=main
+# Package Center "Open" uses DSM webman entry (stable, not affected by dynamic gateway port).
+ADMIN_PORT = 5001
+ADMIN_URL = /webman/3rdparty/ainasclaw/index.cgi
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target

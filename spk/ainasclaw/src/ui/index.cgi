@@ -207,8 +207,8 @@ out = {
   'version': 'OpenClaw 2026.4.15 (041266a)',
   'port': port,
   'proxyBasePath': '/default',
-  'dashboardUrl': f'http://LAN_HOST:{port}/default/chat?session=main',
-  'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?session=main&token={token}',
+  'dashboardUrl': f'http://LAN_HOST:{port}/default/chat',
+  'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?token={token}',
   'workspaceDir': workspace,
   'configPath': cfg_path,
   'binaryPath': binary_path,
@@ -2633,7 +2633,7 @@ cat <<'HTML'
             ['binaryPath', data.binaryPath || '-']
           ];
           const fallbackPort = (data.port || 28789);
-          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || ('http://LAN_HOST:' + fallbackPort + '/default/chat?session=main')).replace('LAN_HOST', window.location.hostname);
+          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || ('http://LAN_HOST:' + fallbackPort + '/default/chat')).replace('LAN_HOST', window.location.hostname);
           const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
@@ -2720,12 +2720,8 @@ cat <<'HTML'
 
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
-            + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
-            + '    <div style="font-size:13px;color:#667085;">仅提供外置 ttyd 终端（已移除内置终端）。</div>'
-            + '    <div style="display:flex;gap:8px;">'
-            + '      <button class="btn" onclick="window.location.href=\'' + esc(terminalUrl) + '\';">打开 ttyd 终端</button>'
-            + '      <button class="btn" onclick="refreshTerminalHealth().then(()=>load(\'terminal\'))">重试检测</button>'
-            + '    </div>'
+            + '  <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">'
+            + '    <button class="btn" onclick="refreshTerminalHealth().then(()=>load(\'terminal\'))">重试检测</button>'
             + '  </div>'
             + '  <div style="flex:1;min-height:0;border:1px solid #d0d5dd;border-radius:10px;overflow:hidden;background:#111827;">'
             + '    <iframe src="' + esc(terminalUrl) + '" style="width:100%;height:100%;border:none;"></iframe>'
@@ -2914,7 +2910,7 @@ cat <<'HTML'
       let u = (url || '').trim();
       if (!u) {
         const p = (window.__ainasGatewayPort || 28789);
-        u = 'http://' + window.location.hostname + ':' + p + '/default/chat?session=main';
+        u = 'http://' + window.location.hostname + ':' + p + '/default/chat';
       }
       u = u.replace('LAN_HOST', window.location.hostname);
       if (!/[?&]token=/.test(u)) {

@@ -343,25 +343,32 @@ PY
 }
 
 sync_dsm_package_info_port() {
-    local gw_port="$1"
-    [ -n "${gw_port}" ] || return 0
+    local _gw_port="$1"
 
-    # Keep DSM package detail page in sync with runtime gateway port.
+    # Package Center "打开" 入口固定走 DSM webman 页面，避免动态网关端口导致详情页 URL 失效。
+    local panel_port="5001"
+    local panel_url="/webman/3rdparty/ainasclaw/index.cgi"
+
     local info_file="/var/packages/ainasclaw/INFO"
     [ -f "${info_file}" ] || info_file="/var/packages/openclaw/INFO"
     if [ -f "${info_file}" ]; then
         if grep -q '^adminport="' "${info_file}" 2>/dev/null; then
-            sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${gw_port}\"/" "${info_file}" 2>/dev/null || true
+            sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${panel_port}\"/" "${info_file}" 2>/dev/null || true
         else
-            printf '\nadminport="%s"\n' "${gw_port}" >> "${info_file}" 2>/dev/null || true
+            printf '\nadminport="%s"\n' "${panel_port}" >> "${info_file}" 2>/dev/null || true
+        fi
+
+        if grep -q '^adminurl="' "${info_file}" 2>/dev/null; then
+            sed -i -E "s#^adminurl=\".*\"#adminurl=\"${panel_url}\"#" "${info_file}" 2>/dev/null || true
+        else
+            printf 'adminurl="%s"\n' "${panel_url}" >> "${info_file}" 2>/dev/null || true
         fi
     fi
 
     local resource_file="/var/packages/ainasclaw/conf/resource"
     [ -f "${resource_file}" ] || resource_file="/var/packages/openclaw/conf/resource"
     if [ -f "${resource_file}" ]; then
-        sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${gw_port}/" "${resource_file}" 2>/dev/null || true
-        sed -i -E "s/(\"service_port\"\s*:\s*)[0-9]+/\1${gw_port}/" "${resource_file}" 2>/dev/null || true
+        sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${panel_port}/" "${resource_file}" 2>/dev/null || true
     fi
 }
 
