@@ -2582,10 +2582,11 @@ cat <<'HTML'
             + '    <button class="btn" onclick="window.__forceBuiltinTerminal=false;load(\'terminal\');">重试 ttyd 终端</button>'
             + '  </div>'
             + '  <div style="font-size:12px;color:#b54708;background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 10px;">'
-            + '    当前使用内置终端。ttyd 常见原因是 DSM 权限不足。请先执行 <code>' + esc(betterTerminalRecoverCmd) + '</code> 进行提权重启，再点击“重试 ttyd 终端”。'
+            + '    当前使用内置终端。若外置终端不可用，可先点“内置终端一键打补丁”，再点“重试 ttyd 终端”。（补丁命令：<code>' + esc(betterTerminalRecoverCmd) + '</code>）'
             + '  </div>'
             + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '    <button class="btn" onclick="restartTerminalSession()">重连会话</button>'
+            + '    <button class="btn" onclick="runTerminalOneClickPatch()">内置终端一键打补丁</button>'
             + '    <button class="btn" onclick="runTerminalRecoverCommand()">sudo 提权重启</button>'
             + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
             + '    <button class="btn" onclick="sendTerminalCtrlD()">Ctrl+D</button>'
@@ -2601,7 +2602,7 @@ cat <<'HTML'
             + '    <button class="btn primary" onclick="sendTerminalLineFromInput()">执行</button>'
             + '  </div>'
             + '</div>';
-          setMsg('ttyd 不可用，已自动切换到内置终端。请先执行 sudo -n /usr/syno/bin/synopkg restart ainasclaw（提权）后，再点“重试 ttyd 终端”。', 'ok');
+          setMsg('ttyd 不可用，已自动切换到内置终端。可点击“内置终端一键打补丁”，再点“重试 ttyd 终端”。', 'ok');
           hookTerminalGlobalKeys();
           setTimeout(() => { focusTerminal(); }, 0);
           await ensureTerminalSession();
@@ -3725,6 +3726,20 @@ cat <<'HTML'
         setMsg('已发送 sudo 提权重启命令，请稍后点击“重试 ttyd 终端”', 'ok');
       } catch (e) {
         setMsg('发送 sudo 提权命令失败：' + (e && e.message ? e.message : e), 'err');
+      }
+    }
+    async function runTerminalOneClickPatch() {
+      const cmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw && sudo -n /usr/syno/bin/synopkg status ainasclaw';
+      const pre = document.getElementById('terminal_pre');
+      if (pre) {
+        pre.textContent += cmd + '\n';
+        pre.scrollTop = pre.scrollHeight;
+      }
+      try {
+        await sendTerminalText(cmd + '\r');
+        setMsg('已触发一键打补丁（提权重启+状态校验），可点击“重试 ttyd 终端”', 'ok');
+      } catch (e) {
+        setMsg('一键打补丁失败：' + (e && e.message ? e.message : e), 'err');
       }
     }
     async function sendTerminalLineFromInput() {
