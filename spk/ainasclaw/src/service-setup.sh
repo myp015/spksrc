@@ -343,11 +343,12 @@ PY
 }
 
 sync_dsm_package_info_port() {
-    local _gw_port="$1"
+    local gw_port="$1"
+    [ -n "${gw_port}" ] || return 0
 
-    # Package Center "打开" 入口固定走 DSM webman 页面，避免动态网关端口导致详情页 URL 失效。
-    local panel_port="5001"
-    local panel_url="/webman/3rdparty/ainasclaw/index.cgi"
+    # Package Center 入口使用当前网关端口，避免占用/冲突 5001。
+    local panel_port="${gw_port}"
+    local panel_url="/default/chat"
 
     local info_file="/var/packages/ainasclaw/INFO"
     [ -f "${info_file}" ] || info_file="/var/packages/openclaw/INFO"
