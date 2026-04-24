@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.ref || 'master' }}
           fetch-depth: 0
@@ -29,13 +29,15 @@ jobs:
       - name: Prepare signing key
         run: |
           mkdir -p .openclaw/keys/ainasclaw
-          cat > .openclaw/keys/ainasclaw/spk-signing-private.pem <<'EOF'
-          ${{ secrets.AINASCLAW_SPK_SIGN_KEY }}
-          EOF
+          if [ -z "${{ secrets.AINASCLAW_SPK_SIGN_KEY }}" ]; then
+            echo "AINASCLAW_SPK_SIGN_KEY secret is empty or missing" >&2
+            exit 1
+          fi
+          printf '%s\n' "${{ secrets.AINASCLAW_SPK_SIGN_KEY }}" > .openclaw/keys/ainasclaw/spk-signing-private.pem
           chmod 600 .openclaw/keys/ainasclaw/spk-signing-private.pem
 
       - name: Cache toolchains
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: toolchain/*/work
           key: toolchain-x64-7.2-ainasclaw-v1-${{ hashFiles('toolchain/syno-x64-7.2/digests') }}
@@ -47,7 +49,7 @@ jobs:
           args: -lc "set -e; cd /github/workspace/spk/ainasclaw && SPK_SIGN_KEY_PATH=/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem make arch-x64-7.2"
 
       - name: Upload SPK artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ainasclaw-x64-7.2
           path: packages/ainasclaw_x64-7.2_*.spk
