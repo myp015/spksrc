@@ -2558,6 +2558,7 @@ cat <<'HTML'
         if (tab === 'terminal') {
           const forceBuiltin = (window.__forceBuiltinTerminal === true);
           const dsmTerminalOk = forceBuiltin ? false : await probeDsmTerminal();
+          const betterTerminalRecoverCmd = 'openclaw gateway restart';
           if (dsmTerminalOk) {
             content.innerHTML = ''
               + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
@@ -2580,6 +2581,9 @@ cat <<'HTML'
             + '    <div style="font-size:13px;color:#667085;">内置终端模式（不依赖 /openclaw-terminal/ 路由）：支持快捷键、实时输出、会话重连。</div>'
             + '    <button class="btn" onclick="window.__forceBuiltinTerminal=false;load(\'terminal\');">重试 ttyd 终端</button>'
             + '  </div>'
+            + '  <div style="font-size:12px;color:#b54708;background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 10px;">'
+            + '    当前使用内置终端。可先输入命令 <code>' + esc(betterTerminalRecoverCmd) + '</code>，再点击“重试 ttyd 终端”，切回更好用的终端。'
+            + '  </div>'
             + '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '    <button class="btn" onclick="restartTerminalSession()">重连会话</button>'
             + '    <button class="btn" onclick="sendTerminalCtrlC()">Ctrl+C</button>'
@@ -2596,7 +2600,7 @@ cat <<'HTML'
             + '    <button class="btn primary" onclick="sendTerminalLineFromInput()">执行</button>'
             + '  </div>'
             + '</div>';
-          setMsg('已切换到内置终端模式', 'ok');
+          setMsg('ttyd 不可用，已自动切换到内置终端。可执行 openclaw gateway restart 后点“重试 ttyd 终端”切回更好用终端。', 'ok');
           hookTerminalGlobalKeys();
           setTimeout(() => { focusTerminal(); }, 0);
           await ensureTerminalSession();
