@@ -197,18 +197,40 @@ except Exception:
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
 if isinstance(workspace, str) and workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
-token = ((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '123456')
+# 版本实时读取：优先展示当前安装包 INFO 的 version（编译版本），回退到 app package.json。
+spk_ver = ''
+for p in ('/var/packages/ainasclaw/INFO', '/var/packages/openclaw/INFO'):
+    try:
+        if os.path.exists(p):
+            with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    if line.startswith('version='):
+                        spk_ver = line.split('=', 1)[1].strip().strip('"')
+                        break
+        if spk_ver:
+            break
+    except Exception:
+        pass
+app_ver = ''
+for p in ('/var/packages/ainasclaw/target/app/openclaw/package.json', '/var/packages/openclaw/target/app/openclaw/package.json'):
+    try:
+        if os.path.exists(p):
+            j = json.load(open(p, 'r', encoding='utf-8'))
+            app_ver = str(j.get('version') or '').strip()
+            if app_ver:
+                break
+    except Exception:
+        pass
+version = spk_ver or app_ver or 'unknown'
 binary_path = '/var/packages/ainasclaw/target/bin/openclaw' if os.path.exists('/var/packages/ainasclaw/target/bin/openclaw') else ''
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
   'running': running,
   'installed': True,
-  'version': 'OpenClaw 2026.4.15 (041266a)',
+  'version': version,
   'port': port,
   'proxyBasePath': '/default',
-  'dashboardUrl': f'http://LAN_HOST:{port}/default/chat',
-  'dashboardTokenizedUrl': f'http://LAN_HOST:{port}/default/chat?token={token}',
   'workspaceDir': workspace,
   'configPath': cfg_path,
   'binaryPath': binary_path,
@@ -2450,6 +2472,7 @@ cat <<'HTML'
     let currentTab = 'status';
     let statusLine = '';
     let logsTimer = null;
+    let logsAutoRefresh = true;
     let statusTimer = null;
     let installBusy = false;
     let installBusyAction = '';
@@ -2615,8 +2638,6 @@ cat <<'HTML'
           window.__ainasGatewayPort = data.port || 28789;
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
-          const mappedDashboard = String(data.dashboardUrl || '').replace(/127\.0\.0\.1|localhost/g, hostFix);
-          const mappedTokenized = String(data.dashboardTokenizedUrl || '').replace(/127\.0\.0\.1|localhost/g, hostFix);
           const rows = [
             ['实例 ID', data.instanceId || '-'],
             ['显示名', data.displayName || '-'],
@@ -2626,21 +2647,16 @@ cat <<'HTML'
             ['版本', data.version || '-'],
             ['端口', data.port || '-'],
             ['代理路径', data.proxyBasePath || '-'],
-            ['Gateway 地址', mappedDashboard || '-'],
-            ['Gateway 地址(含token)', mappedTokenized || '-'],
             ['用户文件夹路径', data.workspaceDir || '/volume1/openclaw'],
             ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-']
           ];
-          const fallbackPort = (data.port || 28789);
-          const webUrl = (data.dashboardTokenizedUrl || data.dashboardUrl || ('http://LAN_HOST:' + fallbackPort + '/default/chat')).replace('LAN_HOST', window.location.hostname);
           const runningText = data.running ? '运行中' : '已停止';
           content.innerHTML = ''
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
-            + '  <button class="btn primary" id="btn_open_web" onclick="openOpenclawWeb(decodeURIComponent(\'' + encodeURIComponent(webUrl) + '\'))">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
                 const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
@@ -2689,15 +2705,23 @@ cat <<'HTML'
           return;
         }
         if (tab === 'logs') {
+          logsAutoRefresh = true;
           content.innerHTML = ''
             + '<div style="height:100%;display:flex;flex-direction:column;gap:8px;">'
-            + '  <div style="font-size:13px;color:#667085;">实时显示网关与套件日志（自动刷新）。</div>'
+            + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">'
+            + '    <div style="font-size:13px;color:#667085;">实时显示网关与套件日志（自动刷新）。</div>'
+            + '    <div style="display:flex;gap:8px;">'
+            + '      <button class="btn" onclick="refreshLogsNow(true)">刷新一次</button>'
+            + '      <button class="btn" id="btn_logs_toggle" onclick="toggleLogsAutoRefresh()">停止刷新</button>'
+            + '      <button class="btn" onclick="copyLogsText()">复制日志</button>'
+            + '    </div>'
+            + '  </div>'
             + '  <pre id="log_pre" style="flex:1;min-height:0;max-height:none;margin:0;">' + esc(data.log || '') + '</pre>'
             + '</div>';
           const pre = document.getElementById('log_pre');
           if (pre) pre.scrollTop = pre.scrollHeight;
           setMsg('');
-          logsTimer = setInterval(refreshLogsNow, 2000);
+          logsTimer = setInterval(() => refreshLogsNow(false), 2000);
           return;
         }
 
@@ -2905,21 +2929,7 @@ cat <<'HTML'
         setInstallButtonsBusy('', false);
       }
     }
-    // 按用户要求："打开 OpenClaw Web" 按钮始终可用，不做状态检测。
-    function openOpenclawWeb(url) {
-      let u = (url || '').trim();
-      if (!u) {
-        const p = (window.__ainasGatewayPort || 28789);
-        u = 'http://' + window.location.hostname + ':' + p + '/default/chat';
-      }
-      u = u.replace('LAN_HOST', window.location.hostname);
-      if (!/[?&]token=/.test(u)) {
-        const token = '123456';
-        u += (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
-      }
-      window.open(u, '_blank', 'noopener,noreferrer');
-      setMsg('已打开 OpenClaw Web（自动附带 token）', 'ok');
-    }
+    function openOpenclawWeb(url) { return; }
     function openUserSettingsDialog() {
       const m = document.getElementById('userSettingsMask');
       if (!m) return;
@@ -3676,7 +3686,8 @@ cat <<'HTML'
         if (targetBtn) { targetBtn.disabled = false; targetBtn.textContent = old || '删除'; }
       }
     }
-    async function refreshLogsNow() {
+    async function refreshLogsNow(force) {
+      if (!force && !logsAutoRefresh) return;
       try {
         const data = await api('logs');
         const pre = document.getElementById('log_pre');
@@ -3684,6 +3695,23 @@ cat <<'HTML'
         pre.textContent = data.log || '';
         pre.scrollTop = pre.scrollHeight;
       } catch (e) {}
+    }
+    function toggleLogsAutoRefresh() {
+      logsAutoRefresh = !logsAutoRefresh;
+      const btn = document.getElementById('btn_logs_toggle');
+      if (btn) btn.textContent = logsAutoRefresh ? '停止刷新' : '开始刷新';
+      setMsg(logsAutoRefresh ? '日志自动刷新：已开启' : '日志自动刷新：已停止', 'ok');
+    }
+    async function copyLogsText() {
+      try {
+        const pre = document.getElementById('log_pre');
+        const text = (pre && pre.textContent) ? pre.textContent : '';
+        if (!text) { setMsg('暂无可复制日志', 'err'); return; }
+        await navigator.clipboard.writeText(text);
+        setMsg('日志已复制到剪贴板', 'ok');
+      } catch (e) {
+        setMsg('复制失败，请手动选择日志复制', 'err');
+      }
     }
     function sanitizeTerminalText(text) {
       let s = String(text || '');
