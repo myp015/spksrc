@@ -3705,10 +3705,48 @@ cat <<'HTML'
     async function copyLogsText() {
       try {
         const pre = document.getElementById('log_pre');
-        const text = (pre && pre.textContent) ? pre.textContent : '';
-        if (!text) { setMsg('暂无可复制日志', 'err'); return; }
-        await navigator.clipboard.writeText(text);
-        setMsg('日志已复制到剪贴板', 'ok');
+        const allText = (pre && pre.textContent) ? pre.textContent : '';
+        if (!allText) { setMsg('暂无可复制日志', 'err'); return; }
+
+        // 优先复制用户当前选中文本；未选中时复制全部日志
+        let text = '';
+        try {
+          const sel = window.getSelection ? window.getSelection() : null;
+          text = sel ? String(sel.toString() || '') : '';
+        } catch (_) {
+          text = '';
+        }
+        if (!text) text = allText;
+
+        // 优先 Clipboard API；失败则回退 execCommand，兼容 DSM iframe/旧浏览器权限模型
+        let copied = false;
+        if (navigator.clipboard && window.isSecureContext) {
+          try {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          } catch (_) {}
+        }
+
+        if (!copied) {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', 'readonly');
+          ta.style.position = 'fixed';
+          ta.style.left = '-99999px';
+          ta.style.top = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          ta.setSelectionRange(0, ta.value.length);
+          copied = !!document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+
+        if (copied) {
+          setMsg('日志已复制到剪贴板', 'ok');
+        } else {
+          setMsg('复制失败，请手动选择日志复制', 'err');
+        }
       } catch (e) {
         setMsg('复制失败，请手动选择日志复制', 'err');
       }
