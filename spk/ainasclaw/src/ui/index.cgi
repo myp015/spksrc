@@ -1441,13 +1441,16 @@ expect = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw'
 if cmd != expect:
     print(json.dumps({'ok': False, 'error': '修复命令不匹配'}, ensure_ascii=False)); raise SystemExit
 
+if not (os.path.exists('/usr/bin/sudo') and os.access('/usr/bin/sudo', os.X_OK)):
+    print(json.dumps({'ok': False, 'error': '缺少 sudo，无法修复 terminal alias'}, ensure_ascii=False)); raise SystemExit
+
 logs = []
 
 def run(argv):
     p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     out = (p.stdout or '').strip()
     if out:
-        logs.append(out[-500:])
+        logs.append(out[-700:])
     return p.returncode
 
 # 针对 root cause：修复 terminal alias 并重载 nginx
@@ -1493,14 +1496,11 @@ try:
 except Exception as e:
     logs.append(f'write alias failed: {e}')
 
-# 软链落地（可能需要 root）
-if run(['ln', '-sfn', alias_src, alias_dst]) != 0:
-    run(['sudo', '-n', 'ln', '-sfn', alias_src, alias_dst])
-
-nginx_ok = (run(['sh', '-lc', 'nginx -t']) == 0)
+# 软链落地 + nginx reload：走 sudo -n（依赖套件预置 sudoers）
+run(['sudo', '-n', 'ln', '-sfn', alias_src, alias_dst])
+nginx_ok = (run(['sudo', '-n', 'sh', '-lc', 'nginx -t']) == 0)
 if nginx_ok:
-    if run(['sh', '-lc', 'systemctl reload nginx']) != 0:
-        run(['sudo', '-n', 'sh', '-lc', 'systemctl reload nginx'])
+    run(['sudo', '-n', 'sh', '-lc', 'systemctl reload nginx'])
 
 
 def check_port(port=17682, tries=20, interval=0.5):
