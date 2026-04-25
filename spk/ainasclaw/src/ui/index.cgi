@@ -5,7 +5,7 @@ if [ -d "/volume1/@appdata/ainasclaw" ]; then
 fi
 
 LOG_FILE="${APP_VAR_DIR}/ainasclaw.log"
-GATEWAY_PORT="28789"
+GATEWAY_PORT="58789"
 QUERY="${QUERY_STRING:-}"
 BASE_CFG_FILE="/volume1/openclaw/.openclaw/openclaw.json"
 
@@ -56,11 +56,11 @@ print(cfg_path)
 PY
 )"
 
-# Dynamic gateway port from active config (fallback 28789)
+# Dynamic gateway port from active config (fallback 58789)
 GATEWAY_PORT="$(python3 - <<'PY' "$CFG_FILE"
 import json, os, sys
 cfg = sys.argv[1] if len(sys.argv) > 1 else ''
-port = 28789
+port = 58789
 try:
     if cfg and os.path.exists(cfg):
         c = json.load(open(cfg, 'r', encoding='utf-8'))
@@ -553,7 +553,7 @@ if apply_now:
         env['OPENCLAW_ELEVATED_DEFAULT'] = 'full'
         env['OPENCLAW_EXEC_SECURITY_DEFAULT'] = 'full'
 
-        gw_port = int(os.environ.get('GATEWAY_PORT', '28789') or '28789')
+        gw_port = int(os.environ.get('GATEWAY_PORT', '58789') or '58789')
 
         def is_running(port=None):
             port = gw_port if port is None else port
@@ -2053,7 +2053,7 @@ if action in ('start','restart'):
             _sock.bind(('127.0.0.1', 0))
             gw_port = int(_sock.getsockname()[1])
         except Exception:
-            gw_port = 28789
+            gw_port = 58789
         finally:
             try:
                 _sock.close()
@@ -2718,7 +2718,7 @@ cat <<'HTML'
       try {
         const data = await api(tab);
         if (tab === 'status') {
-          window.__ainasGatewayPort = data.port || 28789;
+          window.__ainasGatewayPort = data.port || 58789;
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
           const rows = [
@@ -2739,6 +2739,7 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
+            + '  <button class="btn" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
@@ -3882,6 +3883,25 @@ cat <<'HTML'
     function resolveTerminalUrl() {
       // 统一走 DSM nginx alias，避免 HTTPS 页面直连 HTTP:17682 触发混合内容拦截。
       return '/openclaw-terminal/';
+    }
+    function buildOpenclawWebUrl() {
+      try {
+        const protocol = window.location.protocol || 'https:';
+        const host = window.location.hostname || '127.0.0.1';
+        const port = Number(window.__ainasGatewayPort || 58789) || 58789;
+        return protocol + '//' + host + ':' + port + '/default/chat';
+      } catch (_) {
+        return '/default/chat';
+      }
+    }
+    function openOpenclawWeb() {
+      const u = buildOpenclawWebUrl();
+      try {
+        window.open(u, '_blank', 'noopener');
+        setMsg('已在新窗口打开 OpenClaw Web：' + u, 'ok');
+      } catch (_) {
+        window.location.href = u;
+      }
     }
     async function probeDsmTerminal(url) {
       try {

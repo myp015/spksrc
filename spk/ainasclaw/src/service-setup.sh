@@ -263,7 +263,7 @@ get_gateway_port_from_config() {
     python3 - <<'PY' "${cfg_path}"
 import json, os, sys
 p = sys.argv[1] if len(sys.argv) > 1 else ''
-port = 28789
+port = 58789
 try:
     if p and os.path.exists(p):
         c = json.load(open(p, 'r', encoding='utf-8'))
@@ -308,7 +308,7 @@ def pick_ephemeral():
             s.close()
         except Exception:
             pass
-    return 28789
+    return 58789
 
 cur = c['gateway'].get('port')
 try:
@@ -326,10 +326,10 @@ PY
 }
 
 gateway_port_up() {
-    local port="${1:-28789}"
+    local port="${1:-58789}"
     python3 - <<'PY' "${port}"
 import socket,sys
-port=int(sys.argv[1]) if len(sys.argv)>1 else 28789
+port=int(sys.argv[1]) if len(sys.argv)>1 else 58789
 s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 s.settimeout(0.5)
 try:

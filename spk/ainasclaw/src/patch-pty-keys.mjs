@@ -1,14 +1,25 @@
 #!/usr/bin/env node
-import { readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-function listFiles(dir) {
+function listFiles(rootDir) {
   const out = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    const st = statSync(p);
-    if (st.isDirectory()) out.push(...listFiles(p));
-    else out.push(p);
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const ent of entries) {
+      const p = join(dir, ent.name);
+      // Never follow symlinks (can form loops in node_modules/.bin).
+      if (ent.isSymbolicLink()) continue;
+      if (ent.isDirectory()) stack.push(p);
+      else if (ent.isFile()) out.push(p);
+    }
   }
   return out;
 }

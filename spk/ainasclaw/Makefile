@@ -57,28 +57,23 @@ DSM_UI_CONFIG = src/app/config
 DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
 # DSM package metadata port (for conflict precheck) uses a fixed fallback.
 # Runtime gateway port is dynamically assigned on fresh install in service-setup.sh.
-SERVICE_PORT = 58689
+SERVICE_PORT = 58789
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
 # Package Center details fallback metadata (runtime will sync to active gateway port).
-ADMIN_PORT = 58689
+ADMIN_PORT = 58789
 ADMIN_URL = /default/chat
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
 POST_STRIP_TARGET = openclaw_extra_install
 
-# Resolve node distro arch from target arch reliably (GH action passes ARCH like x64-7.2)
-ARCH_PREFIX := $(word 1,$(subst -, ,$(ARCH)))
-ifeq ($(ARCH_PREFIX),x64)
-NODE_DIST_ARCH = x64
-BUN_DIST_ARCH = x64
-TTYD_DIST_ARCH = x86_64
-else ifeq ($(ARCH_PREFIX),aarch64)
-NODE_DIST_ARCH = arm64
-BUN_DIST_ARCH = aarch64
-TTYD_DIST_ARCH = aarch64
-endif
+# Resolve upstream binary arch from target arch reliably.
+# ARCH can be generic (x64/aarch64) or platform-specific (apollolake/rtd1619b).
+TARGET_ARCH_NAME = $(or $(ARCH),$(TC_ARCH),$(word 1,$(subst -, ,$(TC_NAME))))
+NODE_DIST_ARCH = $(if $(filter $(TARGET_ARCH_NAME),$(x64_ARCHS)),x64,$(if $(filter $(TARGET_ARCH_NAME),$(ARMv8_ARCHS)),arm64,))
+BUN_DIST_ARCH = $(if $(filter $(TARGET_ARCH_NAME),$(x64_ARCHS)),x64,$(if $(filter $(TARGET_ARCH_NAME),$(ARMv8_ARCHS)),aarch64,))
+TTYD_DIST_ARCH = $(if $(filter $(TARGET_ARCH_NAME),$(x64_ARCHS)),x86_64,$(if $(filter $(TARGET_ARCH_NAME),$(ARMv8_ARCHS)),aarch64,))
 
 include ../../mk/spksrc.spk.mk
 
@@ -92,6 +87,9 @@ SPK_USER = openclaw
 .PHONY: openclaw_prepare_bundle
 openclaw_prepare_bundle:
 	@$(MSG) Prepare Node.js runtime and OpenClaw npm bundle
+	@[ -n "$(NODE_DIST_ARCH)" ] || { echo "Unsupported target arch for node bundle: $(TARGET_ARCH_NAME)"; exit 1; }
+	@[ -n "$(BUN_DIST_ARCH)" ] || { echo "Unsupported target arch for bun bundle: $(TARGET_ARCH_NAME)"; exit 1; }
+	@[ -n "$(TTYD_DIST_ARCH)" ] || { echo "Unsupported target arch for ttyd bundle: $(TARGET_ARCH_NAME)"; exit 1; }
 	@rm -rf $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle $(WORK_DIR)/bun-runtime
 	@install -d -m 755 $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle $(WORK_DIR)/bun-runtime
 	@cd $(WORK_DIR) && \
@@ -117,6 +115,23 @@ openclaw_prepare_bundle:
 		acpx@0.5.3 \
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
+		@anthropic-ai/sdk@0.90.0 \
+		@aws-sdk/client-bedrock@3.1033.0 \
+		@aws-sdk/client-bedrock-runtime@3.1033.0 \
+		@aws-sdk/credential-provider-node@3.972.33 \
+		@aws/bedrock-token-generator@^1.1.0 \
+		@tencent-connect/qqbot-connector@^1.1.0 \
+		mpg123-decoder@^1.0.3 \
+		silk-wasm@^3.7.1 \
+		playwright-core@1.59.1 || true
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm dedupe --prefer-dedupe --legacy-peer-deps --no-audit --no-fund || true
+	@install -d -m 755 $(WORK_DIR)/doctor-home
+	@cd $(WORK_DIR)/openclaw-bundle && \
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" \
+		HOME="$(WORK_DIR)/doctor-home" \
+		OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_NO_RESPAWN=1 \
+		sh -lc 'if command -v timeout >/dev/null 2>&1; then timeout 60s node openclaw.mjs doctor --non-interactive --no-workspace-suggestions >$(WORK_DIR)/doctor.log 2>&1 || true; else node openclaw.mjs doctor --non-interactive --no-workspace-suggestions >$(WORK_DIR)/doctor.log 2>&1 || true; fi'
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o bun-linux-$(BUN_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(BUN_DIST_ARCH).zip
