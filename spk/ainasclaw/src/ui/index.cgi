@@ -2766,6 +2766,7 @@ cat <<'HTML'
           window.__ainasGatewayPort = data.port || 58789;
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
+          window.__statusWorkspaceDir = data.workspaceDir || '/volume1/openclaw';
           const rows = [
             ['实例 ID', data.instanceId || '-'],
             ['显示名', data.displayName || '-'],
@@ -3079,16 +3080,25 @@ cat <<'HTML'
         setInstallButtonsBusy('', false);
       }
     }
-    function openOpenclawWeb(url) { return; }
     function openUserSettingsDialog() {
       const m = document.getElementById('userSettingsMask');
       if (!m) return;
+      // Re-sync input with current status workspace every time modal opens.
+      const input = document.getElementById('workspace_dir');
+      if (input) {
+        input.value = (window.__statusWorkspaceDir || '/volume1/openclaw');
+      }
       m.style.display = 'flex';
       document.body.classList.add('modal-open');
     }
     function closeUserSettingsDialog() {
       const m = document.getElementById('userSettingsMask');
       if (!m) return;
+      // Cancel should discard unsaved edits immediately.
+      const input = document.getElementById('workspace_dir');
+      if (input) {
+        input.value = (window.__statusWorkspaceDir || '/volume1/openclaw');
+      }
       m.style.display = 'none';
       document.body.classList.remove('modal-open');
     }
@@ -3934,19 +3944,17 @@ cat <<'HTML'
     }
     function buildOpenclawWebUrl() {
       try {
-        const protocol = window.location.protocol || 'https:';
-        const host = window.location.hostname || '127.0.0.1';
-        const port = Number(window.__ainasGatewayPort || 58789) || 58789;
-        return protocol + '//' + host + ':' + port + '/default/chat';
+        // Prefer DSM-native entry so existing DSM session can open without re-entering token.
+        return '/webman/3rdparty/ainasclaw/index.cgi?launchApp=1';
       } catch (_) {
-        return '/default/chat';
+        return '/webman/3rdparty/ainasclaw/index.cgi?launchApp=1';
       }
     }
     function openOpenclawWeb() {
       const u = buildOpenclawWebUrl();
       try {
         window.open(u, '_blank', 'noopener');
-        setMsg('已在新窗口打开 OpenClaw Web：' + u, 'ok');
+        setMsg('已在新窗口打开 OpenClaw Web', 'ok');
       } catch (_) {
         window.location.href = u;
       }
