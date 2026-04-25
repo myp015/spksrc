@@ -1438,11 +1438,12 @@ except Exception:
     payload = {}
 cmd = str(payload.get('command') or '').strip()
 expect = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw'
+admin_fix_cmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'"
 if cmd != expect:
-    print(json.dumps({'ok': False, 'error': '修复命令不匹配'}, ensure_ascii=False)); raise SystemExit
+    print(json.dumps({'ok': False, 'error': '修复命令不匹配', 'adminFixCommand': admin_fix_cmd}, ensure_ascii=False)); raise SystemExit
 
 if not (os.path.exists('/usr/bin/sudo') and os.access('/usr/bin/sudo', os.X_OK)):
-    print(json.dumps({'ok': False, 'error': '缺少 sudo，无法修复 terminal alias'}, ensure_ascii=False)); raise SystemExit
+    print(json.dumps({'ok': False, 'error': '缺少 sudo，无法修复 terminal alias', 'adminFixCommand': admin_fix_cmd}, ensure_ascii=False)); raise SystemExit
 
 logs = []
 
@@ -1540,6 +1541,7 @@ print(json.dumps({
     'portAvailable': bool(port_ok),
     'aliasAvailable': bool(alias_ok),
     'aliasStatusCode': alias_code,
+    'adminFixCommand': admin_fix_cmd,
     'logs': '\n'.join(logs)[-1200:]
 }, ensure_ascii=False))
 PY
@@ -2656,6 +2658,7 @@ cat <<'HTML'
       const el = document.getElementById('terminal_unlock_input');
       const v = String((el && el.value) || '').trim();
       const patchCmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw';
+      const adminFixCmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'";
       if (v !== patchCmd) {
         setMsg('修复命令不正确。', 'err');
         return;
@@ -2663,12 +2666,14 @@ cat <<'HTML'
       setMsg('正在修复 terminal alias 并检测终端链路…');
       const ret = await api('terminal_unlock', 'POST', { command: v });
       if (!ret || !ret.ok) {
-        setMsg('修复执行失败：' + ((ret && (ret.error || ret.message)) || 'unknown'), 'err');
+        const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
+        setMsg('修复执行失败：' + ((ret && (ret.error || ret.message)) || 'unknown') + '；若当前账号无 sudo 权限，请用管理员账号执行：' + cmd, 'err');
         return;
       }
       await refreshTerminalHealth();
       if (terminalLocked) {
-        setMsg('修复执行完成，但 terminal alias 仍不可用。请稍后重试。', 'err');
+        const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
+        setMsg('修复执行完成，但 terminal alias 仍不可用。请稍后重试；若仍失败，请用管理员账号执行：' + cmd, 'err');
         return;
       }
       setMsg('terminal alias 已恢复，终端已解锁。', 'ok');
@@ -2818,6 +2823,7 @@ cat <<'HTML'
               + '    <button class="btn primary" onclick="unlockTerminalTab()">执行修复并解锁</button>'
               + '  </div>'
               + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n /usr/syno/bin/synopkg restart ainasclaw</code></div>'
+              + '  <div style="font-size:12px;color:#667085;">若提示无 sudo 权限，请管理员账号执行：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>';
             setMsg('终端不可用：已切换到修复提示页。', 'err');
             return;
