@@ -143,6 +143,10 @@ openclaw_prepare_bundle:
 		else \
 			find node_modules -type d \( -name '*linux-x64*' -o -name '*x64-musl*' -o -name '*x64-gnu*' -o -name '*-x64' -o -name '*x86_64*' \) -prune -exec rm -rf {} + 2>/dev/null || true; \
 		fi
+	@cd $(WORK_DIR)/openclaw-bundle && \
+		find dist/extensions -type l -lname '*\.openclaw-install-stage/*' -delete 2>/dev/null || true
+	@cd $(WORK_DIR)/openclaw-bundle && \
+		find dist/extensions -type d -path '*/node_modules/.bin' -prune -exec rm -rf {} + 2>/dev/null || true
 	@printf '%s\n' '[doctor] skipped during build to avoid mutating bundled deps; run doctor after install on DSM runtime.' > $(WORK_DIR)/doctor.log
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@cd $(WORK_DIR) && \
