@@ -1437,9 +1437,9 @@ try:
 except Exception:
     payload = {}
 cmd = str(payload.get('command') or '').strip()
-expect = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw'
+legacy_cmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw'
 admin_fix_cmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'"
-if cmd != expect:
+if cmd not in (admin_fix_cmd, legacy_cmd):
     print(json.dumps({'ok': False, 'error': '修复命令不匹配', 'adminFixCommand': admin_fix_cmd}, ensure_ascii=False)); raise SystemExit
 
 if not (os.path.exists('/usr/bin/sudo') and os.access('/usr/bin/sudo', os.X_OK)):
@@ -2657,8 +2657,8 @@ cat <<'HTML'
     async function unlockTerminalTab() {
       const el = document.getElementById('terminal_unlock_input');
       const v = String((el && el.value) || '').trim();
-      const patchCmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw';
-      const adminFixCmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'";
+      const patchCmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'";
+      const adminFixCmd = patchCmd;
       if (v !== patchCmd) {
         setMsg('修复命令不正确。', 'err');
         return;
@@ -2693,10 +2693,10 @@ cat <<'HTML'
             + '  <div style="font-size:14px;color:#b42318;background:#fff5f6;border:1px solid #fda29b;border-radius:8px;padding:10px 12px;">外置 ttyd 当前不可用，终端页已锁定。</div>'
             + '  <div style="font-size:13px;color:#667085;">请在下方输入补丁命令，系统会执行并自动检测外置 ttyd 是否恢复。</div>'
             + '  <div style="display:flex;gap:8px;">'
-            + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n /usr/syno/bin/synopkg restart ainasclaw" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
-            + '    <button class="btn primary" onclick="unlockTerminalTab()">执行补丁并解锁</button>'
+            + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
+            + '    <button class="btn primary" onclick="unlockTerminalTab()">执行修复并解锁</button>'
             + '  </div>'
-            + '  <div style="font-size:12px;color:#667085;">解锁命令：<code>sudo -n /usr/syno/bin/synopkg restart ainasclaw</code></div>'
+            + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
             + '</div>';
           setMsg('终端已锁定：外置 ttyd 不可用。', 'err');
           return;
@@ -2801,10 +2801,10 @@ cat <<'HTML'
               + '  <div style="font-size:14px;color:#b42318;background:#fff5f6;border:1px solid #fda29b;border-radius:8px;padding:10px 12px;">外置 ttyd 当前不可用，终端页已锁定。</div>'
               + '  <div style="font-size:13px;color:#667085;">请执行补丁命令解锁（会自动重启套件并检测 17682 端口）。</div>'
               + '  <div style="display:flex;gap:8px;">'
-              + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n /usr/syno/bin/synopkg restart ainasclaw" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
-              + '    <button class="btn primary" onclick="unlockTerminalTab()">执行补丁并解锁</button>'
+              + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
+              + '    <button class="btn primary" onclick="unlockTerminalTab()">执行修复并解锁</button>'
               + '  </div>'
-              + '  <div style="font-size:12px;color:#667085;">解锁命令：<code>sudo -n /usr/syno/bin/synopkg restart ainasclaw</code></div>'
+              + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>';
             setMsg('终端已锁定：外置 ttyd 不可用。', 'err');
             return;
@@ -2819,10 +2819,10 @@ cat <<'HTML'
               + '  <div style="font-size:14px;color:#b42318;background:#fff5f6;border:1px solid #fda29b;border-radius:8px;padding:10px 12px;">当前终端不可用，请输入命令修复。</div>'
               + '  <div style="font-size:13px;color:#667085;">检测到套件中心框架内无法打开终端（已拦截 404 页面），请执行修复命令后重试。</div>'
               + '  <div style="display:flex;gap:8px;">'
-              + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n /usr/syno/bin/synopkg restart ainasclaw" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
+              + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
               + '    <button class="btn primary" onclick="unlockTerminalTab()">执行修复并解锁</button>'
               + '  </div>'
-              + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n /usr/syno/bin/synopkg restart ainasclaw</code></div>'
+              + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '  <div style="font-size:12px;color:#667085;">若提示无 sudo 权限，请管理员账号执行：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>';
             setMsg('终端不可用：已切换到修复提示页。', 'err');
