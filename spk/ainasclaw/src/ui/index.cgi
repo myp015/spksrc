@@ -122,16 +122,17 @@ if ! printf '%s' "$REQ_COOKIE" | grep -Eq '(^|;[[:space:]]*)id='; then
     exit 0
 fi
 
-# 配置面板入口仅允许 launchApp=1（兼容 DSM 套件中心实际不稳定的 Referer 行为）。
 # native_api=1 接口请求不受此限制。
-if [ "$native_api" != "1" ]; then
-    if [ "$launch_app" != "1" ]; then
+# 仅禁用“直接访问 launchApp=1”场景；普通套件中心入口（通常不带 launchApp）保持可用。
+if [ "$native_api" != "1" ] && [ "$launch_app" = "1" ]; then
+    REQ_REFERER="${HTTP_REFERER:-}"
+    if ! printf '%s' "$REQ_REFERER" | grep -Eq '/webman/index.cgi'; then
         printf "Status: 403 Forbidden
 "
         printf "Content-Type: text/plain; charset=UTF-8
 
 "
-        printf "Forbidden: launch from Package Center only
+        printf "Forbidden: direct launch blocked
 "
         exit 0
     fi
