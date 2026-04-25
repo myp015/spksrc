@@ -294,29 +294,17 @@ if not isinstance(c, dict):
 if not isinstance(c.get('gateway'), dict):
     c['gateway'] = {}
 
-def pick_ephemeral():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.bind(('127.0.0.1', 0))
-        p = int(s.getsockname()[1])
-        if 1024 <= p <= 65535:
-            return p
-    except Exception:
-        pass
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
-    return 58789
-
 cur = c['gateway'].get('port')
 try:
     cur = int(cur)
 except Exception:
     cur = 0
 has_valid = 1024 <= cur <= 65535
-port = pick_ephemeral() if (force_new or not has_valid) else cur
+# force_new means reset to package default port instead of random ephemeral port.
+if force_new:
+    port = 58789
+else:
+    port = cur if has_valid else 58789
 c['gateway']['port'] = port
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(c, f, ensure_ascii=False, indent=2)
@@ -737,7 +725,7 @@ NGINX_EOF
             fi
         fi
 
-        # 安装阶段立即分配随机 gateway 端口（不依赖 start），避免后续启动命中固定端口冲突。
+        # 安装阶段强制写回默认端口（58789），避免沿用历史随机端口。
         if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
             ensure_gateway_port_in_config 1 "${OPENCLAW_CONFIG_FILE_BASE}" >/dev/null 2>&1 || true
         fi
@@ -1185,24 +1173,22 @@ EOF
         fresh_install_config="1"
     fi
 
-    # 全新安装/新目录初始化时自动分配网关端口，避免与 DSM 现有端口声明冲突。
-    # 升级或已有配置默认保留原端口不改。
+    # 端口策略：默认固定 58789；首次安装/目录初始化强制回归 58789（不再随机）。
     local assigned_gateway_port=""
-    local force_reassign_port="0"
-    # 首次安装后第一次 prestart 会带着 marker，强制随机分配一次端口。
-    if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ] || [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
-        force_reassign_port="1"
+    local force_default_port="0"
+    if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ] || [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${fresh_install_config}" = "1" ] || [ -f "${SYNOPKG_PKGVAR}/force-default-port-on-next-start.flag" ]; then
+        force_default_port="1"
     fi
-
-    if [ "${force_reassign_port}" = "1" ]; then
+    if [ "${force_default_port}" = "1" ]; then
         assigned_gateway_port="$(ensure_gateway_port_in_config 1 "${OPENCLAW_CONFIG_FILE}")"
     else
-        # 非首次安装流程（start/restart/upgrade）保留既有端口。
         assigned_gateway_port="$(ensure_gateway_port_in_config 0 "${OPENCLAW_CONFIG_FILE}")"
     fi
 
     # 每次 prestart 同步 DSM 套件详情页端口展示。
     sync_dsm_package_info_port "${assigned_gateway_port}"
+    # consume one-shot marker for workspace-switch default port reset
+    rm -f "${SYNOPKG_PKGVAR}/force-default-port-on-next-start.flag" 2>/dev/null || true
 
     # 始终将当前用户目录规则写回配置：
     # workspace=/xxx

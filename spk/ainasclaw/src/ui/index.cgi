@@ -390,6 +390,13 @@ for p in providers_payload:
             provider['models'].append({'id': mid, 'name': f"{pid} / {mid}"})
     providers_map[pid] = provider
 cfg.setdefault('models', {})['providers'] = providers_map
+# workspace changed explicitly: normalize gateway default port to 58789
+try:
+    if workspace_explicit and (workspace or '/volume1/openclaw') != (prev_workspace or '/volume1/openclaw'):
+        gw = cfg.setdefault('gateway', {})
+        gw['port'] = 58789
+except Exception:
+    pass
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
 # user requirement: changing workspace should initialize by defaults only (no migration)
@@ -440,11 +447,11 @@ try:
             'OPENCLAW_CONFIG_FILE=\"{cfg}\"; '
             'OPENCLAW_CONFIG_PATH=\"{cfg}\"; '
             'OPENCLAW_STATE_DIR=\"{state}\"; '
-            'OPENCLAW_WORKSPACE_DIR=\"{state}\"; '
-            'HOME=\"{state}\"; '
+            'OPENCLAW_WORKSPACE_DIR=\"{workspace}\"; '
+            'HOME=\"{workspace}\"; '
             'OPENCLAW_GATEWAY_RESTART_START=1; '
             'sync_provider_models_from_upstream"'
-        ).format(cfg=cfg_path, state=state_dir_for_sync)
+        ).format(cfg=cfg_path, state=state_dir_for_sync, workspace=workspace)
         r = subprocess.run(sync_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
         model_sync_exit = int(r.returncode)
         # lightweight marker for troubleshooting whether auto-sync path was executed
@@ -511,6 +518,15 @@ for pkg_name in ['feishu-openclaw-plugin', 'dingtalk', 'wecom', 'openclaw-qqbot'
         pass
 
 workspace_changed = bool(workspace and workspace != prev_workspace)
+# Mark one-shot default-port reset when user explicitly switches workspace.
+try:
+    if workspace_explicit and workspace_changed:
+        marker = '/var/packages/ainasclaw/var/force-default-port-on-next-start.flag'
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, 'w', encoding='utf-8') as mf:
+            mf.write('1\n')
+except Exception:
+    pass
 ptr_val = ''
 hptr_val = ''
 try:
@@ -2032,13 +2048,16 @@ except BlockingIOError:
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG']='0'
 env['OPENCLAW_DATA_DIR']='/volume1/@appdata/ainasclaw/data'
-env['HOME']=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
+state_dir=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
+workspace_root=(state_dir[:-10] if state_dir.endswith('/.openclaw') else '/volume1/openclaw')
+env['HOME']=workspace_root
 env['OPENCLAW_CONFIG_PATH']=cfg
-env['OPENCLAW_STATE_DIR']=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
-env['NPM_CONFIG_CACHE']=env['OPENCLAW_STATE_DIR']+'/.npm'
-env['XDG_CACHE_HOME']=env['OPENCLAW_STATE_DIR']+'/.cache'
-env['XDG_CONFIG_HOME']=env['OPENCLAW_STATE_DIR']+'/.config'
-env['XDG_DATA_HOME']=env['OPENCLAW_STATE_DIR']+'/.local/share'
+env['OPENCLAW_STATE_DIR']=state_dir
+env['OPENCLAW_WORKSPACE_DIR']=workspace_root
+env['NPM_CONFIG_CACHE']=state_dir+'/.npm'
+env['XDG_CACHE_HOME']=state_dir+'/.cache'
+env['XDG_CONFIG_HOME']=state_dir+'/.config'
+env['XDG_DATA_HOME']=state_dir+'/.local/share
 env['OPENCLAW_TOOLS_PROFILE']='full'
 env['OPENCLAW_TOOLS_ELEVATED_ENABLED']='1'
 env['OPENCLAW_ELEVATED_DEFAULT']='full'
@@ -2084,18 +2103,7 @@ if action in ('start','restart'):
     except Exception:
         gw_port = 0
     if not (1024 <= gw_port <= 65535):
-        import socket as _s
-        _sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        try:
-            _sock.bind(('127.0.0.1', 0))
-            gw_port = int(_sock.getsockname()[1])
-        except Exception:
-            gw_port = 58789
-        finally:
-            try:
-                _sock.close()
-            except Exception:
-                pass
+        gw_port = 58789
     gw['port'] = gw_port
     cu = gw.setdefault('controlUi', {})
     cu['basePath'] = '/default'
