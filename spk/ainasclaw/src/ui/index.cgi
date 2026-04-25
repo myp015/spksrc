@@ -2724,6 +2724,24 @@ cat <<'HTML'
             return;
           }
 
+          const terminalReachable = await probeDsmTerminal(terminalUrl);
+          if (!terminalReachable) {
+            terminalLocked = true;
+            setTerminalTabDisabled(true);
+            content.innerHTML = ''
+              + '<div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">'
+              + '  <div style="font-size:14px;color:#b42318;background:#fff5f6;border:1px solid #fda29b;border-radius:8px;padding:10px 12px;">当前终端不可用，请输入命令修复。</div>'
+              + '  <div style="font-size:13px;color:#667085;">检测到套件中心框架内无法打开终端（已拦截 404 页面），请执行修复命令后重试。</div>'
+              + '  <div style="display:flex;gap:8px;">'
+              + '    <input id="terminal_unlock_input" style="flex:1;" placeholder="输入：sudo -n /usr/syno/bin/synopkg restart ainasclaw" onkeydown="if(event.key===\'Enter\'){event.preventDefault();unlockTerminalTab();}">'
+              + '    <button class="btn primary" onclick="unlockTerminalTab()">执行修复并解锁</button>'
+              + '  </div>'
+              + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n /usr/syno/bin/synopkg restart ainasclaw</code></div>'
+              + '</div>';
+            setMsg('终端不可用：已切换到修复提示页。', 'err');
+            return;
+          }
+
           content.innerHTML = ''
             + '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">'
             + '  <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">'
