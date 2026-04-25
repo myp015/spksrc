@@ -1439,6 +1439,7 @@ except Exception:
 cmd = str(payload.get('command') or '').strip()
 admin_user = str(payload.get('adminUser') or '').strip()
 admin_password = str(payload.get('adminPassword') or '')
+force_password_flow = bool(payload.get('forcePasswordFlow'))
 legacy_cmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw'
 admin_fix_cmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'"
 if cmd not in (admin_fix_cmd, legacy_cmd):
@@ -1515,16 +1516,22 @@ try:
 except Exception as e:
     logs.append(f'write alias failed: {e}')
 
-# 软链落地 + nginx reload：优先 sudo -n；失败时按用户要求尝试管理员账号/密码方案。
-ln_rc = run(['sudo', '-n', 'ln', '-sfn', alias_src, alias_dst])
-nginx_test_rc = run(['sudo', '-n', 'sh', '-lc', 'nginx -t'])
+# 软链落地 + nginx reload：默认走 sudo -n；可由前端显式选择“强制密码修复”路径。
+ln_rc = 1
+nginx_test_rc = 1
 nginx_reload_rc = 1
-if nginx_test_rc == 0:
-    nginx_reload_rc = run(['sudo', '-n', 'sh', '-lc', 'systemctl reload nginx'])
-
-if (ln_rc != 0 or nginx_test_rc != 0 or nginx_reload_rc != 0) and admin_user and admin_password:
+if force_password_flow and admin_user and admin_password:
     pw_rc = run_admin_password_flow(admin_user, admin_password)
-    logs.append(f'password flow rc={pw_rc}')
+    logs.append(f'password flow(forced) rc={pw_rc}')
+else:
+    ln_rc = run(['sudo', '-n', 'ln', '-sfn', alias_src, alias_dst])
+    nginx_test_rc = run(['sudo', '-n', 'sh', '-lc', 'nginx -t'])
+    if nginx_test_rc == 0:
+        nginx_reload_rc = run(['sudo', '-n', 'sh', '-lc', 'systemctl reload nginx'])
+
+    if (ln_rc != 0 or nginx_test_rc != 0 or nginx_reload_rc != 0) and admin_user and admin_password:
+        pw_rc = run_admin_password_flow(admin_user, admin_password)
+        logs.append(f'password flow rc={pw_rc}')
 
 
 def check_port(port=17682, tries=20, interval=0.5):
@@ -2684,6 +2691,8 @@ cat <<'HTML'
       const adminPassEl = document.getElementById('terminal_admin_pass');
       const adminUser = String((adminUserEl && adminUserEl.value) || '').trim();
       const adminPassword = String((adminPassEl && adminPassEl.value) || '');
+      const forcePasswordEl = document.getElementById('terminal_force_password_flow');
+      const forcePasswordFlow = !!(forcePasswordEl && forcePasswordEl.checked);
       const patchCmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'";
       const adminFixCmd = patchCmd;
       if (v !== patchCmd) {
@@ -2691,7 +2700,7 @@ cat <<'HTML'
         return;
       }
       setMsg('正在修复 terminal alias 并检测终端链路…');
-      const ret = await api('terminal_unlock', 'POST', { command: v, adminUser, adminPassword });
+      const ret = await api('terminal_unlock', 'POST', { command: v, adminUser, adminPassword, forcePasswordFlow });
       if (adminPassEl) adminPassEl.value = '';
       if (!ret || !ret.ok) {
         const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
@@ -2728,6 +2737,7 @@ cat <<'HTML'
             + '    <input id="terminal_admin_user" style="flex:1;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
             + '    <input id="terminal_admin_pass" type="password" style="flex:1;" placeholder="可选：管理员密码">'
             + '  </div>'
+            + '  <label style="font-size:12px;color:#667085;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="terminal_force_password_flow"> 强制使用管理员密码修复（跳过 sudo -n）</label>'
             + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
             + '</div>';
           setMsg('终端已锁定：外置 ttyd 不可用。', 'err');
@@ -2840,6 +2850,7 @@ cat <<'HTML'
               + '    <input id="terminal_admin_user" style="flex:1;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
               + '    <input id="terminal_admin_pass" type="password" style="flex:1;" placeholder="可选：管理员密码">'
               + '  </div>'
+              + '  <label style="font-size:12px;color:#667085;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="terminal_force_password_flow"> 强制使用管理员密码修复（跳过 sudo -n）</label>'
               + '  <div style="font-size:12px;color:#667085;">修复命令：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>;
             setMsg('终端已锁定：外置 ttyd 不可用。', 'err');
