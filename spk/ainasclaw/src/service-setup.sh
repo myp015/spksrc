@@ -669,24 +669,6 @@ location ~ ^/openclaw-terminal(.*)$ {
         return 403;
     }
 
-    # 仅拦截“入口页”直链（含多余斜杠变体）；放行 token/ws 等子路径，避免终端握手被误伤
-    set $oc2_block 0;
-    if ($request_uri ~ "^//+openclaw-terminal/*(\?|$)") {
-        set $oc2_block 1;
-    }
-    if ($request_uri ~ "^/openclaw-terminal/?(\?|$)") {
-        set $oc2_block 1;
-    }
-    if ($http_referer != "") {
-        set $oc2_block 0;
-    }
-    if ($http_sec_fetch_dest = "iframe") {
-        set $oc2_block 0;
-    }
-    if ($oc2_block = 1) {
-        return 404;
-    }
-
     proxy_http_version      1.1;
     proxy_set_header        Host $host;
     proxy_set_header        Upgrade $http_upgrade;
@@ -712,9 +694,17 @@ location ~ ^/openclaw-terminal(.*)$ {
     proxy_buffering         off;
 }
 NGINX_EOF
-    ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf
+    if ! ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf 2>/dev/null; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo -n ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
+        fi
+    fi
     if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx >/dev/null 2>&1 || true
+        systemctl reload nginx >/dev/null 2>&1 || {
+            if command -v sudo >/dev/null 2>&1; then
+                sudo -n systemctl reload nginx >/dev/null 2>&1 || true
+            fi
+        }
     fi
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
         mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
@@ -979,24 +969,6 @@ location ~ ^/openclaw-terminal(.*)$ {
         return 403;
     }
 
-    # 仅拦截“入口页”直链（含多余斜杠变体）；放行 token/ws 等子路径，避免终端握手被误伤
-    set $oc2_block 0;
-    if ($request_uri ~ "^//+openclaw-terminal/*(\\?|$)") {
-        set $oc2_block 1;
-    }
-    if ($request_uri ~ "^/openclaw-terminal/?(\\?|$)") {
-        set $oc2_block 1;
-    }
-    if ($http_referer != "") {
-        set $oc2_block 0;
-    }
-    if ($http_sec_fetch_dest = "iframe") {
-        set $oc2_block 0;
-    }
-    if ($oc2_block = 1) {
-        return 404;
-    }
-
     proxy_http_version      1.1;
     proxy_set_header        Host $host;
     proxy_set_header        Upgrade $http_upgrade;
@@ -1022,9 +994,17 @@ location ~ ^/openclaw-terminal(.*)$ {
     proxy_buffering         off;
 }
 NGINX_EOF
-    ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf 2>/dev/null || true
+    if ! ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo -n ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
+        fi
+    fi
     if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx >/dev/null 2>&1 || true
+        systemctl reload nginx >/dev/null 2>&1 || {
+            if command -v sudo >/dev/null 2>&1; then
+                sudo -n systemctl reload nginx >/dev/null 2>&1 || true
+            fi
+        }
     fi
 
     # AiNasClaw bundled terminal (ttyd) integration (no dependency on external terminal package).
