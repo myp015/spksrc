@@ -1430,7 +1430,7 @@ PY
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body"
-import json, os, subprocess, socket, time, sys
+import json, os, subprocess, socket, time, sys, textwrap
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 try:
     payload = json.loads(raw or '{}')
@@ -1439,11 +1439,69 @@ except Exception:
 cmd = str(payload.get('command') or '').strip()
 expect = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw'
 if cmd != expect:
-    print(json.dumps({'ok': False, 'error': '解锁命令不匹配'}, ensure_ascii=False)); raise SystemExit
+    print(json.dumps({'ok': False, 'error': '修复命令不匹配'}, ensure_ascii=False)); raise SystemExit
 
-# 执行“打补丁”动作：重启套件，并检测 ttyd 端口恢复
-p = subprocess.run(['/usr/syno/bin/synopkg', 'restart', 'ainasclaw'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-logs = (p.stdout or '')[-400:]
+logs = []
+
+def run(argv):
+    p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    out = (p.stdout or '').strip()
+    if out:
+        logs.append(out[-500:])
+    return p.returncode
+
+# 针对 root cause：修复 terminal alias 并重载 nginx
+# 注意：不要在 CGI 请求里重启本套件，否则会中断当前请求导致前端拿不到返回。
+alias_content = textwrap.dedent('''\
+location ~ ^/openclaw-terminal(.*)$ {
+    if ($http_cookie !~* "(^|;\\s*)id=") {
+        return 403;
+    }
+
+    proxy_http_version      1.1;
+    proxy_set_header        Host $host;
+    proxy_set_header        Upgrade $http_upgrade;
+    proxy_set_header        Connection "upgrade";
+    proxy_set_header        X-Real-IP $remote_addr;
+    proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header        X-Forwarded-Proto $scheme;
+    proxy_set_header        X-Forwarded-Host $host;
+    proxy_set_header        Cookie $http_cookie;
+    proxy_read_timeout      3600s;
+    proxy_send_timeout      3600s;
+    proxy_connect_timeout   60s;
+
+    add_header              'Access-Control-Allow-Origin' $scheme://$http_host always;
+    add_header              'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+    add_header              'Access-Control-Allow-Headers' 'Authorization,Content-Type,Accept,Origin,User-Agent,DNT,Cache-Control,X-Mx-ReqToken,Keep-Alive,X-Requested-With,If-Modified-Since';
+    add_header              'Access-Control-Allow-Credentials' 'true';
+    add_header              'Cross-Origin-Embedder-Policy' 'require-corp';
+    add_header              'Cross-Origin-Opener-Policy' 'same-origin';
+    add_header              'Cross-Origin-Resource-Policy' 'same-site';
+
+    proxy_pass              http://127.0.0.1:17682;
+    proxy_buffering         off;
+}
+''')
+
+alias_src = '/var/packages/ainasclaw/var/alias.openclaw-terminal.conf'
+alias_dst = '/etc/nginx/conf.d/alias.openclaw-terminal.conf'
+os.makedirs(os.path.dirname(alias_src), exist_ok=True)
+try:
+    with open(alias_src, 'w', encoding='utf-8') as f:
+        f.write(alias_content)
+except Exception as e:
+    logs.append(f'write alias failed: {e}')
+
+# 软链落地（可能需要 root）
+if run(['ln', '-sfn', alias_src, alias_dst]) != 0:
+    run(['sudo', '-n', 'ln', '-sfn', alias_src, alias_dst])
+
+nginx_ok = (run(['sh', '-lc', 'nginx -t']) == 0)
+if nginx_ok:
+    if run(['sh', '-lc', 'systemctl reload nginx']) != 0:
+        run(['sudo', '-n', 'sh', '-lc', 'systemctl reload nginx'])
+
 
 def check_port(port=17682, tries=20, interval=0.5):
     for _ in range(tries):
@@ -1459,8 +1517,31 @@ def check_port(port=17682, tries=20, interval=0.5):
             time.sleep(interval)
     return False
 
-avail = check_port()
-print(json.dumps({'ok': True, 'patched': True, 'available': bool(avail), 'logs': logs}, ensure_ascii=False))
+
+def check_alias_https(tries=6, interval=0.4):
+    for _ in range(tries):
+        p = subprocess.run([
+            'curl', '-k', '-sS', '-o', '/dev/null', '-w', '%{http_code}',
+            '-H', 'Cookie: id=fake',
+            'https://127.0.0.1:5001/openclaw-terminal/token'
+        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        code = (p.stdout or '').strip()[-3:]
+        if code and code not in ('404', '000'):
+            return True, code
+        time.sleep(interval)
+    return False, (code if 'code' in locals() else '000')
+
+port_ok = check_port()
+alias_ok, alias_code = check_alias_https()
+print(json.dumps({
+    'ok': True,
+    'patched': True,
+    'available': bool(port_ok and alias_ok),
+    'portAvailable': bool(port_ok),
+    'aliasAvailable': bool(alias_ok),
+    'aliasStatusCode': alias_code,
+    'logs': '\n'.join(logs)[-1200:]
+}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -2576,21 +2657,21 @@ cat <<'HTML'
       const v = String((el && el.value) || '').trim();
       const patchCmd = 'sudo -n /usr/syno/bin/synopkg restart ainasclaw';
       if (v !== patchCmd) {
-        setMsg('解锁命令不正确。', 'err');
+        setMsg('修复命令不正确。', 'err');
         return;
       }
-      setMsg('正在执行外置 ttyd 补丁并检测端口…');
+      setMsg('正在修复 terminal alias 并检测终端链路…');
       const ret = await api('terminal_unlock', 'POST', { command: v });
       if (!ret || !ret.ok) {
-        setMsg('补丁执行失败：' + ((ret && (ret.error || ret.message)) || 'unknown'), 'err');
+        setMsg('修复执行失败：' + ((ret && (ret.error || ret.message)) || 'unknown'), 'err');
         return;
       }
       await refreshTerminalHealth();
       if (terminalLocked) {
-        setMsg('补丁执行完成，但外置 ttyd 仍不可用。请稍后重试。', 'err');
+        setMsg('修复执行完成，但 terminal alias 仍不可用。请稍后重试。', 'err');
         return;
       }
-      setMsg('外置 ttyd 已恢复，终端已解锁。', 'ok');
+      setMsg('terminal alias 已恢复，终端已解锁。', 'ok');
       await load('terminal');
     }
     async function load(tab) {
