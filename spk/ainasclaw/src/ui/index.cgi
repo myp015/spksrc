@@ -107,6 +107,7 @@ sys.stdout.buffer.write(b"".join(chunks))
 
 action=$(urldecode "$(get_param action "$QUERY")")
 native_api=$(urldecode "$(get_param native_api "$QUERY")")
+launch_app=$(urldecode "$(get_param launchApp "$QUERY")")
 
 # 仅允许 DSM 登录会话访问（避免未登录直接打开）
 REQ_COOKIE="${HTTP_COOKIE:-}"
@@ -121,9 +122,31 @@ if ! printf '%s' "$REQ_COOKIE" | grep -Eq '(^|;[[:space:]]*)id='; then
     exit 0
 fi
 
-# 非 native_api 页面入口不再做 referer/launchApp 限制。
-# 仅依赖 DSM 登录会话（上方 cookie id）进行访问控制，避免误伤套件中心/iframe 打开链路。
-# 如需公网防护，请在网关/反向代理层做来源限制。
+# 禁止直接访问配置面板页面：仅允许通过套件中心（webman index）入口打开。
+# native_api=1 接口请求不受此限制。
+if [ "$native_api" != "1" ]; then
+    REQ_REFERER="${HTTP_REFERER:-}"
+    if [ "$launch_app" != "1" ]; then
+        printf "Status: 403 Forbidden
+"
+        printf "Content-Type: text/plain; charset=UTF-8
+
+"
+        printf "Forbidden: launch from Package Center only
+"
+        exit 0
+    fi
+    if ! printf '%s' "$REQ_REFERER" | grep -Eq '/webman/index.cgi'; then
+        printf "Status: 403 Forbidden
+"
+        printf "Content-Type: text/plain; charset=UTF-8
+
+"
+        printf "Forbidden: direct launch blocked
+"
+        exit 0
+    fi
+fi
 
 if [ "$native_api" = "1" ]; then
     case "$action" in
@@ -205,6 +228,7 @@ for p in ('/var/packages/ainasclaw/target/app/openclaw/package.json', '/var/pack
         pass
 version = spk_ver or app_ver or 'unknown'
 binary_path = '/var/packages/ainasclaw/target/bin/openclaw' if os.path.exists('/var/packages/ainasclaw/target/bin/openclaw') else ''
+gateway_token = str((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '')
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -217,7 +241,8 @@ out = {
   'configPath': cfg_path,
   'binaryPath': binary_path,
   'uptimeSeconds': uptime_seconds,
-  'startedAt': started_ts
+  'startedAt': started_ts,
+  'gatewayToken': gateway_token
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -2764,6 +2789,7 @@ cat <<'HTML'
         const data = await api(tab);
         if (tab === 'status') {
           window.__ainasGatewayPort = data.port || 58789;
+          window.__ainasGatewayToken = data.gatewayToken || '';
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
           window.__statusWorkspaceDir = data.workspaceDir || '/volume1/openclaw';
@@ -2833,6 +2859,7 @@ cat <<'HTML'
                 gridVals[6].textContent = String(nextPort);
               }
               window.__ainasGatewayPort = (s && s.port) || window.__ainasGatewayPort || 58789;
+              window.__ainasGatewayToken = (s && s.gatewayToken) || window.__ainasGatewayToken || '';
             } catch (_) {}
           }, 1500);
           return;
@@ -3944,10 +3971,15 @@ cat <<'HTML'
     }
     function buildOpenclawWebUrl() {
       try {
-        // Prefer DSM-native entry so existing DSM session can open without re-entering token.
-        return '/webman/3rdparty/ainasclaw/index.cgi?launchApp=1';
+        const protocol = window.location.protocol || 'https:';
+        const host = window.location.hostname || '127.0.0.1';
+        const port = Number(window.__ainasGatewayPort || 58789) || 58789;
+        const token = String(window.__ainasGatewayToken || '').trim();
+        const url = new URL(protocol + '//' + host + ':' + port + '/default/chat');
+        if (token) url.searchParams.set('token', token);
+        return url.toString();
       } catch (_) {
-        return '/webman/3rdparty/ainasclaw/index.cgi?launchApp=1';
+        return '/default/chat';
       }
     }
     function openOpenclawWeb() {
