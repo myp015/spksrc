@@ -7,9 +7,15 @@ $(error Failed to resolve latest stable openclaw version from upstream tags)
 endif
 # Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
 # Put custom build identity into numeric SPK_REV only.
-OPENCLAW_NPM_VERS := $(shell npm view openclaw version --silent 2>/dev/null)
+# Resolve npm-published latest directly (CI containers may not have host npm available at parse time).
+OPENCLAW_NPM_VERS := $(shell curl -fsSL https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d '\n' | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
 ifeq ($(strip $(OPENCLAW_NPM_VERS)),)
-OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
+$(error Failed to resolve latest openclaw version from npm registry)
+endif
+ifneq ($(strip $(LATEST_OPENCLAW_VERS)),)
+ifneq ($(OPENCLAW_NPM_VERS),$(LATEST_OPENCLAW_VERS))
+$(warning Upstream git latest is v$(LATEST_OPENCLAW_VERS), npm latest is $(OPENCLAW_NPM_VERS); build pins npm latest)
+endif
 endif
 SPK_VERS := $(OPENCLAW_NPM_VERS)
 SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
