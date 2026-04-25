@@ -643,8 +643,23 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 ' "${OPENCLAW_CONFIG_FILE}" >/dev/null 2>&1 || true
 }
 
+ensure_terminal_alias_sudoers() {
+    # Allow package user to repair terminal alias without full root shell.
+    # Minimal commands only: link alias file + nginx config test/reload.
+    local sudoers_dir="/etc/sudoers.d"
+    local sudoers_file="${sudoers_dir}/ainasclaw-terminal"
+
+    mkdir -p "${sudoers_dir}" 2>/dev/null || true
+    cat > "${sudoers_file}" <<'SUDOERS_EOF'
+Defaults:sc-openclaw !requiretty
+sc-openclaw ALL=(root) NOPASSWD: /bin/ln, /usr/sbin/nginx, /usr/bin/nginx, /bin/systemctl
+SUDOERS_EOF
+    chmod 440 "${sudoers_file}" 2>/dev/null || true
+}
+
 service_postinst() {
     ensure_openclaw_in_path
+    ensure_terminal_alias_sudoers
 
     # Normalize bundled channel plugin ownership to root:root so OpenClaw trust checks pass.
     for path in \
@@ -1738,6 +1753,7 @@ service_preuninst() {
     # uninstall hook: ensure detached gateway and terminal are cleaned first
     service_poststop
     rm -f /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
+    rm -f /etc/sudoers.d/ainasclaw-terminal >/dev/null 2>&1 || true
     rm -f /etc/nginx/conf.d/alias.openclaw2-terminal.conf >/dev/null 2>&1 || true
     if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || true
