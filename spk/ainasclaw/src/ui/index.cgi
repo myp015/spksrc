@@ -540,20 +540,29 @@ if apply_now:
         env = os.environ.copy()
         env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
         env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-        env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        state_dir = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        user_dir = (os.path.dirname(state_dir) if state_dir.endswith('/.openclaw') else state_dir)
+        env['HOME'] = user_dir
         env['OPENCLAW_CONFIG_PATH'] = cfg_path
-        env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-        env['OPENCLAW_WORKSPACE_DIR'] = env['OPENCLAW_STATE_DIR']
-        env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
-        env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
-        env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
-        env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+        env['OPENCLAW_STATE_DIR'] = state_dir
+        env['OPENCLAW_WORKSPACE_DIR'] = user_dir
+        env['NPM_CONFIG_CACHE'] = state_dir + '/.npm'
+        env['XDG_CACHE_HOME'] = state_dir + '/.cache'
+        env['XDG_CONFIG_HOME'] = state_dir + '/.config'
+        env['XDG_DATA_HOME'] = state_dir + '/.local/share'
         env['OPENCLAW_TOOLS_PROFILE'] = 'full'
         env['OPENCLAW_TOOLS_ELEVATED_ENABLED'] = '1'
         env['OPENCLAW_ELEVATED_DEFAULT'] = 'full'
         env['OPENCLAW_EXEC_SECURITY_DEFAULT'] = 'full'
 
-        gw_port = int(os.environ.get('GATEWAY_PORT', '58789') or '58789')
+        try:
+            with open(cfg_path, 'r', encoding='utf-8') as _rf:
+                _c = json.load(_rf)
+            gw_port = int((((_c.get('gateway') or {}).get('port')) or 0))
+            if not (1024 <= gw_port <= 65535):
+                gw_port = 58789
+        except Exception:
+            gw_port = 58789
 
         def is_running(port=None):
             port = gw_port if port is None else port
@@ -625,6 +634,19 @@ if apply_now:
                     break
                 time.sleep(1)
             out['gatewayRunning'] = running
+
+        try:
+            subprocess.run(
+                [
+                    'bash', '-lc',
+                    'source /var/packages/ainasclaw/scripts/service-setup >/dev/null 2>&1; sync_dsm_package_info_port "' + str(gw_port) + '"'
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=12
+            )
+        except Exception:
+            pass
     except Exception as e:
         out['gatewayAutoStartTriggered'] = False
         out['gatewayAutoStartErr'] = str(e)
@@ -938,13 +960,16 @@ if not skip_reload:
         env = os.environ.copy()
         env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
         env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-        env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        state_dir = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+        user_dir = (os.path.dirname(state_dir) if state_dir.endswith('/.openclaw') else state_dir)
+        env['HOME'] = user_dir
         env['OPENCLAW_CONFIG_PATH'] = cfg_path
-        env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-        env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
-        env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
-        env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
-        env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+        env['OPENCLAW_STATE_DIR'] = state_dir
+        env['OPENCLAW_WORKSPACE_DIR'] = user_dir
+        env['NPM_CONFIG_CACHE'] = state_dir + '/.npm'
+        env['XDG_CACHE_HOME'] = state_dir + '/.cache'
+        env['XDG_CONFIG_HOME'] = state_dir + '/.config'
+        env['XDG_DATA_HOME'] = state_dir + '/.local/share'
         env['OPENCLAW_GATEWAY_RESTART_START'] = '1'
         cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
         p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
@@ -1069,11 +1094,14 @@ env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
 env['HOME'] = home_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
-env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
-env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
-env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+state_dir = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+user_dir = (os.path.dirname(state_dir) if state_dir.endswith('/.openclaw') else state_dir)
+env['OPENCLAW_STATE_DIR'] = state_dir
+env['OPENCLAW_WORKSPACE_DIR'] = user_dir
+env['NPM_CONFIG_CACHE'] = state_dir + '/.npm'
+env['XDG_CACHE_HOME'] = state_dir + '/.cache'
+env['XDG_CONFIG_HOME'] = state_dir + '/.config'
+env['XDG_DATA_HOME'] = state_dir + '/.local/share'
 log(f'weixin_login_start begin round={round_id} force={1 if force_new else 0}')
 # 清理历史遗留登录 worker，避免旧流程仍在后台运行干扰当前登录。
 try:
@@ -1201,13 +1229,16 @@ def log(msg):
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+state_dir = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+user_dir = (os.path.dirname(state_dir) if state_dir.endswith('/.openclaw') else state_dir)
+env['HOME'] = user_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
-env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
-env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
-env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+env['OPENCLAW_STATE_DIR'] = state_dir
+env['OPENCLAW_WORKSPACE_DIR'] = user_dir
+env['NPM_CONFIG_CACHE'] = state_dir + '/.npm'
+env['XDG_CACHE_HOME'] = state_dir + '/.cache'
+env['XDG_CONFIG_HOME'] = state_dir + '/.config'
+env['XDG_DATA_HOME'] = state_dir + '/.local/share'
 # 性能优化：轮询接口不再调用 channels status（该命令可阻塞数秒），
 # 直接走二维码状态 API 判断连接结果。
 raw = ''
@@ -1364,13 +1395,16 @@ cfg_path = sys.argv[1]
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+state_dir = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+user_dir = (os.path.dirname(state_dir) if state_dir.endswith('/.openclaw') else state_dir)
+env['HOME'] = user_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
-env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
-env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
-env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+env['OPENCLAW_STATE_DIR'] = state_dir
+env['OPENCLAW_WORKSPACE_DIR'] = user_dir
+env['NPM_CONFIG_CACHE'] = state_dir + '/.npm'
+env['XDG_CACHE_HOME'] = state_dir + '/.cache'
+env['XDG_CONFIG_HOME'] = state_dir + '/.config'
+env['XDG_DATA_HOME'] = state_dir + '/.local/share'
 cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'channels', 'logout', '--channel', 'openclaw-weixin']
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
@@ -1858,13 +1892,16 @@ if m:
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
-env['HOME'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+state_dir = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
+user_dir = (os.path.dirname(state_dir) if state_dir.endswith('/.openclaw') else state_dir)
+env['HOME'] = user_dir
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
-env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
-env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
-env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
-env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
-env['XDG_DATA_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.local/share'
+env['OPENCLAW_STATE_DIR'] = state_dir
+env['OPENCLAW_WORKSPACE_DIR'] = user_dir
+env['NPM_CONFIG_CACHE'] = state_dir + '/.npm'
+env['XDG_CACHE_HOME'] = state_dir + '/.cache'
+env['XDG_CONFIG_HOME'] = state_dir + '/.config'
+env['XDG_DATA_HOME'] = state_dir + '/.local/share'
 env['PATH'] = '/var/packages/ainasclaw/target/bin:/var/packages/openclaw/target/bin:/usr/local/bin:' + env.get('PATH','')
 
 p = subprocess.run(['/bin/bash', '-lc', line], cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -2739,8 +2776,8 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
-            + '  <button class="btn" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
+            + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
                 const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
@@ -2770,6 +2807,7 @@ cat <<'HTML'
               const nextRunning = !!(s && s.running);
               const nextText = nextRunning ? '运行中' : '已停止';
               const nextUptime = nextRunning ? formatUptime((s && s.uptimeSeconds) || 0) : '-';
+              const nextPort = (s && s.port) || '-';
               const msgEl = document.getElementById('msg');
               if (msgEl) {
                 msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
@@ -2780,10 +2818,12 @@ cat <<'HTML'
                 setInstallButtonsBusy('', false);
               }
               const gridVals = document.querySelectorAll('.grid .cellv');
-              if (gridVals && gridVals.length >= 5) {
+              if (gridVals && gridVals.length >= 7) {
                 gridVals[3].textContent = nextRunning ? '是' : '否';
                 gridVals[4].textContent = nextUptime;
+                gridVals[6].textContent = String(nextPort);
               }
+              window.__ainasGatewayPort = (s && s.port) || window.__ainasGatewayPort || 58789;
             } catch (_) {}
           }, 1500);
           return;

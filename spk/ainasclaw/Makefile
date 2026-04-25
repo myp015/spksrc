@@ -106,7 +106,7 @@ openclaw_prepare_bundle:
 		tar -xJf node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz -C $(WORK_DIR)/build-node-runtime --strip-components=1
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(OPENCLAW_NPM_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
 		@soimy/dingtalk@3.5.3 \
 		@sunnoy/wecom@3.0.0 \
@@ -115,7 +115,7 @@ openclaw_prepare_bundle:
 		acpx@0.5.3 \
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@anthropic-ai/sdk@0.90.0 \
 		@aws-sdk/client-bedrock@3.1033.0 \
 		@aws-sdk/client-bedrock-runtime@3.1033.0 \
@@ -125,13 +125,25 @@ openclaw_prepare_bundle:
 		mpg123-decoder@^1.0.3 \
 		silk-wasm@^3.7.1 \
 		playwright-core@1.59.1 || true
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm dedupe --prefer-dedupe --legacy-peer-deps --no-audit --no-fund || true
-	@install -d -m 755 $(WORK_DIR)/doctor-home
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm dedupe --prefer-dedupe --legacy-peer-deps --no-audit --no-fund || true
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.33 || true
+	@cd $(WORK_DIR)/openclaw-bundle/dist/extensions/amazon-bedrock && \
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack @aws-sdk/credential-provider-node@3.972.33 --silent && \
+		install -d node_modules/@aws-sdk/credential-provider-node && \
+		tar -xzf aws-sdk-credential-provider-node-3.972.33.tgz -C node_modules/@aws-sdk/credential-provider-node --strip-components=1 && \
+		rm -f aws-sdk-credential-provider-node-3.972.33.tgz || true
+	@cd $(WORK_DIR)/openclaw-bundle/node_modules/@soimy/dingtalk && \
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack axios@1.13.6 --silent && \
+		install -d node_modules/axios && \
+		tar -xzf axios-1.13.6.tgz -C node_modules/axios --strip-components=1 && \
+		rm -f axios-1.13.6.tgz
 	@cd $(WORK_DIR)/openclaw-bundle && \
-		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" \
-		HOME="$(WORK_DIR)/doctor-home" \
-		OPENCLAW_USE_SYSTEM_CONFIG=0 OPENCLAW_NO_RESPAWN=1 \
-		sh -lc 'if command -v timeout >/dev/null 2>&1; then timeout 60s node openclaw.mjs doctor --non-interactive --no-workspace-suggestions >$(WORK_DIR)/doctor.log 2>&1 || true; else node openclaw.mjs doctor --non-interactive --no-workspace-suggestions >$(WORK_DIR)/doctor.log 2>&1 || true; fi'
+		if [ "$(NODE_DIST_ARCH)" = "x64" ]; then \
+			find node_modules -type d \( -name '*linux-arm64*' -o -name '*arm64-musl*' -o -name '*arm64-gnu*' -o -name '*-arm64' -o -name '*aarch64*' \) -prune -exec rm -rf {} + 2>/dev/null || true; \
+		else \
+			find node_modules -type d \( -name '*linux-x64*' -o -name '*x64-musl*' -o -name '*x64-gnu*' -o -name '*-x64' -o -name '*x86_64*' \) -prune -exec rm -rf {} + 2>/dev/null || true; \
+		fi
+	@printf '%s\n' '[doctor] skipped during build to avoid mutating bundled deps; run doctor after install on DSM runtime.' > $(WORK_DIR)/doctor.log
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o bun-linux-$(BUN_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(BUN_DIST_ARCH).zip
