@@ -7,10 +7,19 @@ $(error Failed to resolve latest stable openclaw version from upstream tags)
 endif
 # Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
 # Put custom build identity into numeric SPK_REV only.
-# Resolve npm-published latest directly (CI containers may not have host npm available at parse time).
-OPENCLAW_NPM_VERS := $(shell curl -fsSL https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d '\n' | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+# Prefer npm-published latest; gracefully fall back to upstream git tag if registry/network tooling is unavailable in CI.
+OPENCLAW_NPM_VERS := $(shell sh -c 'set -e; \
+	v=""; \
+	if command -v curl >/dev/null 2>&1; then \
+		v=$$(curl -fsSL --retry 3 --retry-delay 1 https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p"); \
+	fi; \
+	if [ -z "$$v" ] && command -v wget >/dev/null 2>&1; then \
+		v=$$(wget -qO- https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p"); \
+	fi; \
+	echo "$$v"')
 ifeq ($(strip $(OPENCLAW_NPM_VERS)),)
-$(error Failed to resolve latest openclaw version from npm registry)
+OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
+$(warning Failed to resolve npm latest from registry; fallback to upstream git tag v$(LATEST_OPENCLAW_VERS))
 endif
 ifneq ($(strip $(LATEST_OPENCLAW_VERS)),)
 ifneq ($(OPENCLAW_NPM_VERS),$(LATEST_OPENCLAW_VERS))
