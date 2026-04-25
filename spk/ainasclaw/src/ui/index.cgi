@@ -2480,7 +2480,7 @@ cat <<'HTML'
     .tabs { display:flex; flex-direction:column; gap:6px; }
     .tab { text-align:left; border:1px solid #d0d5dd; background:#fff; border-radius:8px; padding:9px 10px; cursor:pointer; }
     .tab.active { background:#eaf2ff; color:#175cd3; border-color:#b7cdfa; font-weight:600; }
-    .tab.disabled { opacity:.45; cursor:not-allowed; }
+    .tab.disabled { opacity:1; cursor:pointer; }
     .main { min-width:0; flex:1; display:flex; }
     .panel { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
     .toolbar { display:flex; gap:8px; margin-bottom:12px; align-items:center; }
@@ -2716,21 +2716,6 @@ cat <<'HTML'
       const content = document.getElementById('content');
       content.innerHTML = '';
       try {
-        if (tab === 'terminal' && terminalLocked) {
-          const content = document.getElementById('content');
-          content.innerHTML = ''
-            + '<div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">'
-            + '  <div style="font-size:14px;color:#667085;">终端需要root权限才可使用，请执行以下命令修复。</div>'
-            + '  <div style="display:flex;gap:8px;align-items:center;">'
-            + '    <input id="terminal_admin_user" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
-            + '    <input id="terminal_admin_pass" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员密码">'
-            + '    <button class="btn primary" style="height:34px;line-height:16px;" onclick="unlockTerminalTab()">修复安装</button>'
-            + '  </div>'
-            + '  <div style="font-size:12px;color:#667085;">修复命令（系统内置执行）：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
-            + '</div>';
-          setMsg('');
-          return;
-        }
         const data = await api(tab);
         if (tab === 'status') {
           window.__ainasGatewayPort = data.port || 28789;
