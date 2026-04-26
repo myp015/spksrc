@@ -962,6 +962,10 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
             cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
         fi
+        # 非默认用户目录时，不保留默认目录下的 base config（避免误认为当前配置路径）。
+        if [ "${OPENCLAW_WORKSPACE}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
+            rm -f "${OPENCLAW_CONFIG_FILE_BASE}" 2>/dev/null || true
+        fi
 
         sync_bundled_channel_plugins_to_stock_extensions
         sync_bundled_channel_plugins_to_extensions
@@ -1185,7 +1189,7 @@ EOF
     # 端口策略：默认固定 58789；首次安装/目录初始化强制回归 58789（不再随机）。
     local assigned_gateway_port=""
     local force_default_port="0"
-    if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ] || [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${fresh_install_config}" = "1" ] || [ -f "${SYNOPKG_PKGVAR}/force-default-port-on-next-start.flag" ]; then
+    if [ "${fresh_install_config}" = "1" ] || [ -f "${SYNOPKG_PKGVAR}/force-default-port-on-next-start.flag" ]; then
         force_default_port="1"
     fi
     if [ "${force_default_port}" = "1" ]; then
@@ -1227,8 +1231,8 @@ try {
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-    export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR}"
-    export HOME="${runtime_home_dir}"
+    export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE}"
+    export HOME="${OPENCLAW_WORKSPACE}"
     export NPM_CONFIG_CACHE="${runtime_home_dir}/.npm"
     export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
     export XDG_CONFIG_HOME="${runtime_home_dir}/.config"
@@ -1239,6 +1243,17 @@ try {
     sync_bundled_channel_plugins_to_extensions
     sync_skills_to_workspace
     harden_extension_permissions
+
+    # 安装/首次初始化后自动补齐 bundled plugin runtime deps，避免 doctor 报缺依赖。
+    if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ] || [ "${fresh_install_config}" = "1" ]; then
+        export OPENCLAW_RESPECT_ENV_WORKSPACE=1
+        mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
+        if command -v flock >/dev/null 2>&1; then
+            flock -w 300 "${SYNOPKG_PKGVAR}/doctor-fix.lock" /var/packages/ainasclaw/target/bin/openclaw doctor --non-interactive --fix >/dev/null 2>&1 || true
+        else
+            /var/packages/ainasclaw/target/bin/openclaw doctor --non-interactive --fix >/dev/null 2>&1 || true
+        fi
+    fi
 
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true

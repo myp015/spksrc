@@ -118,21 +118,29 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@anthropic-ai/sdk@0.90.0 \
-		@aws-sdk/client-bedrock@3.1033.0 \
-		@aws-sdk/client-bedrock-runtime@3.1033.0 \
-		@aws-sdk/credential-provider-node@3.972.33 \
+		@anthropic-ai/vertex-sdk@^0.16.0 \
+		@aws-sdk/client-bedrock@3.1034.0 \
+		@aws-sdk/client-bedrock-runtime@3.1034.0 \
+		@aws-sdk/credential-provider-node@3.972.34 \
 		@aws/bedrock-token-generator@^1.1.0 \
+		@google/genai@^1.50.1 \
+		@homebridge/ciao@^1.3.6 \
+		@mariozechner/pi-agent-core@0.70.2 \
+		@mariozechner/pi-ai@0.70.2 \
+		@mozilla/readability@^0.6.0 \
 		@tencent-connect/qqbot-connector@^1.1.0 \
+		linkedom@^0.18.12 \
 		mpg123-decoder@^1.0.3 \
+		pdfjs-dist@^5.6.205 \
 		silk-wasm@^3.7.1 \
 		playwright-core@1.59.1 || true
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm dedupe --prefer-dedupe --legacy-peer-deps --no-audit --no-fund || true
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.33 || true
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.34 || true
 	@cd $(WORK_DIR)/openclaw-bundle/dist/extensions/amazon-bedrock && \
-		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack @aws-sdk/credential-provider-node@3.972.33 --silent && \
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack @aws-sdk/credential-provider-node@3.972.34 --silent && \
 		install -d node_modules/@aws-sdk/credential-provider-node && \
-		tar -xzf aws-sdk-credential-provider-node-3.972.33.tgz -C node_modules/@aws-sdk/credential-provider-node --strip-components=1 && \
-		rm -f aws-sdk-credential-provider-node-3.972.33.tgz || true
+		tar -xzf aws-sdk-credential-provider-node-3.972.34.tgz -C node_modules/@aws-sdk/credential-provider-node --strip-components=1 && \
+		rm -f aws-sdk-credential-provider-node-3.972.34.tgz || true
 	@cd $(WORK_DIR)/openclaw-bundle/node_modules/@soimy/dingtalk && \
 		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack axios@1.13.6 --silent && \
 		install -d node_modules/axios && \

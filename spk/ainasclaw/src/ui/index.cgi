@@ -3027,24 +3027,12 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
-            + '  <button class="btn" id="btn_install_wizard" onclick="openInstallWizard()">安装向导</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
                 const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
                 return '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(vv)+'</div>';
-              }).join('') + '</div>'
-            + '<div class="modal-mask" id="installWizardMask">'
-            + '  <div class="modal">'
-            + '    <h3>安装向导</h3>'
-            + '    <div class="field"><label>用户目录</label><input id="wiz_workspace_dir" value="' + esc(data.workspaceDir || '/volume/openclaw') + '" placeholder="/volume/openclaw"></div>'
-            + '    <div class="field"><label>端口</label><input id="wiz_port" value="' + esc(String(data.port || 58789)) + '" placeholder="58789"></div>'
-            + '    <div class="modal-actions">'
-            + '      <button class="btn" onclick="closeInstallWizard()">取消</button>'
-            + '      <button class="btn primary" onclick="applyInstallWizard()">应用并启动</button>'
-            + '    </div>'
-            + '  </div>'
-            + '</div>';
+              }).join('') + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
           window.__statusRunning = !!data.running;
           if (installBusy) {
@@ -3266,7 +3254,6 @@ cat <<'HTML'
       installBusyAction = busy ? String(actionName || '') : '';
       const startBtn = document.getElementById('btn_oc_start');
       const stopBtn = document.getElementById('btn_oc_stop');
-      const installWizardBtn = document.getElementById('btn_install_wizard');
       if (!startBtn || !stopBtn) return;
       if (busy) {
         startBtn.disabled = true;
@@ -3278,7 +3265,6 @@ cat <<'HTML'
       const running = !!window.__statusRunning;
       startBtn.disabled = running;
       stopBtn.disabled = !running;
-      if (installWizardBtn) installWizardBtn.disabled = running;
       startBtn.textContent = '启动 OpenClaw';
       stopBtn.textContent = '停止 OpenClaw';
     }
@@ -3329,63 +3315,9 @@ cat <<'HTML'
         setInstallButtonsBusy('', false);
       }
     }
-    function openInstallWizard() {
-      if (!!window.__statusRunning) {
-        setMsg('请先停止 gateway，再执行安装向导。', 'err');
-        return;
-      }
-      const m = document.getElementById('installWizardMask');
-      if (!m) return;
-      const ws = document.getElementById('wiz_workspace_dir');
-      const pt = document.getElementById('wiz_port');
-      if (ws && !ws.value) ws.value = (window.__statusWorkspaceDir || '/volume/openclaw');
-      if (pt && !pt.value) pt.value = String(window.__ainasGatewayPort || 58789);
-      m.style.display = 'flex';
-      document.body.classList.add('modal-open');
-    }
-    function closeInstallWizard() {
-      const m = document.getElementById('installWizardMask');
-      if (!m) return;
-      m.style.display = 'none';
-      document.body.classList.remove('modal-open');
-    }
-    async function applyInstallWizard() {
-      const m = document.getElementById('installWizardMask');
-      const btn = m ? m.querySelector('.btn.primary') : null;
-      const oldText = btn ? btn.textContent : '';
-      try {
-        const workspaceDir = (document.getElementById('wiz_workspace_dir').value || '').trim() || '/volume/openclaw';
-        const portRaw = (document.getElementById('wiz_port').value || '').trim() || '58789';
-        const port = Number(portRaw);
-        const wsNorm = ('/' + workspaceDir.replace(/^\/+/, '')).toLowerCase();
-        if (wsNorm.endsWith('/.openclaw') || wsNorm.includes('/.openclaw/')) {
-          setMsg('用户目录不能包含 .openclaw（该名称为内部工作目录保留）', 'err');
-          return;
-        }
-        if (!(port >= 1024 && port <= 65535)) {
-          setMsg('端口无效，请输入 1024-65535 之间的数字', 'err');
-          return;
-        }
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = '应用中…';
-        }
-        const act = await api('install_run', 'POST', { method: 'bun', action: 'start', workspaceDir, port });
-        if (!act || act.ok === false) {
-          throw new Error((act && (act.error || act.message)) || '安装向导执行失败');
-        }
-        closeInstallWizard();
-        setMsg('安装向导已应用，正在启动 OpenClaw…', 'ok');
-        await load('status');
-      } catch (e) {
-        setMsg('安装向导执行失败：' + (e.message || e), 'err');
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = oldText || '应用并启动';
-        }
-      }
-    }
+    function openInstallWizard() { setMsg('安装向导已移除。', 'ok'); }
+    function closeInstallWizard() {}
+    async function applyInstallWizard() {}
     function applyProviderPresetDialog() {
       const presetId = document.getElementById('dlg_provider_preset').value;
       // 用户要求：切换服务商时，先清空当前已选模型，再切到该服务商模型集。
