@@ -1037,6 +1037,8 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         # 非默认用户目录时，不保留默认目录下的 base config（避免误认为当前配置路径）。
         if [ "${OPENCLAW_WORKSPACE}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
             rm -f "${OPENCLAW_CONFIG_FILE_BASE}" 2>/dev/null || true
+            # 避免安装后遗留空目录 /volume1/openclaw/.openclaw
+            rmdir "${OPENCLAW_STATE_DIR_BASE}" 2>/dev/null || true
         fi
 
         ensure_self_package_link
