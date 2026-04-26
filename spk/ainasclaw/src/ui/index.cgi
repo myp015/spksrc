@@ -143,10 +143,11 @@ if [ "$native_api" = "1" ]; then
         status)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$GATEWAY_PORT" "${CFG_FILE}"
-import json, os, socket, sys, time
+import json, os, socket, subprocess, sys, time
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 running = False
+service_running = False
 # 避免单次探测抖动导致“已停止 -> 运行中”闪烁：做短重试。
 for _ in range(3):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -163,6 +164,40 @@ for _ in range(3):
         except Exception:
             pass
         time.sleep(0.15)
+
+# 套件运行态（独立于 gateway 端口探活）：用于按钮可用性判断。
+# 目标：即便 gateway 进程异常，仍允许“停止 OpenClaw”按钮可点击。
+try:
+    r = subprocess.run([
+        '/usr/syno/bin/synopkg', 'status', 'ainasclaw'
+    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=2)
+    txt = (r.stdout or '').strip()
+    low = txt.lower()
+    # 兼容 JSON 和纯文本两种返回。
+    service_running = ('"status":"running"' in low) or ('package is started' in low)
+    if (not service_running) and txt.startswith('{'):
+        try:
+            j = json.loads(txt)
+            service_running = str(j.get('status') or '').lower() == 'running'
+        except Exception:
+            pass
+except Exception:
+    service_running = False
+
+# Fallback: 读取守护占位 pid（由 start-stop-status 维护）
+if not service_running:
+    try:
+        pid_file = '/var/packages/ainasclaw/var/ainasclaw.pid'
+        if os.path.exists(pid_file):
+            pid_txt = (open(pid_file, 'r', encoding='utf-8').read() or '').strip().split()
+            ok = False
+            for p in pid_txt:
+                if p.isdigit() and os.path.exists(f'/proc/{p}'):
+                    ok = True
+                    break
+            service_running = ok
+    except Exception:
+        service_running = False
 
 # 计算 gateway 运行时长（秒）
 started_ts = None
@@ -223,6 +258,7 @@ out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
   'running': running,
+  'serviceRunning': service_running,
   'installed': True,
   'version': version,
   'port': port,
@@ -2202,10 +2238,17 @@ def run(cmd, timeout=20):
 
 def force_stop():
     out=[]
+    # 1) prefer graceful gateway stop first (short timeout)
+    try:
+        rc, o = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=12)
+        out.append((['openclaw','gateway','stop','--json'], rc, o[-800:]))
+    except Exception as e:
+        out.append((['openclaw','gateway','stop','--json'], 999, str(e)))
+    # 2) fallback precise kill patterns
     for cmd in [
-        ['pkill','-f','openclaw-gatew'],
-        ['pkill','-f','/app/openclaw/dist/index.js gateway'],
-        ['pkill','-f','openclaw gateway']
+        ['pkill','-f','/var/packages/ainasclaw/target/bin/openclaw gateway run'],
+        ['pkill','-f','/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway'],
+        ['pkill','-f','openclaw.*gateway']
     ]:
         try:
             p=subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
@@ -2217,11 +2260,10 @@ def force_stop():
 logs=[]
 ok=True
 if action in ('stop','restart'):
-    # DSM 实机上 `gateway stop --json` 偶发卡住/空响应，统一使用 force-stop 快速路径。
     # restart 语义由后续 start 分支完成（stop + start）。
     force = force_stop()
-    logs.append({'cmd':('force-stop-fast' if action == 'stop' else 'force-stop-restart'), 'out':str(force)[:800]})
-    time.sleep(0.8 if action == 'stop' else 1.0)
+    logs.append({'cmd':('force-stop' if action == 'stop' else 'force-stop-restart'), 'out':str(force)[:1200]})
+    time.sleep(1.0 if action == 'stop' else 1.2)
 
 if action in ('start','restart'):
     # 启动前执行一次模型同步脚本（不阻塞启动）
@@ -2323,6 +2365,9 @@ if action in ('start','restart') and not running:
         running = is_running(gw_port)
         if running:
             break
+if action == 'stop' and running:
+    ok = False
+    logs.append({'cmd':'post-stop-check','error':'gateway still running after stop sequence'})
 print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': initialized}, ensure_ascii=False))
 PY
             exit 0
@@ -2820,6 +2865,7 @@ cat <<'HTML'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
           window.__statusRunning = !!data.running;
+          window.__serviceRunning = (typeof data.serviceRunning === 'boolean') ? !!data.serviceRunning : !!data.running;
           if (installBusy) {
             setInstallButtonsBusy(installBusyAction, true);
           } else {
@@ -2839,6 +2885,7 @@ cat <<'HTML'
                 msgEl.textContent = '运行状态：' + nextText;
               }
               window.__statusRunning = nextRunning;
+              window.__serviceRunning = (s && typeof s.serviceRunning === 'boolean') ? !!s.serviceRunning : nextRunning;
               if (!installBusy) {
                 setInstallButtonsBusy('', false);
               }
@@ -3048,8 +3095,9 @@ cat <<'HTML'
         return;
       }
       const running = !!window.__statusRunning;
-      startBtn.disabled = running;
-      stopBtn.disabled = !running;
+      const serviceRunning = (typeof window.__serviceRunning === 'boolean') ? !!window.__serviceRunning : running;
+      startBtn.disabled = serviceRunning;
+      stopBtn.disabled = !serviceRunning;
       startBtn.textContent = '启动 OpenClaw';
       stopBtn.textContent = '停止 OpenClaw';
     }
