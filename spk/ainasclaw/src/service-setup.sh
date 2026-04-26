@@ -752,28 +752,9 @@ NGINX_EOF
         }
     fi
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
-        mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
         if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
             touch "${AUTO_INIT_ON_INSTALL_MARKER}" 2>/dev/null || true
         fi
-
-        if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
-            if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
-                cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
-            elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
-                cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
-            else
-                echo "{}" > "${OPENCLAW_CONFIG_FILE_BASE}"
-            fi
-        fi
-
-        # 安装阶段强制写回默认端口（58789），避免沿用历史随机端口。
-        if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
-            ensure_gateway_port_in_config 1 "${OPENCLAW_CONFIG_FILE_BASE}" >/dev/null 2>&1 || true
-        fi
-
-        # 同步 DSM 套件详情页端口展示（adminport）到当前 runtime 端口。
-        sync_dsm_package_info_port "$(get_gateway_port_from_config "${OPENCLAW_CONFIG_FILE_BASE}")"
 
         # Wizard defaults
         local in_ws="${wizard_workspace_dir:-${WIZARD_WORKSPACE_DIR:-}}"
@@ -790,6 +771,35 @@ NGINX_EOF
             [ -z "${in_base}" ] && in_base="$(grep -m1 '^wizard_base_url=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
             [ -z "${in_key}" ] && in_key="$(grep -m1 '^wizard_api_key=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
         fi
+
+        # 源头修复：按向导目标目录初始化 bootstrap config，避免先创建默认 /volume1/openclaw/.openclaw。
+        local bootstrap_workspace="${in_ws:-${OPENCLAW_WORKSPACE_DEFAULT}}"
+        case "${bootstrap_workspace}" in
+            */.openclaw) bootstrap_workspace="${bootstrap_workspace%/.openclaw}" ;;
+        esac
+        [ -n "${bootstrap_workspace}" ] || bootstrap_workspace="${OPENCLAW_WORKSPACE_DEFAULT}"
+        local bootstrap_state_dir
+        bootstrap_state_dir="$(resolve_state_dir_from_workspace "${bootstrap_workspace}")"
+        local bootstrap_config_file="${bootstrap_state_dir}/openclaw.json"
+
+        mkdir -p "${bootstrap_state_dir}"
+        if [ ! -f "${bootstrap_config_file}" ]; then
+            if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
+                cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${bootstrap_config_file}"
+            elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
+                cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${bootstrap_config_file}"
+            else
+                echo "{}" > "${bootstrap_config_file}"
+            fi
+        fi
+
+        # 安装阶段强制写回默认端口（58789），避免沿用历史随机端口。
+        if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
+            ensure_gateway_port_in_config 1 "${bootstrap_config_file}" >/dev/null 2>&1 || true
+        fi
+
+        # 同步 DSM 套件详情页端口展示（adminport）到当前 runtime 端口。
+        sync_dsm_package_info_port "$(get_gateway_port_from_config "${bootstrap_config_file}")"
 
         mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
         {
@@ -1014,9 +1024,9 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-' "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_APP_DIR}"
+' "${bootstrap_config_file}" "${OPENCLAW_APP_DIR}"
 
-        OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${OPENCLAW_CONFIG_FILE_BASE}")"
+        OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${bootstrap_config_file}")"
         if [ -z "${OPENCLAW_WORKSPACE}" ]; then
             OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
         fi
@@ -1032,13 +1042,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
         ensure_session_store_dir
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
-            cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
-        fi
-        # 非默认用户目录时，不保留默认目录下的 base config（避免误认为当前配置路径）。
-        if [ "${OPENCLAW_WORKSPACE}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
-            rm -f "${OPENCLAW_CONFIG_FILE_BASE}" 2>/dev/null || true
-            # 避免安装后遗留空目录 /volume1/openclaw/.openclaw
-            rmdir "${OPENCLAW_STATE_DIR_BASE}" 2>/dev/null || true
+            cp -f "${bootstrap_config_file}" "${OPENCLAW_CONFIG_FILE}"
         fi
 
         ensure_self_package_link
