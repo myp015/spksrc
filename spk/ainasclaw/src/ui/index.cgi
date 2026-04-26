@@ -148,7 +148,7 @@ port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 running = False
 service_running = False
-# 避免单次探测抖动导致“已停止 -> 运行中”闪烁：做短重试。
+# 避免单次探测抖动导致“已停止 -> 运行中”闪烁：做短重试（端口探测）。
 for _ in range(3):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(0.6)
@@ -164,6 +164,16 @@ for _ in range(3):
         except Exception:
             pass
         time.sleep(0.15)
+
+# gateway 进程探测兜底：按钮语义是“停止 gateway”，不是“停止套件”。
+if not running:
+    try:
+        r = subprocess.run([
+            'sh', '-lc', "pgrep -f 'openclaw-gateway|dist/index.js gateway' >/dev/null 2>&1"
+        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=1.5)
+        running = (r.returncode == 0)
+    except Exception:
+        pass
 
 # 套件运行态（独立于 gateway 端口探活）：用于按钮可用性判断。
 # 目标：即便 gateway 进程异常，仍允许“停止 OpenClaw”按钮可点击。
@@ -2865,7 +2875,6 @@ cat <<'HTML'
             + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
           window.__statusRunning = !!data.running;
-          window.__serviceRunning = (typeof data.serviceRunning === 'boolean') ? !!data.serviceRunning : !!data.running;
           if (installBusy) {
             setInstallButtonsBusy(installBusyAction, true);
           } else {
@@ -2885,7 +2894,6 @@ cat <<'HTML'
                 msgEl.textContent = '运行状态：' + nextText;
               }
               window.__statusRunning = nextRunning;
-              window.__serviceRunning = (s && typeof s.serviceRunning === 'boolean') ? !!s.serviceRunning : nextRunning;
               if (!installBusy) {
                 setInstallButtonsBusy('', false);
               }
@@ -3095,9 +3103,8 @@ cat <<'HTML'
         return;
       }
       const running = !!window.__statusRunning;
-      const serviceRunning = (typeof window.__serviceRunning === 'boolean') ? !!window.__serviceRunning : running;
-      startBtn.disabled = serviceRunning;
-      stopBtn.disabled = !serviceRunning;
+      startBtn.disabled = running;
+      stopBtn.disabled = !running;
       startBtn.textContent = '启动 OpenClaw';
       stopBtn.textContent = '停止 OpenClaw';
     }
