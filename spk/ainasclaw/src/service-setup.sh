@@ -14,6 +14,27 @@ WORKSPACE_HOME_PTR_FILE="${SYNOPKG_PKGVAR}/workspace.home.path"
 AUTO_INIT_ON_INSTALL_MARKER="${SYNOPKG_PKGVAR}/auto-init-on-install.flag"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
+
+# Persist wizard parameters that DSM generic installer does not save by default.
+save_wizard_variables() {
+    [ -n "${INST_VARIABLES}" ] || return 0
+    mkdir -p "$(dirname "${INST_VARIABLES}")" 2>/dev/null || true
+
+    # Keep generic defaults behavior for common vars.
+    if [ -e "${INST_VARIABLES}" ] && [ -n "${GROUP}${SHARE_PATH}${SHARE_NAME}" ]; then
+        rm -f "${INST_VARIABLES}" 2>/dev/null || true
+    fi
+    [ -n "${GROUP}" ] && printf 'GROUP=%s\n' "${GROUP}" >> "${INST_VARIABLES}"
+    [ -n "${SHARE_PATH}" ] && printf 'SHARE_PATH=%s\n' "${SHARE_PATH}" >> "${INST_VARIABLES}"
+    [ -n "${SHARE_NAME}" ] && printf 'SHARE_NAME=%s\n' "${SHARE_NAME}" >> "${INST_VARIABLES}"
+
+    # Persist wizard values used by service_postinst.
+    [ -n "${wizard_workspace_dir}" ] && printf 'wizard_workspace_dir=%s\n' "${wizard_workspace_dir}" >> "${INST_VARIABLES}"
+    [ -n "${wizard_gateway_port}" ] && printf 'wizard_gateway_port=%s\n' "${wizard_gateway_port}" >> "${INST_VARIABLES}"
+    [ -n "${wizard_model_id}" ] && printf 'wizard_model_id=%s\n' "${wizard_model_id}" >> "${INST_VARIABLES}"
+    [ -n "${wizard_base_url}" ] && printf 'wizard_base_url=%s\n' "${wizard_base_url}" >> "${INST_VARIABLES}"
+    [ -n "${wizard_api_key}" ] && printf 'wizard_api_key=%s\n' "${wizard_api_key}" >> "${INST_VARIABLES}"
+}
 validate_preinst() {
     # Package-level signature + integrity check (install/upgrade time, no SSH needed by user).
     # If tracked files were modified or signature is invalid, block install/upgrade.
