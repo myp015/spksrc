@@ -160,6 +160,18 @@ resolve_home_dir_from_workspace() {
     esac
 }
 
+ensure_self_package_link() {
+    # Fix ESM self-imports like `import "openclaw/..."` from bundled dist extensions.
+    # On SPK layout, app root is not inside a parent node_modules tree, so we provide a local self-link.
+    local nm_dir="${OPENCLAW_APP_DIR}/node_modules"
+    local self_link="${nm_dir}/openclaw"
+    mkdir -p "${nm_dir}" 2>/dev/null || true
+    if [ -L "${self_link}" ] || [ -e "${self_link}" ]; then
+        rm -rf "${self_link}" 2>/dev/null || true
+    fi
+    ln -s "${OPENCLAW_APP_DIR}" "${self_link}" 2>/dev/null || true
+}
+
 sync_skills_to_workspace() {
     OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_STATE_DIR}/skills/_bundled"
     mkdir -p "${OPENCLAW_BUNDLED_SKILLS_DIR}"
@@ -1027,6 +1039,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
             rm -f "${OPENCLAW_CONFIG_FILE_BASE}" 2>/dev/null || true
         fi
 
+        ensure_self_package_link
         sync_bundled_channel_plugins_to_stock_extensions
         sync_bundled_channel_plugins_to_extensions
         harden_extension_permissions
@@ -1299,6 +1312,7 @@ try {
     export XDG_DATA_HOME="${runtime_home_dir}/.local/share"
 
     # 初始化/切换目录时，确保插件与技能都完整落在 /xxx/.openclaw 下
+    ensure_self_package_link
     sync_bundled_channel_plugins_to_stock_extensions
     sync_bundled_channel_plugins_to_extensions
     sync_skills_to_workspace
