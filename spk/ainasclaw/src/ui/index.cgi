@@ -3006,29 +3006,71 @@ cat <<'HTML'
       const text = await resp.text();
       try { return text ? JSON.parse(text) : {}; } catch (e) { return { error: 'JSON parse failed', raw: text }; }
     }
+    function updateTerminalRepairBtnState() {
+      const btn = document.getElementById('terminal_repair_btn');
+      const userEl = document.getElementById('terminal_admin_user');
+      const passEl = document.getElementById('terminal_admin_pass');
+      if (!btn || !userEl || !passEl) return;
+      const u = String(userEl.value || '').trim();
+      const p = String(passEl.value || '');
+      const halfFilled = (!!u && !p) || (!u && !!p);
+      btn.disabled = halfFilled;
+      btn.title = halfFilled ? '管理员账号和密码需同时填写，或都留空' : '';
+    }
     async function unlockTerminalTab() {
       const adminUserEl = document.getElementById('terminal_admin_user');
       const adminPassEl = document.getElementById('terminal_admin_pass');
+      const repairBtn = document.getElementById('terminal_repair_btn');
       const adminUser = String((adminUserEl && adminUserEl.value) || '').trim();
       const adminPassword = String((adminPassEl && adminPassEl.value) || '');
+      const halfFilled = (!!adminUser && !adminPassword) || (!adminUser && !!adminPassword);
+      if (halfFilled) {
+        setMsg('请同时填写管理员账号和密码，或两项都留空后使用 sudo -n 路径。', 'err');
+        return;
+      }
       const forcePasswordFlow = !!(adminUser && adminPassword);
       const patchCmd = "sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'";
       const adminFixCmd = patchCmd;
+      if (repairBtn) { repairBtn.disabled = true; repairBtn.textContent = '修复中...'; }
       setMsg('正在修复安装…');
-      const ret = await api('terminal_unlock', 'POST', { command: patchCmd, adminUser, adminPassword, forcePasswordFlow });
+      let ret = null;
+      try {
+        ret = await api('terminal_unlock', 'POST', { command: patchCmd, adminUser, adminPassword, forcePasswordFlow });
+      } catch (e) {
+        setMsg('修复安装失败：' + (e && e.message ? e.message : String(e)), 'err');
+        if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
+        updateTerminalRepairBtnState();
+        return;
+      }
       if (adminPassEl) adminPassEl.value = '';
       if (!ret || !ret.ok) {
         const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
-        setMsg('修复安装失败：' + ((ret && (ret.error || ret.message)) || 'unknown') + '；若当前账号无 sudo 权限，请用管理员账号执行：' + cmd, 'err');
+        const detail = (ret && ret.logs) ? ('；日志：' + ret.logs) : '';
+        setMsg('修复安装失败：' + ((ret && (ret.error || ret.message)) || 'unknown') + detail + '；若当前账号无 sudo 权限，请用管理员账号执行：' + cmd, 'err');
+        if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
+        updateTerminalRepairBtnState();
+        return;
+      }
+      if (ret && (ret.available === false || ret.portAvailable === false || ret.aliasAvailable === false)) {
+        const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
+        const detail = (ret && ret.logs) ? ('；日志：' + ret.logs) : '';
+        setMsg('修复执行完成，但检测仍未通过（port=' + String(!!ret.portAvailable) + ', alias=' + String(!!ret.aliasAvailable) + ', http=' + String(ret.aliasStatusCode || '-') + ')' + detail + '；请在 DSM SSH 执行：' + cmd, 'err');
+        if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
+        updateTerminalRepairBtnState();
         return;
       }
       await refreshTerminalHealth();
       if (terminalLocked) {
         const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
-        setMsg('修复安装完成，但终端仍不可用。请稍后重试；若仍失败，请用管理员账号执行：' + cmd, 'err');
+        const detail = (ret && ret.logs) ? ('；日志：' + ret.logs) : '';
+        setMsg('修复安装完成，但终端仍不可用。请稍后重试；若仍失败，请用管理员账号执行：' + cmd + detail, 'err');
+        if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
+        updateTerminalRepairBtnState();
         return;
       }
       setMsg('修复安装成功，终端已恢复。', 'ok');
+      if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
+      updateTerminalRepairBtnState();
       await load('terminal');
     }
     async function load(tab) {
@@ -3133,13 +3175,13 @@ cat <<'HTML'
               + '<div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">'
               + '  <div style="font-size:14px;color:#667085;">终端需要root权限才可使用，请执行以下命令修复。</div>'
               + '  <div style="display:flex;gap:8px;align-items:center;">'
-              + '    <input id="terminal_admin_user" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
-              + '    <input id="terminal_admin_pass" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员密码">'
-              + '    <button class="btn primary" style="height:34px;line-height:16px;" onclick="unlockTerminalTab()">修复安装</button>'
+              + '    <input id="terminal_admin_user" oninput="updateTerminalRepairBtnState()" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
+              + '    <input id="terminal_admin_pass" oninput="updateTerminalRepairBtnState()" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员密码">'
+              + '    <button id="terminal_repair_btn" class="btn primary" style="height:34px;line-height:16px;" onclick="unlockTerminalTab()">修复安装</button>'
               + '  </div>'
               + '  <div style="font-size:12px;color:#667085;">修复命令（系统内置执行）：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>';
-            setMsg('');
+            setTimeout(updateTerminalRepairBtnState, 0);
             return;
           }
 
@@ -3151,13 +3193,14 @@ cat <<'HTML'
               + '<div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">'
               + '  <div style="font-size:14px;color:#667085;">终端需要root权限才可使用，请执行以下命令修复。</div>'
               + '  <div style="display:flex;gap:8px;align-items:center;">'
-              + '    <input id="terminal_admin_user" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
-              + '    <input id="terminal_admin_pass" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员密码">'
-              + '    <button class="btn primary" style="height:34px;line-height:16px;" onclick="unlockTerminalTab()">修复安装</button>'
+              + '    <input id="terminal_admin_user" oninput="updateTerminalRepairBtnState()" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
+              + '    <input id="terminal_admin_pass" oninput="updateTerminalRepairBtnState()" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员密码">'
+              + '    <button id="terminal_repair_btn" class="btn primary" style="height:34px;line-height:16px;" onclick="unlockTerminalTab()">修复安装</button>'
               + '  </div>'
               + '  <div style="font-size:12px;color:#667085;">修复命令（系统内置执行）：<code>sudo -n ln -sfn /var/packages/ainasclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>';
-            setMsg('', 'err');
+            setMsg('终端连通性检测失败，请填写管理员账号和密码后点击“修复安装”，或执行下方命令手动修复。', 'err');
+            setTimeout(updateTerminalRepairBtnState, 0);
             return;
           }
 
