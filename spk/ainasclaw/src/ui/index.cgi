@@ -726,6 +726,9 @@ if workspace_explicit and workspace_changed:
             'export OPENCLAW_CONFIG_PATH=\"{cfg}\"; '
             'export OPENCLAW_STATE_DIR=\"{state}\"; '
             'export OPENCLAW_WORKSPACE_DIR=\"{workspace}\"; '
+            'export OPENCLAW_RESPECT_ENV_WORKSPACE=1; '
+            'mkdir -p /tmp/openclaw-locks; '
+            'flock -w 180 /tmp/openclaw-locks/doctor-fix.lock '
             '/var/packages/ainasclaw/target/bin/openclaw doctor --non-interactive --fix"'
         ).format(cfg=cfg_path, state=os.path.dirname(cfg_path), workspace=workspace)
         rd = subprocess.run(deps_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=240)
