@@ -50,6 +50,7 @@ LICENSE = MIT
 STARTABLE = yes
 SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
+WIZARDS_TEMPLATES_DIR = src/wizard_templates
 NO_SERVICE_SHORTCUT = yes
 
 DSM_UI_DIR = app

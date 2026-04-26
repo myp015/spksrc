@@ -736,11 +736,13 @@ NGINX_EOF
         # Wizard defaults
         if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
             export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir}"
+            export WIZARD_GATEWAY_PORT="${wizard_gateway_port}"
             export WIZARD_MODEL_ID="${wizard_model_id}"
             export WIZARD_BASE_URL="${wizard_base_url}"
             export WIZARD_API_KEY="${wizard_api_key}"
         else
             export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/openclaw}"
+            export WIZARD_GATEWAY_PORT="${wizard_gateway_port:-58789}"
             export WIZARD_MODEL_ID="${wizard_model_id:-}"
             export WIZARD_BASE_URL="${wizard_base_url:-}"
             export WIZARD_API_KEY="${wizard_api_key:-}"
@@ -805,6 +807,8 @@ const selectedPluginIds = {
 };
 
 const workspaceInput = trim(process.env.WIZARD_WORKSPACE_DIR);
+const wizardGatewayPortRaw = trim(process.env.WIZARD_GATEWAY_PORT);
+const wizardGatewayPort = Number(wizardGatewayPortRaw);
 const modelIdInput = trim(process.env.WIZARD_MODEL_ID);
 const baseUrlInput = trim(process.env.WIZARD_BASE_URL);
 const apiKeyInput = trim(process.env.WIZARD_API_KEY);
@@ -827,6 +831,11 @@ if (modelIdInput || baseUrlInput || apiKeyInput) {
 cfg.agents = cfg.agents || {};
 cfg.agents.defaults = cfg.agents.defaults || {};
 if (workspace) cfg.agents.defaults.workspace = workspace;
+
+cfg.gateway = cfg.gateway || {};
+if (Number.isInteger(wizardGatewayPort) && wizardGatewayPort >= 1024 && wizardGatewayPort <= 65535) {
+  cfg.gateway.port = wizardGatewayPort;
+}
 if (modelIdInput) {
   cfg.agents.defaults.model = cfg.agents.defaults.model || {};
   cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};

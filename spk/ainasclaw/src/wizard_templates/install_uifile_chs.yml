@@ -1,0 +1,10 @@
+CONFIGURATION_TITLE: "AiNasClaw 安装参数"
+
+WORKSPACE_DIR_DESCRIPTION: "OpenClaw 用户目录（默认 /volume1/openclaw，运行状态与配置位于该目录下的 .openclaw/）"
+WORKSPACE_DIR_LABEL: "用户目录"
+
+GATEWAY_PORT_DESCRIPTION: "Gateway 监听端口（默认 58789）"
+GATEWAY_PORT_LABEL: "端口"
+
+INSTALLATION_NOTES_TITLE: "<b>说明</b><br/>"
+INSTALLATION_NOTES_TEXT1: "仅保留两个安装项：用户目录与端口。安装器会把配置写入 <用户目录>/.openclaw/openclaw.json。"

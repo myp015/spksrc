@@ -1,0 +1,34 @@
+[{
+    "step_title": "{{{CONFIGURATION_TITLE}}}",
+    "items": [{
+        "type": "textfield",
+        "desc": "{{{WORKSPACE_DIR_DESCRIPTION}}}",
+        "subitems": [{
+            "key": "wizard_workspace_dir",
+            "defaultValue": "/volume1/openclaw",
+            "desc": "{{{WORKSPACE_DIR_LABEL}}}",
+            "validator": {
+              "allowBlank": false
+            }
+          }
+        ]
+      },{
+        "type": "textfield",
+        "desc": "{{{GATEWAY_PORT_DESCRIPTION}}}",
+        "subitems": [{
+            "key": "wizard_gateway_port",
+            "defaultValue": "58789",
+            "desc": "{{{GATEWAY_PORT_LABEL}}}",
+            "validator": {
+              "allowBlank": false
+            }
+          }
+        ]
+      },{
+        "desc": ""
+      },{
+        "desc": "{{{INSTALLATION_NOTES_TITLE}}}{{{INSTALLATION_NOTES_TEXT1}}}"
+      }
+    ]
+  }
+]
