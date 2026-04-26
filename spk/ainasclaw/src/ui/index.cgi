@@ -2220,6 +2220,32 @@ action = (payload.get('action') or '').strip().lower()
 if action not in ('start','stop','restart'):
     print(json.dumps({'ok': False, 'error': 'unsupported action'}, ensure_ascii=False)); raise SystemExit
 
+req_workspace = str(payload.get('workspaceDir') or '').strip()
+req_port_raw = payload.get('port')
+req_port = 0
+try:
+    req_port = int(req_port_raw)
+except Exception:
+    req_port = 0
+if req_workspace.endswith('/.openclaw'):
+    req_workspace = req_workspace[:-10]
+if req_workspace:
+    ws_norm = ('/' + req_workspace.strip('/')).lower()
+    if ws_norm.endswith('/.openclaw') or '/.openclaw/' in ws_norm:
+        print(json.dumps({'ok': False, 'error': '用户目录不能包含 .openclaw（该名称为内部工作目录保留）'}, ensure_ascii=False)); raise SystemExit
+
+# 安装向导：start/restart 支持一次性指定用户目录与端口。
+if action in ('start', 'restart') and req_workspace:
+    cfg = os.path.join(req_workspace, '.openclaw', 'openclaw.json')
+    try:
+        os.makedirs('/var/packages/ainasclaw/var', exist_ok=True)
+        with open('/var/packages/ainasclaw/var/workspace.path', 'w', encoding='utf-8') as pf:
+            pf.write('$HOME')
+        with open('/var/packages/ainasclaw/var/workspace.home.path', 'w', encoding='utf-8') as hpf:
+            hpf.write(req_workspace)
+    except Exception:
+        pass
+
 # serialize install_run actions to avoid duplicate concurrent restarts causing double-spawn/port lock races
 lock_path = '/var/packages/ainasclaw/var/install_run.lock'
 os.makedirs(os.path.dirname(lock_path), exist_ok=True)
@@ -2260,7 +2286,9 @@ try:
     gw_port = int((((c_port.get('gateway') or {}).get('port')) or 0))
 except Exception:
     gw_port = 0
-if not (1024 <= gw_port <= 65535):
+if 1024 <= req_port <= 65535:
+    gw_port = req_port
+elif not (1024 <= gw_port <= 65535):
     gw_port = 58789
 
 # On start/restart only, create runtime config if missing.
@@ -2301,7 +2329,9 @@ if action in ('start','restart'):
         gw_port = int((((c.get('gateway') or {}).get('port')) or 0))
     except Exception:
         gw_port = 0
-    if not (1024 <= gw_port <= 65535):
+    if 1024 <= req_port <= 65535:
+        gw_port = req_port
+    elif not (1024 <= gw_port <= 65535):
         gw_port = 58789
     gw['port'] = gw_port
     cu = gw.setdefault('controlUi', {})
@@ -2997,20 +3027,21 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
-            + '  <button class="btn" id="btn_user_settings" onclick="openUserSettingsDialog()">用户目录设置</button>'
+            + '  <button class="btn" id="btn_install_wizard" onclick="openInstallWizard()">安装向导</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
                 const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
                 return '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(vv)+'</div>';
               }).join('') + '</div>'
-            + '<div class="modal-mask" id="userSettingsMask">'
+            + '<div class="modal-mask" id="installWizardMask">'
             + '  <div class="modal">'
-            + '    <h3>用户目录设置</h3>'
-            + '    <div class="field"><label>用户目录</label><input id="workspace_dir" value="' + esc(data.workspaceDir || '/volume1/openclaw') + '" placeholder="/volume1/openclaw"></div>'
+            + '    <h3>安装向导</h3>'
+            + '    <div class="field"><label>用户目录</label><input id="wiz_workspace_dir" value="' + esc(data.workspaceDir || '/volume/openclaw') + '" placeholder="/volume/openclaw"></div>'
+            + '    <div class="field"><label>端口</label><input id="wiz_port" value="' + esc(String(data.port || 58789)) + '" placeholder="58789"></div>'
             + '    <div class="modal-actions">'
-            + '      <button class="btn" onclick="closeUserSettingsDialog()">取消</button>'
-            + '      <button class="btn primary" onclick="saveWorkspaceQuick();">保存</button>'
+            + '      <button class="btn" onclick="closeInstallWizard()">取消</button>'
+            + '      <button class="btn primary" onclick="applyInstallWizard()">应用并启动</button>'
             + '    </div>'
             + '  </div>'
             + '</div>';
@@ -3235,7 +3266,7 @@ cat <<'HTML'
       installBusyAction = busy ? String(actionName || '') : '';
       const startBtn = document.getElementById('btn_oc_start');
       const stopBtn = document.getElementById('btn_oc_stop');
-      const userSettingsBtn = document.getElementById('btn_user_settings');
+      const installWizardBtn = document.getElementById('btn_install_wizard');
       if (!startBtn || !stopBtn) return;
       if (busy) {
         startBtn.disabled = true;
@@ -3247,7 +3278,7 @@ cat <<'HTML'
       const running = !!window.__statusRunning;
       startBtn.disabled = running;
       stopBtn.disabled = !running;
-      if (userSettingsBtn) userSettingsBtn.disabled = running;
+      if (installWizardBtn) installWizardBtn.disabled = running;
       startBtn.textContent = '启动 OpenClaw';
       stopBtn.textContent = '停止 OpenClaw';
     }
@@ -3298,31 +3329,62 @@ cat <<'HTML'
         setInstallButtonsBusy('', false);
       }
     }
-    function openUserSettingsDialog() {
+    function openInstallWizard() {
       if (!!window.__statusRunning) {
-        setMsg('请先停止 gateway，再修改用户目录。', 'err');
+        setMsg('请先停止 gateway，再执行安装向导。', 'err');
         return;
       }
-      const m = document.getElementById('userSettingsMask');
+      const m = document.getElementById('installWizardMask');
       if (!m) return;
-      // Re-sync input with current status workspace every time modal opens.
-      const input = document.getElementById('workspace_dir');
-      if (input) {
-        input.value = (window.__statusWorkspaceDir || '/volume1/openclaw');
-      }
+      const ws = document.getElementById('wiz_workspace_dir');
+      const pt = document.getElementById('wiz_port');
+      if (ws && !ws.value) ws.value = (window.__statusWorkspaceDir || '/volume/openclaw');
+      if (pt && !pt.value) pt.value = String(window.__ainasGatewayPort || 58789);
       m.style.display = 'flex';
       document.body.classList.add('modal-open');
     }
-    function closeUserSettingsDialog() {
-      const m = document.getElementById('userSettingsMask');
+    function closeInstallWizard() {
+      const m = document.getElementById('installWizardMask');
       if (!m) return;
-      // Cancel should discard unsaved edits immediately.
-      const input = document.getElementById('workspace_dir');
-      if (input) {
-        input.value = (window.__statusWorkspaceDir || '/volume1/openclaw');
-      }
       m.style.display = 'none';
       document.body.classList.remove('modal-open');
+    }
+    async function applyInstallWizard() {
+      const m = document.getElementById('installWizardMask');
+      const btn = m ? m.querySelector('.btn.primary') : null;
+      const oldText = btn ? btn.textContent : '';
+      try {
+        const workspaceDir = (document.getElementById('wiz_workspace_dir').value || '').trim() || '/volume/openclaw';
+        const portRaw = (document.getElementById('wiz_port').value || '').trim() || '58789';
+        const port = Number(portRaw);
+        const wsNorm = ('/' + workspaceDir.replace(/^\/+/, '')).toLowerCase();
+        if (wsNorm.endsWith('/.openclaw') || wsNorm.includes('/.openclaw/')) {
+          setMsg('用户目录不能包含 .openclaw（该名称为内部工作目录保留）', 'err');
+          return;
+        }
+        if (!(port >= 1024 && port <= 65535)) {
+          setMsg('端口无效，请输入 1024-65535 之间的数字', 'err');
+          return;
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '应用中…';
+        }
+        const act = await api('install_run', 'POST', { method: 'bun', action: 'start', workspaceDir, port });
+        if (!act || act.ok === false) {
+          throw new Error((act && (act.error || act.message)) || '安装向导执行失败');
+        }
+        closeInstallWizard();
+        setMsg('安装向导已应用，正在启动 OpenClaw…', 'ok');
+        await load('status');
+      } catch (e) {
+        setMsg('安装向导执行失败：' + (e.message || e), 'err');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = oldText || '应用并启动';
+        }
+      }
     }
     function applyProviderPresetDialog() {
       const presetId = document.getElementById('dlg_provider_preset').value;
@@ -3639,46 +3701,7 @@ cat <<'HTML'
       } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
     }
     async function saveWorkspaceQuick() {
-      const saveBtn = document.querySelector('#userSettingsMask .btn.primary');
-      const oldText = saveBtn ? saveBtn.textContent : '';
-      try {
-        const workspaceDir = (document.getElementById('workspace_dir').value || '').trim() || '/volume1/openclaw';
-        const wsNorm = ('/' + workspaceDir.replace(/^\/+/, '')).toLowerCase();
-        if (wsNorm.endsWith('/.openclaw') || wsNorm.includes('/.openclaw/')) {
-          setMsg('用户目录不能包含 .openclaw（该名称为内部工作目录保留）', 'err');
-          return;
-        }
-        if (!!window.__statusRunning) {
-          setMsg('请先停止 gateway，再修改用户目录。', 'err');
-          return;
-        }
-        const m = await api('models');
-        const prevWorkspace = (m.workspaceDir || '').trim();
-        const workspaceChanged = !!workspaceDir && workspaceDir !== prevWorkspace;
-        // 需求变更：用户目录保存仅落配置，不触发 gateway 启动/重启。
-        const payload = { providers: (m.configuredProviders || []), workspaceDir, applyNow: false };
-        if (saveBtn) {
-          saveBtn.disabled = true;
-          saveBtn.textContent = '保存中…';
-        }
-        const ret = await api('models_save', 'POST', payload);
-        if (workspaceChanged) {
-          setMsg('用户目录已更新（未触发 gateway 启动）：' + workspaceDir, 'ok');
-        } else {
-          setMsg('用户目录保存成功（未触发 gateway 启动）：' + workspaceDir, 'ok');
-        }
-        if (ret && ret.pointerWriteErr) {
-          setMsg('目录保存成功，但 pointer 写入失败：' + ret.pointerWriteErr, 'err');
-        }
-        await load('status');
-        closeUserSettingsDialog();
-      } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
-      finally {
-        if (saveBtn) {
-          saveBtn.disabled = false;
-          saveBtn.textContent = oldText || '保存';
-        }
-      }
+      setMsg('用户目录设置入口已移除，请使用安装向导。', 'ok');
     }
     async function saveQQBotQuick() {}
     function openChannelDialog(editId) {
