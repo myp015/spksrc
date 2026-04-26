@@ -108,6 +108,7 @@ sys.stdout.buffer.write(b"".join(chunks))
 action=$(urldecode "$(get_param action "$QUERY")")
 native_api=$(urldecode "$(get_param native_api "$QUERY")")
 launch_app=$(urldecode "$(get_param launchApp "$QUERY")")
+from_app=$(urldecode "$(get_param fromApp "$QUERY")")
 
 # 仅允许 DSM 登录会话访问（避免未登录直接打开）
 REQ_COOKIE="${HTTP_COOKIE:-}"
@@ -123,10 +124,9 @@ if ! printf '%s' "$REQ_COOKIE" | grep -Eq '(^|;[[:space:]]*)id='; then
 fi
 
 # native_api=1 接口请求不受此限制。
-# 仅禁用“直接访问 launchApp=1”场景；普通套件中心入口（通常不带 launchApp）保持可用。
+# launchApp=1 仅允许套件内带 fromApp=1 的入口；普通直链（无标记）直接拦截。
 if [ "$native_api" != "1" ] && [ "$launch_app" = "1" ]; then
-    REQ_REFERER="${HTTP_REFERER:-}"
-    if ! printf '%s' "$REQ_REFERER" | grep -Eq '/webman/index.cgi'; then
+    if [ "$from_app" != "1" ]; then
         printf "Status: 403 Forbidden
 "
         printf "Content-Type: text/plain; charset=UTF-8

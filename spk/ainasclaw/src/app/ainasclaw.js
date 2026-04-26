@@ -83,9 +83,9 @@ SYNOCOMMUNITY.AiNasClaw.AppWindow = Ext.extend(SYNO.SDS.AppWindow, {
     constructor: function (config) {
         this.appInstance = config.appInstance;
 
-        // Package Center occasionally hangs on complex Ext tabs in some DSM builds.
-        // Use direct iframe entry for stable open behavior.
-        var monitorUrl = '/webman/3rdparty/ainasclaw/index.cgi?launchApp=1';
+        // Package Center opens via a marked launch path.
+        // `launchApp=1` without marker should be blocked as direct link.
+        var monitorUrl = '/webman/3rdparty/ainasclaw/index.cgi?launchApp=1&fromApp=1';
 
         config = Ext.apply({
             resizable: true,
