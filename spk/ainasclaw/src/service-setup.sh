@@ -1304,6 +1304,27 @@ try {
     sync_skills_to_workspace
     harden_extension_permissions
 
+    # 让 doctor 的 runtime-deps 检查复用已打包依赖：为当前 workspace 预置 stage 软链。
+    # 避免每次安装后都必须跑 doctor --fix 才“看见”依赖。
+    ${OPENCLAW_NODE} -e '
+const fs=require("fs");
+const path=require("path");
+const crypto=require("crypto");
+const appDir=process.argv[1];
+const stateDir=process.argv[2];
+try {
+  const pkgRoot=path.resolve(appDir);
+  const pkg=JSON.parse(fs.readFileSync(path.join(pkgRoot,"package.json"),"utf8"));
+  const ver=((pkg&&pkg.version)||"unknown").toString().trim()||"unknown";
+  const hash=crypto.createHash("sha256").update(path.resolve(pkgRoot)).digest("hex").slice(0,12);
+  const stage=path.join(stateDir,"plugin-runtime-deps",`openclaw-${ver}-${hash}`);
+  const nm=path.join(stage,"node_modules");
+  fs.mkdirSync(stage,{recursive:true});
+  try { fs.rmSync(nm,{recursive:true,force:true}); } catch {}
+  fs.symlinkSync(path.join(pkgRoot,"node_modules"), nm);
+} catch {}
+' "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" >/dev/null 2>&1 || true
+
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
 
