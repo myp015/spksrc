@@ -40,7 +40,7 @@ REQUIRED_MIN_DSM = 7.2
 
 MAINTAINER = ainas
 MAINTAINER_URL = https://ainas.taobao.com
-DESCRIPTION = AiNasClaw for Synology，淘宝店铺：https://ainas.taobao.com  默认 Token: 123456（安装后可修改）。
+DESCRIPTION = AiNasClaw for Synology，淘宝店铺：https://ainas.taobao.com  默认 Token: 123456。
 DISPLAY_NAME = AiNasClaw
 CHANGELOG = "integrated with DSM OpenClaw runtime bundle."
 

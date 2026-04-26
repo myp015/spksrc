@@ -846,6 +846,27 @@ if apply_now:
                 stderr=subprocess.STDOUT,
                 timeout=12
             )
+            # 若 synopkg metadata 仍未刷新，直接补写 INFO/adminport 作为兜底（防止套件详情仍显示 58789）。
+            try:
+                info_file = '/var/packages/ainasclaw/INFO'
+                if not os.path.exists(info_file):
+                    info_file = '/var/packages/openclaw/INFO'
+                if os.path.exists(info_file):
+                    txt = open(info_file, 'r', encoding='utf-8', errors='ignore').read()
+                    import re as _re
+                    n_txt = txt
+                    if _re.search(r'^adminport="\d+"', n_txt, flags=_re.M):
+                        n_txt = _re.sub(r'^adminport="\d+"', f'adminport="{gw_port}"', n_txt, flags=_re.M)
+                    else:
+                        n_txt = n_txt.rstrip('\n') + f'\nadminport="{gw_port}"\n'
+                    if _re.search(r'^adminurl=".*"', n_txt, flags=_re.M):
+                        n_txt = _re.sub(r'^adminurl=".*"', 'adminurl="/default/chat"', n_txt, flags=_re.M)
+                    else:
+                        n_txt = n_txt.rstrip('\n') + 'adminurl="/default/chat"\n'
+                    if n_txt != txt:
+                        open(info_file, 'w', encoding='utf-8').write(n_txt)
+            except Exception:
+                pass
         except Exception:
             pass
     except Exception as e:
@@ -2555,6 +2576,15 @@ if action in ('start','restart') and not running:
 if action == 'stop' and running:
     ok = False
     logs.append({'cmd':'post-stop-check','error':'gateway still running after stop sequence'})
+
+# 同步 DSM 套件详情端口，确保 adminport/adminurl 与概览端口一致。
+if action in ('start','restart') and running:
+    try:
+        rcp, o = run(['bash','-lc', 'source /var/packages/ainasclaw/scripts/service-setup >/dev/null 2>&1; sync_dsm_package_info_port "' + str(gw_port) + '"'], timeout=12)
+        logs.append({'cmd':'sync_dsm_package_info_port', 'rc': rcp, 'out': (o or '')[-600:]})
+    except Exception as e:
+        logs.append({'cmd':'sync_dsm_package_info_port', 'error': str(e)})
+
 print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': initialized}, ensure_ascii=False))
 PY
             exit 0
@@ -3604,19 +3634,12 @@ cat <<'HTML'
           models: selectedModelIds.map(id => ({ modelId: id, id: id }))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
-        const payload = { providers, applyNow: true };
-        hotReloadTriggered = true;
-        setHotReloadBusy(true);
+        const payload = { providers, applyNow: false };
         const ret = await api('models_save', 'POST', payload);
-        if (ret && ret.gatewayRunning === false) {
-          await runInstallAction('start');
-          setModelDialogHint('保存成功，已执行网关启动并应用模型', 'ok');
-        } else {
-          setModelDialogHint('保存成功，已热重启并应用模型', 'ok');
-        }
+        setModelDialogHint((ret && ret.message) ? ret.message : '保存成功，重启 gateway 后生效', 'ok');
         closeModelDialog();
         await load('models');
-        setMsg('模型服务器保存成功，模型已立即生效', 'ok');
+        setMsg('模型服务器保存成功（未自动重启 gateway）', 'ok');
       } catch (e) {
         setModelDialogHint('保存失败：' + (e.message || e), 'err');
         setMsg('模型服务器保存失败：' + (e.message || e), 'err');

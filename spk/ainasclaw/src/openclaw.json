@@ -9,8 +9,7 @@
   "browser": {
     "headless": true,
     "noSandbox": true,
-    "defaultProfile": "openclaw",
-    "executablePath": "/usr/bin/chromium"
+    "defaultProfile": "openclaw"
   },
   "models": {
     "mode": "merge",
