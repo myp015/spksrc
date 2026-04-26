@@ -769,6 +769,25 @@ NGINX_EOF
         local in_model="${wizard_model_id:-${WIZARD_MODEL_ID:-}}"
         local in_base="${wizard_base_url:-${WIZARD_BASE_URL:-}}"
         local in_key="${wizard_api_key:-${WIZARD_API_KEY:-}}"
+
+        # Fallback: read persisted installer variables explicitly when shell vars are empty.
+        if [ -z "${in_ws}${in_port}${in_model}${in_base}${in_key}" ] && [ -n "${INST_VARIABLES}" ] && [ -f "${INST_VARIABLES}" ]; then
+            [ -z "${in_ws}" ] && in_ws="$(grep -m1 '^wizard_workspace_dir=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
+            [ -z "${in_port}" ] && in_port="$(grep -m1 '^wizard_gateway_port=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
+            [ -z "${in_model}" ] && in_model="$(grep -m1 '^wizard_model_id=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
+            [ -z "${in_base}" ] && in_base="$(grep -m1 '^wizard_base_url=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
+            [ -z "${in_key}" ] && in_key="$(grep -m1 '^wizard_api_key=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
+        fi
+
+        mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
+        {
+            echo "status=${SYNOPKG_PKG_STATUS}";
+            echo "in_ws=${in_ws}";
+            echo "in_port=${in_port}";
+            echo "in_model=${in_model}";
+            echo "in_base=${in_base}";
+            echo "inst_vars=${INST_VARIABLES}";
+        } > "${SYNOPKG_PKGVAR}/wizard-applied.snapshot" 2>/dev/null || true
         if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
             export WIZARD_WORKSPACE_DIR="${in_ws}"
             export WIZARD_GATEWAY_PORT="${in_port}"
