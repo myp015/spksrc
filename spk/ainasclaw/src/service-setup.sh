@@ -1011,6 +1011,12 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
         OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
+        # 安装阶段就写入 workspace 指针，避免 prestart 被历史 pointer 覆盖回默认目录。
+        mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
+        printf '%s' '$HOME' > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
+        printf '%s' "${OPENCLAW_WORKSPACE}" > "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
+        chmod 666 "${WORKSPACE_PTR_FILE}" "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
+
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
         ensure_session_store_dir
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
