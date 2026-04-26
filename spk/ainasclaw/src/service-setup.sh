@@ -29,11 +29,20 @@ save_wizard_variables() {
     [ -n "${SHARE_NAME}" ] && printf 'SHARE_NAME=%s\n' "${SHARE_NAME}" >> "${INST_VARIABLES}"
 
     # Persist wizard values used by service_postinst.
-    [ -n "${wizard_workspace_dir}" ] && printf 'wizard_workspace_dir=%s\n' "${wizard_workspace_dir}" >> "${INST_VARIABLES}"
-    [ -n "${wizard_gateway_port}" ] && printf 'wizard_gateway_port=%s\n' "${wizard_gateway_port}" >> "${INST_VARIABLES}"
-    [ -n "${wizard_model_id}" ] && printf 'wizard_model_id=%s\n' "${wizard_model_id}" >> "${INST_VARIABLES}"
-    [ -n "${wizard_base_url}" ] && printf 'wizard_base_url=%s\n' "${wizard_base_url}" >> "${INST_VARIABLES}"
-    [ -n "${wizard_api_key}" ] && printf 'wizard_api_key=%s\n' "${wizard_api_key}" >> "${INST_VARIABLES}"
+    local w_ws="${wizard_workspace_dir:-${WIZARD_WORKSPACE_DIR:-}}"
+    local w_port="${wizard_gateway_port:-${WIZARD_GATEWAY_PORT:-}}"
+    local w_model="${wizard_model_id:-${WIZARD_MODEL_ID:-}}"
+    local w_base="${wizard_base_url:-${WIZARD_BASE_URL:-}}"
+    local w_key="${wizard_api_key:-${WIZARD_API_KEY:-}}"
+    [ -n "${w_ws}" ] && printf 'wizard_workspace_dir=%s\n' "${w_ws}" >> "${INST_VARIABLES}"
+    [ -n "${w_port}" ] && printf 'wizard_gateway_port=%s\n' "${w_port}" >> "${INST_VARIABLES}"
+    [ -n "${w_model}" ] && printf 'wizard_model_id=%s\n' "${w_model}" >> "${INST_VARIABLES}"
+    [ -n "${w_base}" ] && printf 'wizard_base_url=%s\n' "${w_base}" >> "${INST_VARIABLES}"
+    [ -n "${w_key}" ] && printf 'wizard_api_key=%s\n' "${w_key}" >> "${INST_VARIABLES}"
+
+    # debug snapshot for installer-time wizard env diagnosis
+    mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
+    env | grep -E '^(wizard_|WIZARD_)' > "${SYNOPKG_PKGVAR}/wizard-env.snapshot" 2>/dev/null || true
 }
 validate_preinst() {
     # Package-level signature + integrity check (install/upgrade time, no SSH needed by user).
@@ -755,18 +764,23 @@ NGINX_EOF
         sync_dsm_package_info_port "$(get_gateway_port_from_config "${OPENCLAW_CONFIG_FILE_BASE}")"
 
         # Wizard defaults
+        local in_ws="${wizard_workspace_dir:-${WIZARD_WORKSPACE_DIR:-}}"
+        local in_port="${wizard_gateway_port:-${WIZARD_GATEWAY_PORT:-}}"
+        local in_model="${wizard_model_id:-${WIZARD_MODEL_ID:-}}"
+        local in_base="${wizard_base_url:-${WIZARD_BASE_URL:-}}"
+        local in_key="${wizard_api_key:-${WIZARD_API_KEY:-}}"
         if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
-            export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir}"
-            export WIZARD_GATEWAY_PORT="${wizard_gateway_port}"
-            export WIZARD_MODEL_ID="${wizard_model_id}"
-            export WIZARD_BASE_URL="${wizard_base_url}"
-            export WIZARD_API_KEY="${wizard_api_key}"
+            export WIZARD_WORKSPACE_DIR="${in_ws}"
+            export WIZARD_GATEWAY_PORT="${in_port}"
+            export WIZARD_MODEL_ID="${in_model}"
+            export WIZARD_BASE_URL="${in_base}"
+            export WIZARD_API_KEY="${in_key}"
         else
-            export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir:-/volume1/openclaw}"
-            export WIZARD_GATEWAY_PORT="${wizard_gateway_port:-58789}"
-            export WIZARD_MODEL_ID="${wizard_model_id:-}"
-            export WIZARD_BASE_URL="${wizard_base_url:-}"
-            export WIZARD_API_KEY="${wizard_api_key:-}"
+            export WIZARD_WORKSPACE_DIR="${in_ws:-/volume1/openclaw}"
+            export WIZARD_GATEWAY_PORT="${in_port:-58789}"
+            export WIZARD_MODEL_ID="${in_model:-}"
+            export WIZARD_BASE_URL="${in_base:-}"
+            export WIZARD_API_KEY="${in_key:-}"
         fi
 
         export WIZARD_FEISHU_APP_ID="${wizard_feishu_app_id}"
