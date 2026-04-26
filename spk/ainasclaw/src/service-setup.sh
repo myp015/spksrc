@@ -1244,17 +1244,6 @@ try {
     sync_skills_to_workspace
     harden_extension_permissions
 
-    # 安装/首次初始化后自动补齐 bundled plugin runtime deps，避免 doctor 报缺依赖。
-    if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ] || [ "${fresh_install_config}" = "1" ]; then
-        export OPENCLAW_RESPECT_ENV_WORKSPACE=1
-        mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
-        if command -v flock >/dev/null 2>&1; then
-            flock -w 300 "${SYNOPKG_PKGVAR}/doctor-fix.lock" /var/packages/ainasclaw/target/bin/openclaw doctor --non-interactive --fix >/dev/null 2>&1 || true
-        else
-            /var/packages/ainasclaw/target/bin/openclaw doctor --non-interactive --fix >/dev/null 2>&1 || true
-        fi
-    fi
-
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
 

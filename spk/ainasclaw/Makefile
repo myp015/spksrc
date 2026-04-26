@@ -156,7 +156,16 @@ openclaw_prepare_bundle:
 		find dist/extensions -type l -lname '*\.openclaw-install-stage/*' -delete 2>/dev/null || true
 	@cd $(WORK_DIR)/openclaw-bundle && \
 		find dist/extensions -type d -path '*/node_modules/.bin' -prune -exec rm -rf {} + 2>/dev/null || true
-	@printf '%s\n' '[doctor] skipped during build to avoid mutating bundled deps; run doctor after install on DSM runtime.' > $(WORK_DIR)/doctor.log
+	@cd $(WORK_DIR)/openclaw-bundle && \
+		mkdir -p .spk-build-home .spk-build-state && \
+		[ -f .spk-build-state/openclaw.json ] || printf '%s\n' '{}' > .spk-build-state/openclaw.json && \
+		HOME="$(WORK_DIR)/openclaw-bundle/.spk-build-home" \
+		OPENCLAW_CONFIG_PATH="$(WORK_DIR)/openclaw-bundle/.spk-build-state/openclaw.json" \
+		OPENCLAW_STATE_DIR="$(WORK_DIR)/openclaw-bundle/.spk-build-state" \
+		OPENCLAW_WORKSPACE_DIR="$(WORK_DIR)/openclaw-bundle/.spk-build-home" \
+		OPENCLAW_RESPECT_ENV_WORKSPACE=1 \
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" \
+		node dist/index.js doctor --non-interactive --fix > $(WORK_DIR)/doctor.log 2>&1 || true
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o bun-linux-$(BUN_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(BUN_DIST_ARCH).zip
