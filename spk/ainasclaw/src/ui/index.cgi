@@ -2243,6 +2243,12 @@ if action in ('start', 'restart') and req_workspace:
             pf.write('$HOME')
         with open('/var/packages/ainasclaw/var/workspace.home.path', 'w', encoding='utf-8') as hpf:
             hpf.write(req_workspace)
+        # 非默认目录时，清理默认目录残留配置，避免被误判为当前配置。
+        if req_workspace != '/volume1/openclaw':
+            try:
+                os.remove('/volume1/openclaw/.openclaw/openclaw.json')
+            except Exception:
+                pass
     except Exception:
         pass
 
