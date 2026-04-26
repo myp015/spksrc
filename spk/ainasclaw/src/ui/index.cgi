@@ -669,72 +669,33 @@ workspace_changed = bool(workspace and workspace != prev_workspace)
 # 用户目录切换后的自动初始化：从套件系统文件同步 skills / 插件资源到新目录。
 workspace_init_sync_ok = False
 workspace_init_sync_err = ''
-workspace_init_deps_ok = False
-workspace_init_deps_err = ''
+workspace_init_deps_ok = True
+workspace_init_deps_err = 'skipped: workspace change does not run doctor --fix'
 if workspace_explicit and workspace_changed:
     try:
-        import shutil
-        state_dir_init = os.path.dirname(cfg_path)
-        app_dir_init = '/var/packages/ainasclaw/target/app/openclaw'
-        ext_dir_init = os.path.join(state_dir_init, 'extensions')
-        skills_root = os.path.join(state_dir_init, 'skills', '_bundled')
-        os.makedirs(ext_dir_init, exist_ok=True)
-        os.makedirs(skills_root, exist_ok=True)
-
-        # 1) 同步技能：app/dist/extensions/*/skills -> <state>/skills/_bundled/<plugin>
-        dist_ext = os.path.join(app_dir_init, 'dist', 'extensions')
-        if os.path.isdir(dist_ext):
-            for plugin_id in os.listdir(dist_ext):
-                src_sk = os.path.join(dist_ext, plugin_id, 'skills')
-                if not os.path.isdir(src_sk):
-                    continue
-                dst_sk = os.path.join(skills_root, plugin_id)
-                if os.path.exists(dst_sk):
-                    shutil.rmtree(dst_sk, ignore_errors=True)
-                shutil.copytree(src_sk, dst_sk, dirs_exist_ok=True)
-
-        # 2) 维护 extensions/node_modules 软链（插件依赖解析）
-        nm_src = os.path.join(app_dir_init, 'node_modules')
-        nm_dst = os.path.join(ext_dir_init, 'node_modules')
-        try:
-            if os.path.lexists(nm_dst):
-                if os.path.isdir(nm_dst) and not os.path.islink(nm_dst):
-                    shutil.rmtree(nm_dst, ignore_errors=True)
-                else:
-                    os.unlink(nm_dst)
-            os.symlink(nm_src, nm_dst)
-        except Exception:
-            pass
-
-        # 3) 清理 workspace/extensions 下的频道插件拷贝（与 DSM 现有策略一致）
-        for pkg_name in ['feishu-openclaw-plugin', 'dingtalk', 'wecom', 'openclaw-qqbot', 'openclaw-weixin']:
-            p = os.path.join(ext_dir_init, pkg_name)
-            try:
-                if os.path.lexists(p):
-                    if os.path.isdir(p) and not os.path.islink(p):
-                        shutil.rmtree(p, ignore_errors=True)
-                    else:
-                        os.unlink(p)
-            except Exception:
-                pass
-
-        workspace_init_sync_ok = True
-
-        # 自动补齐 bundled plugin runtime deps（等价 doctor --fix 里该部分），避免切目录后缺依赖。
-        deps_cmd = (
-            'bash -lc "export HOME=\"{workspace}\"; '
-            'export OPENCLAW_CONFIG_PATH=\"{cfg}\"; '
-            'export OPENCLAW_STATE_DIR=\"{state}\"; '
-            'export OPENCLAW_WORKSPACE_DIR=\"{workspace}\"; '
-            'export OPENCLAW_RESPECT_ENV_WORKSPACE=1; '
-            'mkdir -p /tmp/openclaw-locks; '
-            'flock -w 180 /tmp/openclaw-locks/doctor-fix.lock '
-            '/var/packages/ainasclaw/target/bin/openclaw doctor --non-interactive --fix"'
+        # 与 SPK 安装初始化路径一致：复用 service-setup 的同步函数，不调用 doctor。
+        init_cmd = (
+            'bash -lc "set -e; '
+            'export SYNOPKG_PKGNAME=ainasclaw; '
+            'export SYNOPKG_DSM_VERSION_MAJOR=7; '
+            'export SYNOPKG_PKGDEST=/var/packages/ainasclaw/target; '
+            'export SYNOPKG_PKGVAR=/var/packages/ainasclaw/var; '
+            'source /var/packages/ainasclaw/scripts/service-setup >/dev/null 2>&1; '
+            'OPENCLAW_CONFIG_FILE=\"{cfg}\"; '
+            'OPENCLAW_CONFIG_PATH=\"{cfg}\"; '
+            'OPENCLAW_STATE_DIR=\"{state}\"; '
+            'OPENCLAW_WORKSPACE=\"{workspace}\"; '
+            'OPENCLAW_WORKSPACE_DIR=\"{workspace}\"; '
+            'rm -rf \"{state}/extensions/node_modules\"; '
+            'sync_bundled_channel_plugins_to_stock_extensions; '
+            'sync_bundled_channel_plugins_to_extensions; '
+            'sync_skills_to_workspace; '
+            'harden_extension_permissions"'
         ).format(cfg=cfg_path, state=os.path.dirname(cfg_path), workspace=workspace)
-        rd = subprocess.run(deps_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=240)
-        workspace_init_deps_ok = (rd.returncode == 0)
-        if not workspace_init_deps_ok:
-            workspace_init_deps_err = ((rd.stdout or b'').decode('utf-8', errors='ignore')[-1200:] or f'rc={rd.returncode}')
+        rr = subprocess.run(init_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+        workspace_init_sync_ok = (rr.returncode == 0)
+        if not workspace_init_sync_ok:
+            workspace_init_sync_err = ((rr.stdout or b'').decode('utf-8', errors='ignore')[-1200:] or f'rc={rr.returncode}')
     except Exception as e:
         workspace_init_sync_ok = False
         workspace_init_sync_err = str(e)
