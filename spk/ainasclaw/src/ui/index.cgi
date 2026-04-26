@@ -3510,7 +3510,6 @@ cat <<'HTML'
       } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
     }
     async function saveWorkspaceQuick() {
-      let hotReloadTriggered = false;
       const saveBtn = document.querySelector('#userSettingsMask .btn.primary');
       const oldText = saveBtn ? saveBtn.textContent : '';
       try {
@@ -3523,32 +3522,25 @@ cat <<'HTML'
         const m = await api('models');
         const prevWorkspace = (m.workspaceDir || '').trim();
         const workspaceChanged = !!workspaceDir && workspaceDir !== prevWorkspace;
-        const payload = { providers: (m.configuredProviders || []), workspaceDir, applyNow: true };
-        hotReloadTriggered = true;
-        setHotReloadBusy(true);
+        // 需求变更：用户目录保存仅落配置，不触发 gateway 启动/重启。
+        const payload = { providers: (m.configuredProviders || []), workspaceDir, applyNow: false };
         if (saveBtn) {
           saveBtn.disabled = true;
-          saveBtn.textContent = workspaceChanged ? '正在初始化…' : '保存中…';
+          saveBtn.textContent = '保存中…';
         }
         const ret = await api('models_save', 'POST', payload);
         if (workspaceChanged) {
-          setMsg('用户目录已更新，正在初始化并切换运行目录：' + workspaceDir, 'ok');
-          // models_save now forces gateway restart when workspace changed.
+          setMsg('用户目录已更新（未触发 gateway 启动）：' + workspaceDir, 'ok');
         } else {
-          setMsg('用户目录保存成功：' + workspaceDir, 'ok');
+          setMsg('用户目录保存成功（未触发 gateway 启动）：' + workspaceDir, 'ok');
         }
         if (ret && ret.pointerWriteErr) {
           setMsg('目录保存成功，但 pointer 写入失败：' + ret.pointerWriteErr, 'err');
         }
-        // 立即重拉状态页，刷新“用户文件夹路径/配置文件”显示。
         await load('status');
         closeUserSettingsDialog();
       } catch (e) { setMsg('用户目录保存失败：' + (e.message || e), 'err'); }
       finally {
-        if (hotReloadTriggered) {
-          await waitHotReloadSettled(30000);
-          setHotReloadBusy(false);
-        }
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.textContent = oldText || '保存';
