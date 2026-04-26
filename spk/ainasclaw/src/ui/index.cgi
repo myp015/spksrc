@@ -166,10 +166,11 @@ for _ in range(3):
         time.sleep(0.15)
 
 # gateway 进程探测兜底：按钮语义是“停止 gateway”，不是“停止套件”。
+# 不能用 pgrep -f 正则（会误匹配当前检查命令自身 argv），改为精确 comm 匹配。
 if not running:
     try:
         r = subprocess.run([
-            'sh', '-lc', "pgrep -f 'openclaw-gateway|dist/index.js gateway' >/dev/null 2>&1"
+            'pgrep', '-x', 'openclaw-gatewa'
         ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=1.5)
         running = (r.returncode == 0)
     except Exception:
@@ -2118,13 +2119,27 @@ env['OPENCLAW_WORKSPACE_DIR']=workspace_root
 env['NPM_CONFIG_CACHE']=state_dir+'/.npm'
 env['XDG_CACHE_HOME']=state_dir+'/.cache'
 env['XDG_CONFIG_HOME']=state_dir+'/.config'
-env['XDG_DATA_HOME']=state_dir+'/.local/share
+env['XDG_DATA_HOME']=state_dir+'/.local/share'
 env['OPENCLAW_TOOLS_PROFILE']='full'
 env['OPENCLAW_TOOLS_ELEVATED_ENABLED']='1'
 env['OPENCLAW_ELEVATED_DEFAULT']='full'
 env['OPENCLAW_EXEC_SECURITY_DEFAULT']='full'
+# 避免 gateway run 以自愈/重生模式拉起，导致“停止 gateway”按钮失效。
+env['OPENCLAW_NO_RESPAWN']='1'
 
 initialized = False
+# 默认端口：stop 分支也会用于 post-stop 检查，必须先定义。
+try:
+    c_port = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
+except Exception:
+    c_port = {}
+try:
+    gw_port = int((((c_port.get('gateway') or {}).get('port')) or 0))
+except Exception:
+    gw_port = 0
+if not (1024 <= gw_port <= 65535):
+    gw_port = 58789
+
 # On start/restart only, create runtime config if missing.
 if action in ('start','restart'):
     try:
@@ -2255,10 +2270,13 @@ def force_stop():
     except Exception as e:
         out.append((['openclaw','gateway','stop','--json'], 999, str(e)))
     # 2) fallback precise kill patterns
+    # 注意：不要使用 `pkill -f openclaw.*gateway`，否则会误杀当前 CGI python 进程
+    # （其 argv 包含 openclaw-gateway.spawn.log 路径），导致接口空响应。
     for cmd in [
         ['pkill','-f','/var/packages/ainasclaw/target/bin/openclaw gateway run'],
         ['pkill','-f','/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway'],
-        ['pkill','-f','openclaw.*gateway']
+        ['pkill','-f','^openclaw-gateway$'],
+        ['pkill','-x','openclaw-gatewa']
     ]:
         try:
             p=subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
@@ -3127,6 +3145,9 @@ cat <<'HTML'
       try {
         let act;
         act = await api('install_run', 'POST', { method: 'bun', action: actionName });
+        if (!act || typeof act !== 'object') {
+          throw new Error('install_run 返回空结果');
+        }
         if (actionName === 'start' && act && act.initialized) {
           setMsg('运行状态：正在初始化', 'ok');
         }
