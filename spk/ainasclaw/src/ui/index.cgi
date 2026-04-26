@@ -388,6 +388,91 @@ elif isinstance(paths[0], dict):
 
 # after workspace change, always write into target workspace config path
 cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
+
+# 规则：仅允许在 gateway 停止后修改用户目录。
+workspace_changed = bool(workspace and workspace != prev_workspace)
+try:
+    import socket
+    try:
+        gw_port_chk = int((((cfg.get('gateway') or {}).get('port')) or 0))
+    except Exception:
+        gw_port_chk = 0
+    if not (1024 <= gw_port_chk <= 65535):
+        gw_port_chk = 58789
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.5)
+    try:
+        s.connect(('127.0.0.1', gw_port_chk))
+        gateway_running = True
+    except Exception:
+        gateway_running = False
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+except Exception:
+    gateway_running = False
+
+if workspace_explicit and workspace_changed and gateway_running:
+    print(json.dumps({
+        'ok': False,
+        'error': '请先停止 gateway，再修改用户目录。',
+        'workspaceDir': workspace,
+        'configPath': cfg_path,
+        'gatewayRunning': True
+    }, ensure_ascii=False))
+    raise SystemExit
+
+# 用户目录变更时：将旧工作目录下 .openclaw 全量迁移到新目录，保证文件统一落在 用户目录/.openclaw。
+if workspace_explicit and workspace_changed:
+    try:
+        import shutil
+        old_state = os.path.join(prev_workspace or '/volume1/openclaw', '.openclaw')
+        new_state = os.path.join(workspace or '/volume1/openclaw', '.openclaw')
+        if old_state != new_state and os.path.isdir(old_state):
+            os.makedirs(new_state, exist_ok=True)
+            for name in os.listdir(old_state):
+                src = os.path.join(old_state, name)
+                dst = os.path.join(new_state, name)
+                try:
+                    # 强制以新目录为准：目录做合并覆盖，文件直接覆盖复制。
+                    if os.path.isdir(src):
+                        os.makedirs(dst, exist_ok=True)
+                        for item in os.listdir(src):
+                            s2 = os.path.join(src, item)
+                            d2 = os.path.join(dst, item)
+                            if os.path.isdir(s2):
+                                shutil.copytree(s2, d2, dirs_exist_ok=True)
+                                shutil.rmtree(s2, ignore_errors=True)
+                            else:
+                                shutil.copy2(s2, d2)
+                                try:
+                                    os.remove(s2)
+                                except Exception:
+                                    pass
+                    else:
+                        shutil.copy2(src, dst)
+                        try:
+                            os.remove(src)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            # 旧目录清理：切目录后不再保留核心运行位，避免“看起来还在默认目录”。
+            for stale in ['openclaw.json', 'skills', 'extensions']:
+                p = os.path.join(old_state, stale)
+                try:
+                    if os.path.isdir(p):
+                        shutil.rmtree(p, ignore_errors=True)
+                    elif os.path.exists(p):
+                        os.remove(p)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
 # persist workspace pointer outside workspace directory to survive workspace deletion
 pointer_write_err = ''
 try:
@@ -2874,7 +2959,7 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
-            + '  <button class="btn" onclick="openUserSettingsDialog()">用户目录设置</button>'
+            + '  <button class="btn" id="btn_user_settings" onclick="openUserSettingsDialog()">用户目录设置</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
@@ -3112,6 +3197,7 @@ cat <<'HTML'
       installBusyAction = busy ? String(actionName || '') : '';
       const startBtn = document.getElementById('btn_oc_start');
       const stopBtn = document.getElementById('btn_oc_stop');
+      const userSettingsBtn = document.getElementById('btn_user_settings');
       if (!startBtn || !stopBtn) return;
       if (busy) {
         startBtn.disabled = true;
@@ -3123,6 +3209,7 @@ cat <<'HTML'
       const running = !!window.__statusRunning;
       startBtn.disabled = running;
       stopBtn.disabled = !running;
+      if (userSettingsBtn) userSettingsBtn.disabled = running;
       startBtn.textContent = '启动 OpenClaw';
       stopBtn.textContent = '停止 OpenClaw';
     }
@@ -3174,6 +3261,10 @@ cat <<'HTML'
       }
     }
     function openUserSettingsDialog() {
+      if (!!window.__statusRunning) {
+        setMsg('请先停止 gateway，再修改用户目录。', 'err');
+        return;
+      }
       const m = document.getElementById('userSettingsMask');
       if (!m) return;
       // Re-sync input with current status workspace every time modal opens.
@@ -3517,6 +3608,10 @@ cat <<'HTML'
         const wsNorm = ('/' + workspaceDir.replace(/^\/+/, '')).toLowerCase();
         if (wsNorm.endsWith('/.openclaw') || wsNorm.includes('/.openclaw/')) {
           setMsg('用户目录不能包含 .openclaw（该名称为内部工作目录保留）', 'err');
+          return;
+        }
+        if (!!window.__statusRunning) {
+          setMsg('请先停止 gateway，再修改用户目录。', 'err');
           return;
         }
         const m = await api('models');
