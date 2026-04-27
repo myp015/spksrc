@@ -2229,10 +2229,11 @@ PY
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${CFG_FILE}" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
-import json, os, subprocess, sys, time, fcntl
+import json, os, subprocess, sys, time, fcntl, pwd
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/openclaw/.openclaw/openclaw.json'
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
+gateway_pid_file = '/var/packages/ainasclaw/var/openclaw-gateway.runtime.pid'
 try:
     payload = json.loads(raw or '{}')
 except Exception:
@@ -2443,6 +2444,27 @@ def run(cmd, timeout=20):
 
 def force_stop():
     out=[]
+    # 0) kill tracked detached gateway pid first
+    try:
+        if os.path.exists(gateway_pid_file):
+            gpid = int((open(gateway_pid_file, 'r', encoding='utf-8').read() or '0').strip() or '0')
+            if gpid > 0:
+                try:
+                    os.kill(gpid, 15)
+                    time.sleep(1)
+                except Exception:
+                    pass
+                try:
+                    os.kill(gpid, 9)
+                except Exception:
+                    pass
+            try:
+                os.remove(gateway_pid_file)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # 1) prefer graceful gateway stop first (short timeout)
     try:
         rc, o = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=12)
@@ -2534,6 +2556,22 @@ if action in ('start','restart'):
             logf = open(spawn_log, 'ab', buffering=0)
         except Exception:
             logf = None
+        preexec = None
+        svc_user = None
+        try:
+            if os.geteuid() == 0:
+                svc_user = 'sc-openclaw'
+                pw = pwd.getpwnam(svc_user)
+                uid = int(pw.pw_uid)
+                gid = int(pw.pw_gid)
+                def _demote():
+                    os.setgid(gid)
+                    os.setuid(uid)
+                preexec = _demote
+        except Exception:
+            svc_user = None
+            preexec = None
+
         p = subprocess.Popen(
             ['/var/packages/ainasclaw/target/bin/openclaw','gateway','run','--allow-unconfigured','--port',str(gw_port)],
             env=env,
@@ -2541,9 +2579,15 @@ if action in ('start','restart'):
             stdout=(logf if logf is not None else subprocess.DEVNULL),
             stderr=(logf if logf is not None else subprocess.DEVNULL),
             close_fds=True,
-            start_new_session=True
+            start_new_session=True,
+            preexec_fn=preexec
         )
-        logs.append({'cmd':'gateway(spawn-detached)','pid':p.pid})
+        try:
+            with open(gateway_pid_file, 'w', encoding='utf-8') as pf:
+                pf.write(str(p.pid))
+        except Exception:
+            pass
+        logs.append({'cmd':'gateway(spawn-detached)','pid':p.pid, 'serviceUser': (svc_user or 'current-user')})
         try:
             with open(spawn_log, 'a', encoding='utf-8') as sf:
                 sf.write(f'[gateway-spawn] started pid={p.pid}\n')

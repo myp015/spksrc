@@ -14,6 +14,7 @@ WORKSPACE_HOME_PTR_FILE="${SYNOPKG_PKGVAR}/workspace.home.path"
 AUTO_INIT_ON_INSTALL_MARKER="${SYNOPKG_PKGVAR}/auto-init-on-install.flag"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
+GATEWAY_PID_FILE="${SYNOPKG_PKGVAR}/openclaw-gateway.runtime.pid"
 
 resolve_effective_service_user() {
     # Canonical runtime account for this package is sc-openclaw.
@@ -83,6 +84,25 @@ normalize_runtime_deps_permissions() {
     # Do not follow node_modules symlinks into package root; only touch in-tree entries.
     find "${deps_root}" -mindepth 1 \( -type d -o -type f \) -exec chown "${eff_user}:${eff_user}" {} \; 2>/dev/null || true
     find "${deps_root}" -mindepth 1 -type l -exec chown -h "${eff_user}:${eff_user}" {} \; 2>/dev/null || true
+}
+
+normalize_runtime_owner_if_root() {
+    local eff_user="${1:-}"
+    [ -n "${eff_user}" ] || return 0
+    [ "$(id -u 2>/dev/null || echo 1)" = "0" ] || return 0
+
+    # 统一关键运行目录归属，避免 root/http 残留导致后续 EACCES。
+    for p in \
+        "${OPENCLAW_WORKSPACE}" \
+        "${OPENCLAW_STATE_DIR}" \
+        "${OPENCLAW_STATE_DIR}/plugin-runtime-deps" \
+        "${OPENCLAW_STATE_DIR}/.npm" \
+        "${OPENCLAW_STATE_DIR}/.cache" \
+        "${OPENCLAW_STATE_DIR}/.config" \
+        "${OPENCLAW_STATE_DIR}/.local"; do
+        [ -e "${p}" ] || continue
+        chown -R "${eff_user}:${eff_user}" "${p}" 2>/dev/null || true
+    done
 }
 
 # Persist wizard parameters that DSM generic installer does not save by default.
@@ -512,7 +532,15 @@ start_gateway_if_needed() {
 
     local spawn_log="${SYNOPKG_PKGVAR}/openclaw-gateway.spawn.log"
     mkdir -p "$(dirname "${spawn_log}")" >/dev/null 2>&1 || true
-    nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
+
+    # Run gateway under unified service account when possible.
+    local eff_user="$(resolve_effective_service_user)"
+    if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
+        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=1 OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+    else
+        nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
+        echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
+    fi
     sleep 1
 }
 
@@ -1389,6 +1417,9 @@ try {
 
     local EFF_USER="$(resolve_effective_service_user)"
 
+    # 源头归一权限到服务用户（在 root 上下文时执行）。
+    normalize_runtime_owner_if_root "${EFF_USER}"
+
     # 清理无主 runtime-deps 锁，避免插件加载长时间卡在 lock timeout。
     cleanup_stale_runtime_deps_locks
 
@@ -1907,6 +1938,16 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 
 stop_gateway_processes() {
     # best-effort stop for any detached gateway process (may survive package stop/uninstall)
+    if [ -f "${GATEWAY_PID_FILE}" ]; then
+        local gpid
+        gpid="$(cat "${GATEWAY_PID_FILE}" 2>/dev/null || true)"
+        if [ -n "${gpid}" ]; then
+            kill -TERM "${gpid}" >/dev/null 2>&1 || true
+            sleep 1
+            kill -KILL "${gpid}" >/dev/null 2>&1 || true
+        fi
+        rm -f "${GATEWAY_PID_FILE}" >/dev/null 2>&1 || true
+    fi
     pkill -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
     pkill -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
     pkill -f 'openclaw gateway run' >/dev/null 2>&1 || true

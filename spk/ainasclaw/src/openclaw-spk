@@ -278,31 +278,9 @@ case "$1" in
   gateway)
     case "${2:-}" in
       restart)
-        # Always restart to running state: stop old process, then detached run.
-        "$APP_NODE" "$APP_ENTRY" gateway stop --force >/dev/null 2>&1 || true
-        sleep 1
-        # extra safety for stale detached processes
-        pkill -f '/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+        # Keep restart managed by gateway CLI service control path (avoid detached PID drift).
         shift 2
-        SPAWN_LOG="${OPENCLAW_STATE_DIR}/gateway-restart.spawn.log"
-        mkdir -p "$(dirname "$SPAWN_LOG")" >/dev/null 2>&1 || true
-        GW_PORT="$(python3 - "$OPENCLAW_CONFIG_PATH" <<'PY'
-import json,sys
-p=sys.argv[1] if len(sys.argv)>1 else ''
-port=58789
-try:
-    c=json.load(open(p,'r',encoding='utf-8'))
-    v=int((((c.get('gateway') or {}).get('port')) or 0))
-    if 1024 <= v <= 65535:
-        port=v
-except Exception:
-    pass
-print(port)
-PY
-)"
-        nohup "$APP_NODE" "$APP_ENTRY" gateway run --allow-unconfigured --port "$GW_PORT" "$@" >>"$SPAWN_LOG" 2>&1 &
-        echo "gateway restarting on :$GW_PORT (pid=$!)"
-        exit 0
+        exec "$APP_NODE" "$APP_ENTRY" gateway restart "$@"
         ;;
     esac
     ;;
