@@ -1506,7 +1506,10 @@ try {
             chown -R "${EFF_USER}:${EFF_USER}" /tmp/jiti 2>/dev/null || true
             chmod -R u+rwX /tmp/jiti 2>/dev/null || true
         fi
-        rm -f /tmp/jiti/dist-bundled-runtime-deps-*.cjs 2>/dev/null || true
+        # 重点清理已知易受 root 残留影响的 jiti 缓存分片。
+        rm -f /tmp/jiti/dist-bundled-runtime-deps-*.cjs \
+              /tmp/jiti/plugin-sdk-core.*.cjs \
+              /tmp/jiti/guard-guard.*.cjs 2>/dev/null || true
     fi
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
