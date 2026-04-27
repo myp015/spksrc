@@ -1173,12 +1173,13 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 
-# 保存渠道后默认热重载 gateway；微信扫码自动保存可传 noReload=true，避免等待 30~60s。
+# 保存渠道后：若 gateway 正在运行则热重载；若 gateway 已停止则直接启动。
 reload_ok = False
 reload_out = ''
 if not skip_reload:
     try:
         import subprocess
+
         env = os.environ.copy()
         env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
         env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
@@ -1192,11 +1193,41 @@ if not skip_reload:
         env['XDG_CACHE_HOME'] = state_dir + '/.cache'
         env['XDG_CONFIG_HOME'] = state_dir + '/.config'
         env['XDG_DATA_HOME'] = state_dir + '/.local/share'
-        env['OPENCLAW_GATEWAY_RESTART_START'] = '1'
-        cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
-        p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+
+        def is_gateway_running():
+            try:
+                r = subprocess.run(
+                    ['pgrep', '-x', 'openclaw-gateway'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=1.5,
+                )
+                if r.returncode == 0:
+                    return True
+            except Exception:
+                pass
+
+            try:
+                pid_file = '/var/packages/ainasclaw/var/openclaw-gateway.runtime.pid'
+                if os.path.exists(pid_file):
+                    pid = (open(pid_file, 'r', encoding='utf-8').read() or '').strip().split('\n')[0].strip()
+                    if pid.isdigit() and os.path.exists(f'/proc/{pid}'):
+                        return True
+            except Exception:
+                pass
+
+            return False
+
+        if is_gateway_running():
+            env['OPENCLAW_GATEWAY_RESTART_START'] = '1'
+            cmd = ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'restart', '--json']
+        else:
+            # gateway 不在运行时，不做热重载，直接走套件启动链路拉起 gateway。
+            cmd = ['/var/packages/ainasclaw/scripts/start-stop-status', 'start']
+
+        p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
         reload_ok = (p.returncode == 0)
-        reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-500:]
+        reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-800:]
     except Exception as e:
         reload_ok = False
         reload_out = str(e)
