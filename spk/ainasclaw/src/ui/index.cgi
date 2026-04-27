@@ -2456,7 +2456,7 @@ def force_stop():
         ['pkill','-f','/var/packages/ainasclaw/target/bin/openclaw gateway run'],
         ['pkill','-f','/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway'],
         ['pkill','-f','^openclaw-gateway$'],
-        ['pkill','-x','openclaw-gatewa']
+        ['pkill','-x','openclaw-gateway']
     ]:
         try:
             p=subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)

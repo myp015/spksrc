@@ -15,6 +15,76 @@ AUTO_INIT_ON_INSTALL_MARKER="${SYNOPKG_PKGVAR}/auto-init-on-install.flag"
 LOG_FILE="${SYNOPKG_PKGVAR}/ainasclaw.log"
 PID_FILE="${SYNOPKG_PKGVAR}/ainasclaw.pid"
 
+resolve_effective_service_user() {
+    # Canonical runtime account for this package is sc-openclaw.
+    if id sc-openclaw >/dev/null 2>&1; then
+        printf '%s' 'sc-openclaw'
+        return 0
+    fi
+
+    # Fallback: read DSM-generated privilege username (e.g. sc-openclaw2).
+    local p u
+    for p in /var/packages/ainasclaw/conf/privilege /var/packages/openclaw/conf/privilege; do
+        [ -f "${p}" ] || continue
+        u="$(python3 - <<'PY' "${p}"
+import json,sys
+p=sys.argv[1]
+try:
+  print(((json.load(open(p,'r',encoding='utf-8')) or {}).get('username') or '').strip())
+except Exception:
+  print('')
+PY
+)"
+        if [ -n "${u}" ] && id "${u}" >/dev/null 2>&1; then
+            printf '%s' "${u}"
+            return 0
+        fi
+    done
+
+    printf '%s' ''
+}
+
+cleanup_stale_runtime_deps_locks() {
+    local deps_root="${OPENCLAW_STATE_DIR}/plugin-runtime-deps"
+    [ -d "${deps_root}" ] || return 0
+
+    find "${deps_root}" -maxdepth 3 -type d -name '.openclaw-runtime-deps.lock' 2>/dev/null | while read -r lock_dir; do
+        [ -n "${lock_dir}" ] || continue
+        local owner_file="${lock_dir}/owner.json"
+        local owner_pid=""
+        if [ -f "${owner_file}" ]; then
+            owner_pid="$(python3 - <<'PY' "${owner_file}"
+import json,sys
+p=sys.argv[1]
+try:
+  j=json.load(open(p,'r',encoding='utf-8')) or {}
+  pid=int(j.get('pid') or 0)
+  print(pid if pid>0 else '')
+except Exception:
+  print('')
+PY
+)"
+        fi
+
+        # Keep lock only when owner PID is alive.
+        if [ -n "${owner_pid}" ] && kill -0 "${owner_pid}" >/dev/null 2>&1; then
+            continue
+        fi
+        rm -rf "${lock_dir}" 2>/dev/null || true
+    done
+}
+
+normalize_runtime_deps_permissions() {
+    local eff_user="${1:-}"
+    local deps_root="${OPENCLAW_STATE_DIR}/plugin-runtime-deps"
+    [ -n "${eff_user}" ] || return 0
+    [ -d "${deps_root}" ] || return 0
+
+    # Do not follow node_modules symlinks into package root; only touch in-tree entries.
+    find "${deps_root}" -mindepth 1 \( -type d -o -type f \) -exec chown "${eff_user}:${eff_user}" {} \; 2>/dev/null || true
+    find "${deps_root}" -mindepth 1 -type l -exec chown -h "${eff_user}:${eff_user}" {} \; 2>/dev/null || true
+}
+
 # Persist wizard parameters that DSM generic installer does not save by default.
 save_wizard_variables() {
     [ -n "${INST_VARIABLES}" ] || return 0
@@ -1317,6 +1387,14 @@ try {
     export XDG_CONFIG_HOME="${runtime_home_dir}/.config"
     export XDG_DATA_HOME="${runtime_home_dir}/.local/share"
 
+    local EFF_USER="$(resolve_effective_service_user)"
+
+    # 清理无主 runtime-deps 锁，避免插件加载长时间卡在 lock timeout。
+    cleanup_stale_runtime_deps_locks
+
+    # 修正 runtime-deps 文件归属，避免 root/http 写入后 gateway(sc-openclaw) 出现 EACCES。
+    normalize_runtime_deps_permissions "${EFF_USER}"
+
     # 初始化/切换目录时，确保插件与技能都完整落在 /xxx/.openclaw 下
     ensure_self_package_link
     sync_bundled_channel_plugins_to_stock_extensions
@@ -1344,6 +1422,9 @@ try {
   fs.symlinkSync(path.join(pkgRoot,"node_modules"), nm);
 } catch {}
 ' "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" >/dev/null 2>&1 || true
+
+    # 预置 stage 后再做一次归属修正，避免后续 unlink/write EACCES。
+    normalize_runtime_deps_permissions "${EFF_USER}"
 
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
@@ -1826,9 +1907,10 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 
 stop_gateway_processes() {
     # best-effort stop for any detached gateway process (may survive package stop/uninstall)
-    pkill -f 'openclaw-gatew' >/dev/null 2>&1 || true
-    pkill -f '/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -f 'openclaw gateway' >/dev/null 2>&1 || true
+    pkill -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -f 'openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -x 'openclaw-gateway' >/dev/null 2>&1 || true
 }
 
 service_poststop() {
