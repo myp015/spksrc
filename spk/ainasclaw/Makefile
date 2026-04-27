@@ -123,17 +123,37 @@ openclaw_prepare_bundle:
 		@aws-sdk/client-bedrock-runtime@3.1034.0 \
 		@aws-sdk/credential-provider-node@3.972.34 \
 		@aws/bedrock-token-generator@^1.1.0 \
+		@clack/prompts@^1.2.0 \
 		@google/genai@^1.50.1 \
 		@homebridge/ciao@^1.3.6 \
+		@larksuiteoapi/node-sdk@^1.61.1 \
 		@mariozechner/pi-agent-core@0.70.2 \
 		@mariozechner/pi-ai@0.70.2 \
+		@modelcontextprotocol/sdk@1.29.0 \
 		@mozilla/readability@^0.6.0 \
 		@tencent-connect/qqbot-connector@^1.1.0 \
+		@wecom/aibot-node-sdk@^1.0.3 \
+		acpx@0.5.3 \
+		axios@1.13.6 \
+		commander@^14.0.3 \
+		dingtalk-stream@^2.1.4 \
+		express@^5.2.1 \
+		file-type@^21.3.0 \
+		form-data@^4.0.0 \
 		linkedom@^0.18.12 \
+		mammoth@^1.12.0 \
 		mpg123-decoder@^1.0.3 \
+		node-edge-tts@^1.2.10 \
+		pdf-parse@^2.4.5 \
 		pdfjs-dist@^5.6.205 \
+		pinyin-pro@^3.28.0 \
+		playwright-core@1.59.1 \
+		qrcode-terminal@0.12.0 \
 		silk-wasm@^3.7.1 \
-		playwright-core@1.59.1 || true
+		typebox@1.1.31 \
+		undici@8.1.0 \
+		ws@^8.20.0 \
+		zod@4.3.6 || true
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm dedupe --prefer-dedupe --legacy-peer-deps --no-audit --no-fund || true
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.34 || true
 	@cd $(WORK_DIR)/openclaw-bundle/dist/extensions/amazon-bedrock && \

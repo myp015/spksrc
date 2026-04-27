@@ -1557,8 +1557,7 @@ try {
     # 统一修补 bundled 插件的依赖版本声明，消除 doctor 的冲突告警。
     normalize_bundled_plugin_dependency_ranges
 
-    # 预装当前已知缺失的关键依赖，减少首次启动时报 missing deps。
-    preseed_targeted_runtime_deps "${EFF_USER}"
+    # Bundled plugin runtime deps are pre-baked during SPK build.
 
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
