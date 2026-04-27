@@ -1093,6 +1093,15 @@ if isinstance(payload.get('wecom'), dict):
     if bot_id: w['botId'] = bot_id
     if sec: w['secret'] = sec
     w['enabled'] = True; w['dmPolicy'] = 'open'; w['groupPolicy'] = 'open'; w['allowFrom'] = ['*']
+    # SPK guardrails: avoid dynamic agent/config churn that can trigger gateway restarts.
+    w['agentId'] = 'main'
+    dyn = w.get('dynamicAgents') if isinstance(w.get('dynamicAgents'), dict) else {}
+    dyn['enabled'] = False
+    dyn['adminBypass'] = False
+    w['dynamicAgents'] = dyn
+    dm = w.get('dm') if isinstance(w.get('dm'), dict) else {}
+    dm['createAgentOnFirstMessage'] = False
+    w['dm'] = dm
 if isinstance(payload.get('dingtalk'), dict):
     d = ch.setdefault('dingtalk', {})
     cid = (payload['dingtalk'].get('clientId') or '').strip()
@@ -1153,6 +1162,10 @@ for cid, cv in (ch or {}).items():
     if not isinstance(e, dict):
         e = {}
     e['enabled'] = True
+    # 渠道保存时仅触发渠道级热更新，不要把 provider/plugin 细项写入，
+    # 否则 gateway 会判定为“需要整网关重启”。
+    if isinstance(e.get('config'), dict):
+        e.pop('config', None)
     entries[pid] = e
 
 plugins['allow'] = allow
