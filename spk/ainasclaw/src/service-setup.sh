@@ -105,6 +105,60 @@ normalize_runtime_owner_if_root() {
     done
 }
 
+normalize_bundled_plugin_dependency_ranges() {
+    "${OPENCLAW_NODE}" -e '
+const fs=require("fs");
+const path=require("path");
+const appDir=process.argv[1];
+const targets=[
+  ["node_modules/@sunnoy/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
+  ["node_modules/@soimy/dingtalk/package.json", { zod: "4.3.6", axios: "1.13.6" }],
+  ["node_modules/@tencent-connect/openclaw-qqbot/package.json", { zod: "4.3.6" }],
+  ["node_modules/@tencent-weixin/openclaw-weixin/package.json", { zod: "4.3.6" }],
+];
+for (const [rel, depsPatch] of targets) {
+  const p=path.join(appDir, rel);
+  if (!fs.existsSync(p)) continue;
+  try {
+    const j=JSON.parse(fs.readFileSync(p,"utf8"));
+    j.dependencies = j.dependencies && typeof j.dependencies === "object" ? j.dependencies : {};
+    let changed=false;
+    for (const [k,v] of Object.entries(depsPatch)) {
+      if (j.dependencies[k] !== v) { j.dependencies[k]=v; changed=true; }
+    }
+    if (changed) fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n", "utf8");
+  } catch {}
+}
+' "${OPENCLAW_APP_DIR}" >/dev/null 2>&1 || true
+}
+
+preseed_targeted_runtime_deps() {
+    local npm_bin="${SYNOPKG_PKGDEST}/bin/npm"
+    [ -x "${npm_bin}" ] || npm_bin="$(command -v npm 2>/dev/null || true)"
+    [ -x "${npm_bin}" ] || return 0
+
+    local missing_specs
+    missing_specs="$(${OPENCLAW_NODE} -e '
+const path=require("path");
+const appDir=process.argv[1];
+const specs={axios:"1.13.6","file-type":"^21.3.0",undici:"8.1.0",zod:"4.3.6"};
+const miss=[];
+for (const [name,ver] of Object.entries(specs)) {
+  try { require.resolve(name, { paths:[path.join(appDir,"node_modules")] }); }
+  catch { miss.push(`${name}@${ver}`); }
+}
+process.stdout.write(miss.join(" "));
+' "${OPENCLAW_APP_DIR}" 2>/dev/null || true)"
+    [ -n "${missing_specs}" ] || return 0
+
+    local eff_user="${1:-}"
+    if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
+        su -s /bin/sh "${eff_user}" -c "cd '${OPENCLAW_APP_DIR}' && OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' '${npm_bin}' install --no-save --omit=dev ${missing_specs}" >/dev/null 2>&1 || true
+    else
+        (cd "${OPENCLAW_APP_DIR}" && "${npm_bin}" install --no-save --omit=dev ${missing_specs} >/dev/null 2>&1) || true
+    fi
+}
+
 # Persist wizard parameters that DSM generic installer does not save by default.
 save_wizard_variables() {
     [ -n "${INST_VARIABLES}" ] || return 0
@@ -1456,6 +1510,12 @@ try {
 
     # 预置 stage 后再做一次归属修正，避免后续 unlink/write EACCES。
     normalize_runtime_deps_permissions "${EFF_USER}"
+
+    # 统一修补 bundled 插件的依赖版本声明，消除 doctor 的冲突告警。
+    normalize_bundled_plugin_dependency_ranges
+
+    # 预装当前已知缺失的关键依赖，减少首次启动时报 missing deps。
+    preseed_targeted_runtime_deps "${EFF_USER}"
 
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
