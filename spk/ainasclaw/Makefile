@@ -153,14 +153,14 @@ openclaw_prepare_bundle:
 		typebox@1.1.31 \
 		undici@8.1.0 \
 		ws@^8.20.0 \
-		zod@4.3.6 || true
+		zod@4.3.6
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm dedupe --prefer-dedupe --legacy-peer-deps --no-audit --no-fund || true
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.34 || true
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.34
 	@cd $(WORK_DIR)/openclaw-bundle/dist/extensions/amazon-bedrock && \
 		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack @aws-sdk/credential-provider-node@3.972.34 --silent && \
 		install -d node_modules/@aws-sdk/credential-provider-node && \
 		tar -xzf aws-sdk-credential-provider-node-3.972.34.tgz -C node_modules/@aws-sdk/credential-provider-node --strip-components=1 && \
-		rm -f aws-sdk-credential-provider-node-3.972.34.tgz || true
+		rm -f aws-sdk-credential-provider-node-3.972.34.tgz
 	@cd $(WORK_DIR)/openclaw-bundle/node_modules/@soimy/dingtalk && \
 		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack axios@1.13.6 --silent && \
 		install -d node_modules/axios && \
@@ -176,16 +176,8 @@ openclaw_prepare_bundle:
 		find dist/extensions -type l -lname '*\.openclaw-install-stage/*' -delete 2>/dev/null || true
 	@cd $(WORK_DIR)/openclaw-bundle && \
 		find dist/extensions -type d -path '*/node_modules/.bin' -prune -exec rm -rf {} + 2>/dev/null || true
-	@cd $(WORK_DIR)/openclaw-bundle && \
-		mkdir -p .spk-build-home .spk-build-state && \
-		[ -f .spk-build-state/openclaw.json ] || printf '%s\n' '{}' > .spk-build-state/openclaw.json && \
-		HOME="$(WORK_DIR)/openclaw-bundle/.spk-build-home" \
-		OPENCLAW_CONFIG_PATH="$(WORK_DIR)/openclaw-bundle/.spk-build-state/openclaw.json" \
-		OPENCLAW_STATE_DIR="$(WORK_DIR)/openclaw-bundle/.spk-build-state" \
-		OPENCLAW_WORKSPACE_DIR="$(WORK_DIR)/openclaw-bundle/.spk-build-home" \
-		OPENCLAW_RESPECT_ENV_WORKSPACE=1 \
-		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" \
-		node dist/index.js doctor --non-interactive --fix > $(WORK_DIR)/doctor.log 2>&1 || true
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/stage-bundled-plugin-runtime-deps.mjs
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node -e "const fs=require('fs');const path=require('path');const root=process.cwd();const ext=path.join(root,'dist','extensions');const collect=(pkg)=>({...(pkg.dependencies||{}),...(pkg.optionalDependencies||{})});const byName=new Map();for(const e of fs.readdirSync(ext,{withFileTypes:true})){if(!e.isDirectory())continue;const pj=path.join(ext,e.name,'package.json');if(!fs.existsSync(pj))continue;let pkg;try{pkg=JSON.parse(fs.readFileSync(pj,'utf8'));}catch{continue;}for(const [n,v] of Object.entries(collect(pkg))){if(typeof v!=='string'||!v.trim())continue;const set=byName.get(n)||new Set();set.add(e.name);byName.set(n,set);}}const missing=[];for(const [n,plugins] of byName){const sentinel=path.join(root,'node_modules',...n.split('/'),'package.json');if(!fs.existsSync(sentinel))missing.push({name:n,plugins:[...plugins].sort()});}if(missing.length){console.error('Bundled plugin runtime deps missing after build-stage install:');for(const m of missing){console.error('- '+m.name+' (used by '+m.plugins.join(', ')+')');}process.exit(1);}console.log('Bundled runtime dependency verification passed ('+byName.size+' deps).');" | tee $(WORK_DIR)/doctor.log
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@cd $(WORK_DIR) && \
 		curl -fsSL -o bun-linux-$(BUN_DIST_ARCH).zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$(BUN_DIST_ARCH).zip
