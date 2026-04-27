@@ -134,7 +134,6 @@ openclaw_prepare_bundle:
 		@tencent-connect/qqbot-connector@^1.1.0 \
 		@wecom/aibot-node-sdk@^1.0.3 \
 		acpx@0.5.3 \
-		axios@1.13.6 \
 		commander@^14.0.3 \
 		dingtalk-stream@^2.1.4 \
 		express@^5.2.1 \
