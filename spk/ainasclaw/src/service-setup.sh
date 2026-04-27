@@ -113,8 +113,8 @@ const appDir=process.argv[1];
 const targets=[
   ["dist/extensions/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
   ["node_modules/@sunnoy/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
-  ["dist/extensions/dingtalk/package.json", { zod: "4.3.6", axios: "1.13.6" }],
-  ["node_modules/@soimy/dingtalk/package.json", { zod: "4.3.6", axios: "1.13.6" }],
+  ["dist/extensions/dingtalk/package.json", { zod: "4.3.6", axios: "^1.13.6" }],
+  ["node_modules/@soimy/dingtalk/package.json", { zod: "4.3.6", axios: "^1.13.6" }],
   ["dist/extensions/qqbot/package.json", { zod: "4.3.6" }],
   ["node_modules/@tencent-connect/openclaw-qqbot/package.json", { zod: "4.3.6" }],
   ["dist/extensions/openclaw-weixin/package.json", { zod: "4.3.6" }],
@@ -146,7 +146,7 @@ preseed_targeted_runtime_deps() {
     [ -x "${npm_bin}" ] || return 0
 
     local specs
-    specs='@anthropic-ai/sdk@0.90.0 @anthropic-ai/vertex-sdk@^0.16.0 @aws-sdk/client-bedrock@3.1034.0 @aws-sdk/client-bedrock-runtime@3.1034.0 @aws-sdk/credential-provider-node@3.972.34 @aws/bedrock-token-generator@^1.1.0 @clack/prompts@^1.2.0 @google/genai@^1.50.1 @homebridge/ciao@^1.3.6 @larksuiteoapi/node-sdk@^1.61.1 @mariozechner/pi-agent-core@0.70.2 @mariozechner/pi-ai@0.70.2 @modelcontextprotocol/sdk@1.29.0 @mozilla/readability@^0.6.0 @tencent-connect/qqbot-connector@^1.1.0 @wecom/aibot-node-sdk@^1.0.3 acpx@0.5.3 axios@1.13.6 commander@^14.0.3 dingtalk-stream@^2.1.4 express@^5.2.1 file-type@^21.3.0 form-data@^4.0.0 linkedom@^0.18.12 mammoth@^1.12.0 mpg123-decoder@^1.0.3 node-edge-tts@^1.2.10 pdf-parse@^2.4.5 pdfjs-dist@^5.6.205 pinyin-pro@^3.28.0 playwright-core@1.59.1 qrcode-terminal@0.12.0 silk-wasm@^3.7.1 typebox@1.1.31 ws@^8.20.0 undici@8.1.0 zod@4.3.6'
+    specs='@anthropic-ai/sdk@0.90.0 @anthropic-ai/vertex-sdk@^0.16.0 @aws-sdk/client-bedrock@3.1034.0 @aws-sdk/client-bedrock-runtime@3.1034.0 @aws-sdk/credential-provider-node@3.972.34 @aws/bedrock-token-generator@^1.1.0 @clack/prompts@^1.2.0 @google/genai@^1.50.1 @homebridge/ciao@^1.3.6 @larksuiteoapi/node-sdk@^1.61.1 @mariozechner/pi-agent-core@0.70.2 @mariozechner/pi-ai@0.70.2 @modelcontextprotocol/sdk@1.29.0 @mozilla/readability@^0.6.0 @tencent-connect/qqbot-connector@^1.1.0 @wecom/aibot-node-sdk@^1.0.3 acpx@0.5.3 axios@^1.13.6 commander@^14.0.3 dingtalk-stream@^2.1.4 express@^5.2.1 file-type@^21.3.0 form-data@^4.0.0 linkedom@^0.18.12 mammoth@^1.12.0 mpg123-decoder@^1.0.3 node-edge-tts@^1.2.10 pdf-parse@^2.4.5 pdfjs-dist@^5.6.205 pinyin-pro@^3.28.0 playwright-core@1.59.1 qrcode-terminal@0.12.0 silk-wasm@^3.7.1 typebox@1.1.31 ws@^8.20.0 undici@8.1.0 zod@4.3.6'
 
     local stage_dir
     stage_dir="$(${OPENCLAW_NODE} -e '
@@ -629,9 +629,9 @@ start_gateway_if_needed() {
     # Run gateway under unified service account when possible.
     local eff_user="$(resolve_effective_service_user)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=1 OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=1 OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
-        nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
+        JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
     sleep 1
@@ -1497,7 +1497,17 @@ try {
 
     # 用户要求：运行文件统一落在 /xxx/.openclaw
     local runtime_home_dir="${OPENCLAW_STATE_DIR}"
-    mkdir -p "${runtime_home_dir}" "${runtime_home_dir}/.npm" "${runtime_home_dir}/.cache" "${runtime_home_dir}/.config" >/dev/null 2>&1 || true
+    local EFF_USER="$(resolve_effective_service_user)"
+    mkdir -p "${runtime_home_dir}" "${runtime_home_dir}/.npm" "${runtime_home_dir}/.cache" "${runtime_home_dir}/.cache/jiti" "${runtime_home_dir}/.config" "${runtime_home_dir}/.tmp" >/dev/null 2>&1 || true
+
+    # 清理/修复历史 jiti 临时缓存，避免 root/http 残留导致 sc-openclaw 读取 EACCES。
+    if [ -d "/tmp/jiti" ]; then
+        if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${EFF_USER:-}" ]; then
+            chown -R "${EFF_USER}:${EFF_USER}" /tmp/jiti 2>/dev/null || true
+            chmod -R u+rwX /tmp/jiti 2>/dev/null || true
+        fi
+        rm -f /tmp/jiti/dist-bundled-runtime-deps-*.cjs 2>/dev/null || true
+    fi
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
@@ -1507,8 +1517,6 @@ try {
     export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
     export XDG_CONFIG_HOME="${runtime_home_dir}/.config"
     export XDG_DATA_HOME="${runtime_home_dir}/.local/share"
-
-    local EFF_USER="$(resolve_effective_service_user)"
 
     # 源头归一权限到服务用户（在 root 上下文时执行）。
     normalize_runtime_owner_if_root "${EFF_USER}"

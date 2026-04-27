@@ -161,10 +161,10 @@ openclaw_prepare_bundle:
 		tar -xzf aws-sdk-credential-provider-node-3.972.34.tgz -C node_modules/@aws-sdk/credential-provider-node --strip-components=1 && \
 		rm -f aws-sdk-credential-provider-node-3.972.34.tgz
 	@cd $(WORK_DIR)/openclaw-bundle/node_modules/@soimy/dingtalk && \
-		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack axios@1.13.6 --silent && \
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack axios@^1.13.6 --silent && \
 		install -d node_modules/axios && \
-		tar -xzf axios-1.13.6.tgz -C node_modules/axios --strip-components=1 && \
-		rm -f axios-1.13.6.tgz
+		tar -xzf axios-*.tgz -C node_modules/axios --strip-components=1 && \
+		rm -f axios-*.tgz
 	@cd $(WORK_DIR)/openclaw-bundle && \
 		if [ "$(NODE_DIST_ARCH)" = "x64" ]; then \
 			find node_modules -type d \( -name '*linux-arm64*' -o -name '*arm64-musl*' -o -name '*arm64-gnu*' -o -name '*-arm64' -o -name '*aarch64*' \) -prune -exec rm -rf {} + 2>/dev/null || true; \
@@ -177,7 +177,7 @@ openclaw_prepare_bundle:
 		find dist/extensions -type d -path '*/node_modules/.bin' -prune -exec rm -rf {} + 2>/dev/null || true
 	@cd $(WORK_DIR)/openclaw-bundle && \
 		mkdir -p .spk-build-state && \
-		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node -e "const fs=require('fs');const path=require('path');const root=process.cwd();const ext=path.join(root,'dist','extensions');const collect=(pkg)=>({...(pkg.dependencies||{}),...(pkg.optionalDependencies||{})});const byName=new Map();for(const e of fs.readdirSync(ext,{withFileTypes:true})){if(!e.isDirectory())continue;const pj=path.join(ext,e.name,'package.json');if(!fs.existsSync(pj))continue;let pkg;try{pkg=JSON.parse(fs.readFileSync(pj,'utf8'));}catch{continue;}for(const [n,v] of Object.entries(collect(pkg))){if(typeof v!=='string'||!v.trim())continue;if(n==='axios')continue;if(!byName.has(n))byName.set(n,v.trim());}}const out=[...byName.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([n,v])=>n+'@'+v).join('\n')+'\n';fs.writeFileSync(path.join(root,'.spk-build-state','bundled-runtime-specs.txt'),out,'utf8');console.log('Prepared bundled runtime spec count: '+byName.size);" && \
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node -e "const fs=require('fs');const path=require('path');const root=process.cwd();const ext=path.join(root,'dist','extensions');const collect=(pkg)=>({...(pkg.dependencies||{}),...(pkg.optionalDependencies||{})});const byName=new Map();for(const e of fs.readdirSync(ext,{withFileTypes:true})){if(!e.isDirectory())continue;const pj=path.join(ext,e.name,'package.json');if(!fs.existsSync(pj))continue;let pkg;try{pkg=JSON.parse(fs.readFileSync(pj,'utf8'));}catch{continue;}for(const [n,v] of Object.entries(collect(pkg))){if(typeof v!=='string'||!v.trim())continue;if(!byName.has(n))byName.set(n,v.trim());}}const out=[...byName.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([n,v])=>n+'@'+v).join('\n')+'\n';fs.writeFileSync(path.join(root,'.spk-build-state','bundled-runtime-specs.txt'),out,'utf8');console.log('Prepared bundled runtime spec count: '+byName.size);" && \
 		specs="$$(tr '\n' ' ' < .spk-build-state/bundled-runtime-specs.txt)" && \
 		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --omit=dev --legacy-peer-deps --no-audit --no-fund --no-save $$specs
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node -e "const fs=require('fs');const path=require('path');const semver=require('semver');const root=process.cwd();const ext=path.join(root,'dist','extensions');const collect=(pkg)=>({...(pkg.dependencies||{}),...(pkg.optionalDependencies||{})});const byName=new Map();for(const e of fs.readdirSync(ext,{withFileTypes:true})){if(!e.isDirectory())continue;const pj=path.join(ext,e.name,'package.json');if(!fs.existsSync(pj))continue;let pkg;try{pkg=JSON.parse(fs.readFileSync(pj,'utf8'));}catch{continue;}for(const [n,v] of Object.entries(collect(pkg))){if(typeof v!=='string'||!v.trim())continue;const rec=byName.get(n)||{versions:new Set(),plugins:new Set()};rec.versions.add(v.trim());rec.plugins.add(e.name);byName.set(n,rec);}}const missing=[];for(const [n,rec] of byName){const sentinel=path.join(root,'node_modules',...n.split('/'),'package.json');if(!fs.existsSync(sentinel)){missing.push({name:n,version:[...rec.versions].join(' || '),plugins:[...rec.plugins].sort()});continue;}let installed='';try{installed=JSON.parse(fs.readFileSync(sentinel,'utf8')).version||'';}catch{}const specs=[...rec.versions];const ok=specs.some((spec)=>{const v=semver.valid(installed);const r=semver.validRange(spec);if(v&&r)return semver.satisfies(v,r,{includePrerelease:true});return installed===spec;});if(!ok)missing.push({name:n,version:[...rec.versions].join(' || '),installed:installed||'unknown',plugins:[...rec.plugins].sort()});}if(missing.length){console.error('Bundled plugin runtime deps missing/version-mismatch after build-stage install:');for(const m of missing){console.error('- '+m.name+' required('+m.version+') installed('+(m.installed||'none')+') (used by '+m.plugins.join(', ')+')');}process.exit(1);}console.log('Bundled runtime dependency verification passed ('+byName.size+' deps).');" | tee $(WORK_DIR)/doctor.log
@@ -224,7 +224,7 @@ openclaw_copy_target:
 		app/openclaw/dist/index.js \
 		app/openclaw/config/openclaw.template.json \
 		> app/openclaw/config/spk-integrity.sha256
-	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
+	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/root/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
 	if [ -f "$$SPK_SIGN_KEY_PATH" ]; then \
 		openssl dgst -sha256 -sign "$$SPK_SIGN_KEY_PATH" \
 			-out $(STAGING_DIR)/app/openclaw/config/spk-integrity.sig \
@@ -243,7 +243,7 @@ $(WORK_DIR)/spk-info.sha256: $(WORK_DIR)/INFO info-checksum
 	printf '%s  INFO\n' "$$info_sum" > "$@"
 
 $(WORK_DIR)/spk-info.sig: $(WORK_DIR)/spk-info.sha256
-	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
+	@SPK_SIGN_KEY_PATH=$${SPK_SIGN_KEY_PATH:-/root/.openclaw/keys/ainasclaw/spk-signing-private.pem}; \
 	if [ ! -f "$$SPK_SIGN_KEY_PATH" ]; then \
 		echo "Missing signing key: $$SPK_SIGN_KEY_PATH"; \
 		exit 1; \
