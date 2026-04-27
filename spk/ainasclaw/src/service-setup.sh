@@ -111,9 +111,13 @@ const fs=require("fs");
 const path=require("path");
 const appDir=process.argv[1];
 const targets=[
+  ["dist/extensions/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
   ["node_modules/@sunnoy/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
+  ["dist/extensions/dingtalk/package.json", { zod: "4.3.6", axios: "1.13.6" }],
   ["node_modules/@soimy/dingtalk/package.json", { zod: "4.3.6", axios: "1.13.6" }],
+  ["dist/extensions/qqbot/package.json", { zod: "4.3.6" }],
   ["node_modules/@tencent-connect/openclaw-qqbot/package.json", { zod: "4.3.6" }],
+  ["dist/extensions/openclaw-weixin/package.json", { zod: "4.3.6" }],
   ["node_modules/@tencent-weixin/openclaw-weixin/package.json", { zod: "4.3.6" }],
 ];
 for (const [rel, depsPatch] of targets) {
@@ -122,9 +126,13 @@ for (const [rel, depsPatch] of targets) {
   try {
     const j=JSON.parse(fs.readFileSync(p,"utf8"));
     j.dependencies = j.dependencies && typeof j.dependencies === "object" ? j.dependencies : {};
+    j.optionalDependencies = j.optionalDependencies && typeof j.optionalDependencies === "object" ? j.optionalDependencies : {};
     let changed=false;
     for (const [k,v] of Object.entries(depsPatch)) {
       if (j.dependencies[k] !== v) { j.dependencies[k]=v; changed=true; }
+      if (Object.prototype.hasOwnProperty.call(j.optionalDependencies, k) && j.optionalDependencies[k] !== v) {
+        j.optionalDependencies[k]=v; changed=true;
+      }
     }
     if (changed) fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n", "utf8");
   } catch {}
@@ -137,25 +145,37 @@ preseed_targeted_runtime_deps() {
     [ -x "${npm_bin}" ] || npm_bin="$(command -v npm 2>/dev/null || true)"
     [ -x "${npm_bin}" ] || return 0
 
-    local missing_specs
-    missing_specs="$(${OPENCLAW_NODE} -e '
+    local specs
+    specs='@anthropic-ai/sdk@0.90.0 @anthropic-ai/vertex-sdk@^0.16.0 @aws-sdk/client-bedrock@3.1034.0 @aws-sdk/client-bedrock-runtime@3.1034.0 @aws-sdk/credential-provider-node@3.972.34 @aws/bedrock-token-generator@^1.1.0 @clack/prompts@^1.2.0 @google/genai@^1.50.1 @homebridge/ciao@^1.3.6 @larksuiteoapi/node-sdk@^1.61.1 @mariozechner/pi-agent-core@0.70.2 @mariozechner/pi-ai@0.70.2 @modelcontextprotocol/sdk@1.29.0 @mozilla/readability@^0.6.0 @tencent-connect/qqbot-connector@^1.1.0 @wecom/aibot-node-sdk@^1.0.3 acpx@0.5.3 axios@1.13.6 commander@^14.0.3 dingtalk-stream@^2.1.4 express@^5.2.1 file-type@^21.3.0 form-data@^4.0.0 linkedom@^0.18.12 mammoth@^1.12.0 mpg123-decoder@^1.0.3 node-edge-tts@^1.2.10 pdf-parse@^2.4.5 pdfjs-dist@^5.6.205 pinyin-pro@^3.28.0 playwright-core@1.59.1 qrcode-terminal@0.12.0 silk-wasm@^3.7.1 typebox@1.1.31 ws@^8.20.0 undici@8.1.0 zod@4.3.6'
+
+    local stage_dir
+    stage_dir="$(${OPENCLAW_NODE} -e '
+const fs=require("fs");
 const path=require("path");
+const crypto=require("crypto");
 const appDir=process.argv[1];
-const specs={axios:"1.13.6","file-type":"^21.3.0",undici:"8.1.0",zod:"4.3.6"};
-const miss=[];
-for (const [name,ver] of Object.entries(specs)) {
-  try { require.resolve(name, { paths:[path.join(appDir,"node_modules")] }); }
-  catch { miss.push(`${name}@${ver}`); }
-}
-process.stdout.write(miss.join(" "));
-' "${OPENCLAW_APP_DIR}" 2>/dev/null || true)"
-    [ -n "${missing_specs}" ] || return 0
+const stateDir=process.argv[2];
+try {
+  const pkgRoot=path.resolve(appDir);
+  const pkg=JSON.parse(fs.readFileSync(path.join(pkgRoot,"package.json"),"utf8"));
+  const ver=((pkg&&pkg.version)||"unknown").toString().trim()||"unknown";
+  const hash=crypto.createHash("sha256").update(path.resolve(pkgRoot)).digest("hex").slice(0,12);
+  process.stdout.write(path.join(stateDir,"plugin-runtime-deps",`openclaw-${ver}-${hash}`));
+} catch {}
+' "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true)"
 
     local eff_user="${1:-}"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "cd '${OPENCLAW_APP_DIR}' && OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' '${npm_bin}' install --no-save --omit=dev ${missing_specs}" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "cd '${OPENCLAW_APP_DIR}' && OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' '${npm_bin}' install --no-save --omit=dev ${specs}" >/dev/null 2>&1 || true
+        if [ -n "${stage_dir}" ]; then
+            su -s /bin/sh "${eff_user}" -c "mkdir -p '${stage_dir}/node_modules' && cd '${stage_dir}' && OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' '${npm_bin}' install --no-save --omit=dev ${specs}" >/dev/null 2>&1 || true
+        fi
     else
-        (cd "${OPENCLAW_APP_DIR}" && "${npm_bin}" install --no-save --omit=dev ${missing_specs} >/dev/null 2>&1) || true
+        (cd "${OPENCLAW_APP_DIR}" && "${npm_bin}" install --no-save --omit=dev ${specs} >/dev/null 2>&1) || true
+        if [ -n "${stage_dir}" ]; then
+            mkdir -p "${stage_dir}/node_modules" >/dev/null 2>&1 || true
+            (cd "${stage_dir}" && "${npm_bin}" install --no-save --omit=dev ${specs} >/dev/null 2>&1) || true
+        fi
     fi
 }
 
@@ -1487,9 +1507,10 @@ try {
     sync_skills_to_workspace
     harden_extension_permissions
 
-    # 让 doctor 的 runtime-deps 检查复用已打包依赖：为当前 workspace 预置 stage 软链。
-    # 避免每次安装后都必须跑 doctor --fix 才“看见”依赖。
-    ${OPENCLAW_NODE} -e '
+    # 预置 runtime-deps stage 目录（使用真实 node_modules 目录，不再用软链，避免 doctor/npm reify 报
+    # "Removing non-directory .../node_modules" 并导致后续缺失检查误判）。
+    local STAGE_DIR
+    STAGE_DIR="$(${OPENCLAW_NODE} -e '
 const fs=require("fs");
 const path=require("path");
 const crypto=require("crypto");
@@ -1500,13 +1521,16 @@ try {
   const pkg=JSON.parse(fs.readFileSync(path.join(pkgRoot,"package.json"),"utf8"));
   const ver=((pkg&&pkg.version)||"unknown").toString().trim()||"unknown";
   const hash=crypto.createHash("sha256").update(path.resolve(pkgRoot)).digest("hex").slice(0,12);
-  const stage=path.join(stateDir,"plugin-runtime-deps",`openclaw-${ver}-${hash}`);
-  const nm=path.join(stage,"node_modules");
-  fs.mkdirSync(stage,{recursive:true});
-  try { fs.rmSync(nm,{recursive:true,force:true}); } catch {}
-  fs.symlinkSync(path.join(pkgRoot,"node_modules"), nm);
+  process.stdout.write(path.join(stateDir,"plugin-runtime-deps",`openclaw-${ver}-${hash}`));
 } catch {}
-' "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" >/dev/null 2>&1 || true
+' "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true)"
+    if [ -n "${STAGE_DIR}" ]; then
+        mkdir -p "${STAGE_DIR}/node_modules" >/dev/null 2>&1 || true
+        if [ -L "${STAGE_DIR}/node_modules" ]; then
+            rm -f "${STAGE_DIR}/node_modules" >/dev/null 2>&1 || true
+            mkdir -p "${STAGE_DIR}/node_modules" >/dev/null 2>&1 || true
+        fi
+    fi
 
     # 预置 stage 后再做一次归属修正，避免后续 unlink/write EACCES。
     normalize_runtime_deps_permissions "${EFF_USER}"
