@@ -164,18 +164,37 @@ try {
 } catch {}
 ' "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true)"
 
+    local runner="${OPENCLAW_STATE_DIR}/.preseed-runtime-deps.sh"
+    local pid_file="${OPENCLAW_STATE_DIR}/.preseed-runtime-deps.pid"
+
+    if [ -f "${pid_file}" ]; then
+        local prev
+        prev="$(cat "${pid_file}" 2>/dev/null || true)"
+        if [ -n "${prev}" ] && kill -0 "${prev}" >/dev/null 2>&1; then
+            return 0
+        fi
+        rm -f "${pid_file}" >/dev/null 2>&1 || true
+    fi
+
+    cat > "${runner}" <<EOF
+#!/bin/sh
+set +e
+cd '${OPENCLAW_APP_DIR}' || exit 0
+'${npm_bin}' install --no-save --omit=dev ${specs} >/dev/null 2>&1 || true
+if [ -n '${stage_dir}' ]; then
+  mkdir -p '${stage_dir}/node_modules' >/dev/null 2>&1 || true
+  cd '${stage_dir}' || exit 0
+  '${npm_bin}' install --no-save --omit=dev ${specs} >/dev/null 2>&1 || true
+fi
+EOF
+    chmod 700 "${runner}" >/dev/null 2>&1 || true
+
     local eff_user="${1:-}"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "cd '${OPENCLAW_APP_DIR}' && OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' '${npm_bin}' install --no-save --omit=dev ${specs}" >/dev/null 2>&1 || true
-        if [ -n "${stage_dir}" ]; then
-            su -s /bin/sh "${eff_user}" -c "mkdir -p '${stage_dir}/node_modules' && cd '${stage_dir}' && OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' '${npm_bin}' install --no-save --omit=dev ${specs}" >/dev/null 2>&1 || true
-        fi
+        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' nohup '${runner}' >/dev/null 2>&1 & echo \$! > '${pid_file}'" >/dev/null 2>&1 || true
     else
-        (cd "${OPENCLAW_APP_DIR}" && "${npm_bin}" install --no-save --omit=dev ${specs} >/dev/null 2>&1) || true
-        if [ -n "${stage_dir}" ]; then
-            mkdir -p "${stage_dir}/node_modules" >/dev/null 2>&1 || true
-            (cd "${stage_dir}" && "${npm_bin}" install --no-save --omit=dev ${specs} >/dev/null 2>&1) || true
-        fi
+        nohup "${runner}" >/dev/null 2>&1 &
+        echo $! > "${pid_file}" 2>/dev/null || true
     fi
 }
 
