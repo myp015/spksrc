@@ -88,8 +88,7 @@
     "installs": {},
     "enabled": true,
     "allow": [
-      "browser",
-      "openclaw-weixin"
+      "browser"
     ]
   },
   "memory": {

@@ -1090,9 +1090,14 @@ if isinstance(payload.get('wecom'), dict):
     w = ch.setdefault('wecom', {})
     bot_id = (payload['wecom'].get('botId') or '').strip()
     sec = (payload['wecom'].get('secret') or '').strip()
-    if bot_id: w['botId'] = bot_id
-    if sec: w['secret'] = sec
-    w['enabled'] = True; w['dmPolicy'] = 'open'; w['groupPolicy'] = 'open'; w['allowFrom'] = ['*']
+    if bot_id:
+        w['botId'] = bot_id
+    if sec:
+        w['secret'] = sec
+    # 仅在凭据齐全时启用 wecom，避免空配置下反复注册/重连。
+    has_cred = bool((w.get('botId') or '').strip() and (w.get('secret') or '').strip())
+    w['enabled'] = has_cred
+    w['dmPolicy'] = 'open'; w['groupPolicy'] = 'open'; w['allowFrom'] = ['*']
     # SPK guardrails: avoid dynamic agent/config churn that can trigger gateway restarts.
     w['agentId'] = 'main'
     dyn = w.get('dynamicAgents') if isinstance(w.get('dynamicAgents'), dict) else {}
@@ -2486,10 +2491,8 @@ if action in ('start','restart'):
         allow = plugins.get('allow')
         if not isinstance(allow, list):
             allow = []
-        for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
-            if pid not in allow:
-                allow.append(pid)
-        plugins['allow'] = allow
+        # 渠道插件默认不启用；仅在用户添加对应渠道后再写入 allow/entries。
+        plugins['allow'] = [x for x in allow if x in ('browser',)]
         entries = plugins.get('entries')
         if not isinstance(entries, dict):
             entries = {}
@@ -2497,8 +2500,7 @@ if action in ('start','restart'):
             ent = entries.get(pid)
             if not isinstance(ent, dict):
                 ent = {}
-            # 微信插件默认启用，避免渠道已配置但插件被禁用导致 doctor 报错。
-            ent['enabled'] = True
+            ent['enabled'] = False
             entries[pid] = ent
         plugins['entries'] = entries
 
@@ -2576,14 +2578,9 @@ if action in ('stop','restart'):
     time.sleep(1.0 if action == 'stop' else 1.2)
 
 if action in ('start','restart'):
-    # 启动前执行一次模型同步脚本（不阻塞启动）
-    sync_script = '/root/openclaw-sync-models.sh'
-    if os.path.exists(sync_script):
-        try:
-            rc_sync, out_sync = run([sync_script, cfg], timeout=120)
-            logs.append({'cmd': f'{sync_script} {cfg}', 'rc': rc_sync, 'out': out_sync[-1200:]})
-        except Exception as e:
-            logs.append({'cmd': f'{sync_script} {cfg}', 'error': str(e)})
+    # 热修：跳过启动前外部模型同步脚本，避免阻塞导致 Web 页面“启动/重启卡顿”。
+    # 模型同步可在“模型配置”页按需手动触发，不影响核心功能。
+    logs.append({'cmd':'skip startup model-sync','reason':'hotfix-web-lag'})
 
     # 启动前强制清理 agents.defaults.models，只保留当前 providers.models 存在的引用
     try:
@@ -3348,7 +3345,7 @@ cat <<'HTML'
           const options = ['<option value="custom-openai">自定义 OpenAI 兼容</option>'].concat(Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>')).join('');
           content.innerHTML = ''
             + '<div style="margin-bottom:12px;"><button class="btn primary" onclick="openModelDialog()">添加模型服务器</button></div>'
-            + '<div class="list">'
+            + '<div class="list" style="max-height:calc(100vh - 260px);overflow-y:auto;padding-right:4px;">'
             + providers.map((p, idx) => {
                 const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
                 return '<div class="item">'
@@ -4313,7 +4310,7 @@ cat <<'HTML'
     }
     function buildOpenclawWebUrl() {
       try {
-        const protocol = window.location.protocol || 'https:';
+        const protocol = 'http:';
         const host = window.location.hostname || '127.0.0.1';
         const port = Number(window.__ainasGatewayPort || 58789) || 58789;
         const token = String(window.__ainasGatewayToken || '').trim();
