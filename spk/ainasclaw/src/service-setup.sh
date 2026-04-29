@@ -477,6 +477,46 @@ validate_or_rollback_config() {
     fi
 }
 
+repair_plugin_registry_if_needed() {
+    local cli="/var/packages/ainasclaw/target/bin/openclaw"
+    [ -x "${cli}" ] || cli="/var/packages/openclaw/target/bin/openclaw"
+    [ -x "${cli}" ] || return 0
+
+    local inst_json="${OPENCLAW_STATE_DIR}/plugins/installs.json"
+    local needs_refresh="0"
+
+    if [ ! -s "${inst_json}" ]; then
+        needs_refresh="1"
+    else
+        if ! "${OPENCLAW_NODE}" -e 'const fs=require("fs"); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,"utf8")); if (!j || typeof j !== "object" || Array.isArray(j) || Object.keys(j).length === 0) process.exit(1);' "${inst_json}" >/dev/null 2>&1; then
+            needs_refresh="1"
+        fi
+    fi
+
+    if [ "${needs_refresh}" = "1" ]; then
+        mkdir -p "$(dirname "${inst_json}")" 2>/dev/null || true
+        "${cli}" plugins registry --refresh >/dev/null 2>&1 || true
+    fi
+}
+
+cleanup_missing_session_transcripts_if_needed() {
+    local cli="/var/packages/ainasclaw/target/bin/openclaw"
+    [ -x "${cli}" ] || cli="/var/packages/openclaw/target/bin/openclaw"
+    [ -x "${cli}" ] || return 0
+
+    local sessions_store="${OPENCLAW_STATE_DIR}/agents/main/sessions/sessions.json"
+    [ -f "${sessions_store}" ] || return 0
+
+    local need_fix="0"
+    if ! "${OPENCLAW_NODE}" -e 'const fs=require("fs"); const path=require("path"); const storePath=process.argv[1]; const store=JSON.parse(fs.readFileSync(storePath,"utf8")); if (!store || typeof store !== "object") process.exit(1); const sessionsDir=path.join(path.dirname(storePath), ".."); const sessRoot=path.resolve(sessionsDir); const refs=new Set(); for (const [k,v] of Object.entries(store)) { if (!v || typeof v !== "object" || !v.sessionId) continue; refs.add(v.sessionId); } let missing=0; for (const sid of refs) { const candidates=[path.join(sessRoot, `${sid}.jsonl`), path.join(sessRoot, `${sid}.trajectory.jsonl`), path.join(sessRoot, `${sid}.trajectory-path.json`)]; let found=false; for (const c of candidates) { if (fs.existsSync(c)) { found=true; break; } } if (!found) missing++; } if (missing > 0) process.exit(2);' "${sessions_store}" >/dev/null 2>&1; then
+        need_fix="1"
+    fi
+
+    if [ "${need_fix}" = "1" ]; then
+        "${cli}" sessions cleanup --store "${sessions_store}" --enforce --fix-missing >/dev/null 2>&1 || true
+    fi
+}
+
 ensure_session_store_dir() {
     local agents_dir="${OPENCLAW_STATE_DIR}/agents"
     local main_dir="${agents_dir}/main"
@@ -1244,6 +1284,8 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         sync_bundled_channel_plugins_to_extensions
         harden_extension_permissions
         sync_skills_to_workspace
+        repair_plugin_registry_if_needed
+        cleanup_missing_session_transcripts_if_needed
     fi
 }
 
@@ -1575,6 +1617,8 @@ try {
 
     # Ensure session store exists for doctor/runtime checks.
     mkdir -p "${OPENCLAW_STATE_DIR}/agents/main/sessions" 2>/dev/null || true
+    repair_plugin_registry_if_needed
+    cleanup_missing_session_transcripts_if_needed
 
     # Auto-start gateway when workspace exists and is writable (install + package restart/start cases).
     if [ -d "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
