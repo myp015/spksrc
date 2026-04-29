@@ -1800,46 +1800,47 @@ if (cfg.channels.dingtalk && typeof cfg.channels.dingtalk === "object") {
 if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
   const w = cfg.channels.wecom;
   const norm = (v) => typeof v === "string" ? v.trim() : "";
-  if (!norm(w.botId) && norm(w.clientId)) {
-    w.botId = norm(w.clientId);
+  const botId = norm(w.botId) || norm(w.clientId);
+  const secret = norm(w.secret) || norm(w.clientSecret);
+  if (!botId || !secret) {
+    delete cfg.channels.wecom;
     changed = true;
-  }
-  if (!norm(w.secret) && norm(w.clientSecret)) {
-    w.secret = norm(w.clientSecret);
-    changed = true;
-  }
-  for (const k of ["clientId", "clientSecret", "appId", "appSecret", "agentId"]) {
-    if (Object.prototype.hasOwnProperty.call(w, k)) {
-      delete w[k];
+  } else {
+    w.botId = botId;
+    w.secret = secret;
+    for (const k of ["clientId", "clientSecret", "appId", "appSecret", "agentId"]) {
+      if (Object.prototype.hasOwnProperty.call(w, k)) {
+        delete w[k];
+        changed = true;
+      }
+    }
+    normalizePolicy(w, "open", "open");
+    if (w.dmPolicy !== "open") {
+      w.dmPolicy = "open";
       changed = true;
     }
-  }
-  normalizePolicy(w, "open", "open");
-  if (w.dmPolicy !== "open") {
-    w.dmPolicy = "open";
-    changed = true;
-  }
-  if (w.groupPolicy !== "open") {
-    w.groupPolicy = "open";
-    changed = true;
-  }
-  const allowFrom = Array.isArray(w.allowFrom)
-    ? w.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
-    : [];
-  if (!allowFrom.includes("*")) {
-    w.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
-    changed = true;
-  }
-  // SPK default: disable dynamic agent creation to keep config stable.
-  w.dynamicAgents = w.dynamicAgents && typeof w.dynamicAgents === "object" ? w.dynamicAgents : {};
-  if (w.dynamicAgents.enabled !== false) {
-    w.dynamicAgents.enabled = false;
-    changed = true;
-  }
-  w.dm = w.dm && typeof w.dm === "object" ? w.dm : {};
-  if (w.dm.createAgentOnFirstMessage !== false) {
-    w.dm.createAgentOnFirstMessage = false;
-    changed = true;
+    if (w.groupPolicy !== "open") {
+      w.groupPolicy = "open";
+      changed = true;
+    }
+    const allowFrom = Array.isArray(w.allowFrom)
+      ? w.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
+      : [];
+    if (!allowFrom.includes("*")) {
+      w.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
+      changed = true;
+    }
+    // SPK default: disable dynamic agent creation to keep config stable.
+    w.dynamicAgents = w.dynamicAgents && typeof w.dynamicAgents === "object" ? w.dynamicAgents : {};
+    if (w.dynamicAgents.enabled !== false) {
+      w.dynamicAgents.enabled = false;
+      changed = true;
+    }
+    w.dm = w.dm && typeof w.dm === "object" ? w.dm : {};
+    if (w.dm.createAgentOnFirstMessage !== false) {
+      w.dm.createAgentOnFirstMessage = false;
+      changed = true;
+    }
   }
 }
 

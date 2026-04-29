@@ -1076,26 +1076,27 @@ if isinstance(payload.get('feishu'), dict):
         ac['appSecret'] = app_secret
     f['dmPolicy'] = 'open'; f['groupPolicy'] = 'open'; f['allowFrom'] = ['*']; f['enabled'] = True
 if isinstance(payload.get('wecom'), dict):
-    w = ch.setdefault('wecom', {})
     bot_id = (payload['wecom'].get('botId') or '').strip()
     sec = (payload['wecom'].get('secret') or '').strip()
-    if bot_id:
+    has_cred = bool(bot_id and sec)
+    if has_cred:
+        w = ch.setdefault('wecom', {})
         w['botId'] = bot_id
-    if sec:
         w['secret'] = sec
-    # 仅在凭据齐全时启用 wecom，避免空配置下反复注册/重连。
-    has_cred = bool((w.get('botId') or '').strip() and (w.get('secret') or '').strip())
-    w['enabled'] = has_cred
-    w['dmPolicy'] = 'open'; w['groupPolicy'] = 'open'; w['allowFrom'] = ['*']
-    # SPK guardrails: avoid dynamic agent/config churn that can trigger gateway restarts.
-    w['agentId'] = 'main'
-    dyn = w.get('dynamicAgents') if isinstance(w.get('dynamicAgents'), dict) else {}
-    dyn['enabled'] = False
-    dyn['adminBypass'] = False
-    w['dynamicAgents'] = dyn
-    dm = w.get('dm') if isinstance(w.get('dm'), dict) else {}
-    dm['createAgentOnFirstMessage'] = False
-    w['dm'] = dm
+        w['enabled'] = True
+        w['dmPolicy'] = 'open'; w['groupPolicy'] = 'open'; w['allowFrom'] = ['*']
+        # SPK guardrails: avoid dynamic agent/config churn that can trigger gateway restarts.
+        w['agentId'] = 'main'
+        dyn = w.get('dynamicAgents') if isinstance(w.get('dynamicAgents'), dict) else {}
+        dyn['enabled'] = False
+        dyn['adminBypass'] = False
+        w['dynamicAgents'] = dyn
+        dm = w.get('dm') if isinstance(w.get('dm'), dict) else {}
+        dm['createAgentOnFirstMessage'] = False
+        w['dm'] = dm
+    else:
+        # Empty/partial WeCom input should not leave a half-configured shell behind.
+        ch.pop('wecom', None)
 if isinstance(payload.get('dingtalk'), dict):
     d = ch.setdefault('dingtalk', {})
     cid = (payload['dingtalk'].get('clientId') or '').strip()
