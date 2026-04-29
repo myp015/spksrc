@@ -360,13 +360,13 @@ sync_bundled_channel_plugins_to_stock_extensions() {
     mkdir -p "${stock_ext_dir}"
 
     # Stage DSM channel plugins into stock extension root (trusted root-owned source).
-    # WeCom is shipped as an external plugin package and should stay in node_modules;
-    # copying it into dist/extensions makes OpenClaw treat it as bundled and then skip it.
-    # Also remove any older staged bundled copy so it cannot keep triggering doctor warnings.
+    # Keep WeCom in node_modules for dependency resolution, and also stage a trusted
+    # dist/extensions/wecom copy so runtime/doctor can discover it as an installed plugin.
     rm -rf "${stock_ext_dir}/wecom" 2>/dev/null || true
     local src dst
     for pair in \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk:dingtalk" \
+        "${OPENCLAW_APP_DIR}/node_modules/@wecom/wecom-openclaw-plugin:wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin:openclaw-weixin"
     do
         src="${pair%%:*}"
