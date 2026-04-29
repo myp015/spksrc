@@ -141,61 +141,13 @@ for (const [rel, depsPatch] of targets) {
 }
 
 preseed_targeted_runtime_deps() {
-    local npm_bin="${SYNOPKG_PKGDEST}/bin/npm"
-    [ -x "${npm_bin}" ] || npm_bin="$(command -v npm 2>/dev/null || true)"
-    [ -x "${npm_bin}" ] || return 0
-
-    local specs
-    specs='@anthropic-ai/sdk@0.90.0 @anthropic-ai/vertex-sdk@^0.16.0 @aws-sdk/client-bedrock@3.1034.0 @aws-sdk/client-bedrock-runtime@3.1034.0 @aws-sdk/credential-provider-node@3.972.34 @aws/bedrock-token-generator@^1.1.0 @clack/prompts@^1.2.0 @google/genai@^1.50.1 @homebridge/ciao@^1.3.6 @larksuiteoapi/node-sdk@^1.61.1 @mariozechner/pi-agent-core@0.70.2 @mariozechner/pi-ai@0.70.2 @modelcontextprotocol/sdk@1.29.0 @mozilla/readability@^0.6.0 @tencent-connect/qqbot-connector@^1.1.0 @wecom/aibot-node-sdk@^1.0.3 acpx@0.5.3 axios@^1.13.6 commander@^14.0.3 dingtalk-stream@^2.1.4 express@^5.2.1 file-type@^21.3.0 form-data@^4.0.0 linkedom@^0.18.12 mammoth@^1.12.0 mpg123-decoder@^1.0.3 node-edge-tts@^1.2.10 pdf-parse@^2.4.5 pdfjs-dist@^5.6.205 pinyin-pro@^3.28.0 playwright-core@1.59.1 qrcode-terminal@0.12.0 silk-wasm@^3.7.1 tslog@^4.10.2 typebox@1.1.33 ws@^8.20.0 undici@8.1.0 zod@4.3.6'
-
-    local stage_dir
-    stage_dir="$(${OPENCLAW_NODE} -e '
-const fs=require("fs");
-const path=require("path");
-const crypto=require("crypto");
-const appDir=process.argv[1];
-const stateDir=process.argv[2];
-try {
-  const pkgRoot=path.resolve(appDir);
-  const pkg=JSON.parse(fs.readFileSync(path.join(pkgRoot,"package.json"),"utf8"));
-  const ver=((pkg&&pkg.version)||"unknown").toString().trim()||"unknown";
-  const hash=crypto.createHash("sha256").update(path.resolve(pkgRoot)).digest("hex").slice(0,12);
-  process.stdout.write(path.join(stateDir,"plugin-runtime-deps",`openclaw-${ver}-${hash}`));
-} catch {}
-' "${OPENCLAW_APP_DIR}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true)"
-
-    local runner="${OPENCLAW_STATE_DIR}/.preseed-runtime-deps.sh"
-    local pid_file="${OPENCLAW_STATE_DIR}/.preseed-runtime-deps.pid"
-
-    if [ -f "${pid_file}" ]; then
-        local prev
-        prev="$(cat "${pid_file}" 2>/dev/null || true)"
-        if [ -n "${prev}" ] && kill -0 "${prev}" >/dev/null 2>&1; then
-            return 0
-        fi
-        rm -f "${pid_file}" >/dev/null 2>&1 || true
+    # SPK dependencies are expected to be fully baked during build.
+    # Install/start phase should only copy and validate, not run npm.
+    local marker="${SYNOPKG_PKGVAR}/.preseed-runtime-deps.baked"
+    if [ -f "${marker}" ]; then
+        return 0
     fi
-
-    cat > "${runner}" <<EOF
-#!/bin/sh
-set +e
-cd '${OPENCLAW_APP_DIR}' || exit 0
-'${npm_bin}' install --no-save --omit=dev ${specs} >/dev/null 2>&1 || true
-if [ -n '${stage_dir}' ]; then
-  mkdir -p '${stage_dir}/node_modules' >/dev/null 2>&1 || true
-  cd '${stage_dir}' || exit 0
-  '${npm_bin}' install --no-save --omit=dev ${specs} >/dev/null 2>&1 || true
-fi
-EOF
-    chmod 700 "${runner}" >/dev/null 2>&1 || true
-
-    local eff_user="${1:-}"
-    if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=1 HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' nohup '${runner}' >/dev/null 2>&1 & echo \$! > '${pid_file}'" >/dev/null 2>&1 || true
-    else
-        nohup "${runner}" >/dev/null 2>&1 &
-        echo $! > "${pid_file}" 2>/dev/null || true
-    fi
+    return 0
 }
 
 # Persist wizard parameters that DSM generic installer does not save by default.
