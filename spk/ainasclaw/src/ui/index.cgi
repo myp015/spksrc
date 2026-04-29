@@ -3686,13 +3686,16 @@ cat <<'HTML'
       const editing = typeof index === 'number';
       const p = editing ? (providers[index] || {}) : {};
       const currentIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
+      const originalId = (p.id || '').trim();
+      const rawApiKey = (p.apiKeyRaw || '').trim();
       document.getElementById('modelModalTitle').textContent = editing ? '编辑模型服务器' : '添加模型服务器';
       document.getElementById('dlg_provider_preset').value = p.id && PROVIDER_PRESETS[p.id] ? p.id : (p.id === 'custom-openai' ? 'custom-openai' : 'custom-openai');
       document.getElementById('dlg_provider_id').value = p.id || '';
       document.getElementById('dlg_api').value = p.api || 'openai-completions';
       document.getElementById('dlg_base_url').value = p.baseUrl || '';
       document.getElementById('dlg_api_key').value = p.apiKeyMasked || '';
-      document.getElementById('dlg_api_key').dataset.raw = p.apiKeyRaw || '';
+      document.getElementById('dlg_api_key').dataset.raw = rawApiKey;
+      document.getElementById('modelModalMask').dataset.originalProviderId = originalId;
       setModelSelectOptions(currentIds, currentIds);
       if (!editing) {
         applyProviderPresetDialog();
@@ -3723,6 +3726,7 @@ cat <<'HTML'
       document.getElementById('modelModalMask').style.display = 'none';
       document.body.classList.remove('modal-open');
       document.getElementById('modelModalMask').dataset.editIndex = '';
+      document.getElementById('modelModalMask').dataset.originalProviderId = '';
     }
     async function discoverModelsForDialog() {
       await triggerDiscoverModelsForDialog();
@@ -3764,6 +3768,7 @@ cat <<'HTML'
         const providers = (data.configuredProviders || []).slice();
         const idxRaw = document.getElementById('modelModalMask').dataset.editIndex;
         const idx = idxRaw === '' ? -1 : parseInt(idxRaw, 10);
+        const originalProviderId = (document.getElementById('modelModalMask').dataset.originalProviderId || '').trim();
         const providerId = (document.getElementById('dlg_provider_id').value || 'custom-openai').trim();
         const baseUrl = (document.getElementById('dlg_base_url').value || '').trim();
         const selectedModelIds = getSelectedModelIdsFromHidden();
@@ -3776,17 +3781,20 @@ cat <<'HTML'
           return;
         }
 
-        // 仅在“添加”时校验：Provider ID 或 Base URL 任一重复都禁止添加。
-        if (idx < 0) {
-          const duplicatedId = providers.some(p => ((p && p.id) || '').trim() === providerId);
-          const duplicatedBase = baseUrl && providers.some(p => ((p && p.baseUrl) || '').trim() === baseUrl);
-          if (duplicatedId || duplicatedBase) {
-            const reason = duplicatedId ? 'Provider ID 已存在' : 'Base URL 已存在';
-            setModelDialogHint('添加失败：' + reason + '，请修改后重试', 'err');
-            setMsg('添加失败：' + reason + '，请修改后重试', 'err');
-            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
-            return;
-          }
+        const apiKeyInput = document.getElementById('dlg_api_key');
+        const apiKeyValue = (apiKeyInput && apiKeyInput.value ? apiKeyInput.value : '').trim();
+        const apiKeyRaw = (apiKeyInput && apiKeyInput.dataset.raw ? apiKeyInput.dataset.raw : '').trim();
+        const apiKey = (apiKeyValue && !/^\*+$/.test(apiKeyValue)) ? apiKeyValue : apiKeyRaw;
+
+        const duplicatedId = providers.some((p, i) => i !== idx && ((p && p.id) || '').trim() === providerId);
+        const duplicatedBase = baseUrl && providers.some((p, i) => i !== idx && ((p && p.baseUrl) || '').trim() === baseUrl);
+        if (duplicatedId || duplicatedBase) {
+          const reason = duplicatedId ? 'Provider ID 已存在' : 'Base URL 已存在';
+          const prefix = idx < 0 ? '添加失败' : '保存失败';
+          setModelDialogHint(prefix + '：' + reason + '，请修改后重试', 'err');
+          setMsg(prefix + '：' + reason + '，请修改后重试', 'err');
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
+          return;
         }
 
         const provider = {
@@ -3794,7 +3802,7 @@ cat <<'HTML'
           displayName: providerId,
           api: document.getElementById('dlg_api').value,
           baseUrl: baseUrl,
-          apiKey: document.getElementById('dlg_api_key').value,
+          apiKey: apiKey,
           models: selectedModelIds.map(id => ({ modelId: id, id: id }))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
