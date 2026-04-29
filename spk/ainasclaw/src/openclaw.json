@@ -64,8 +64,7 @@
         "webchat": ["*"],
         "feishu": ["*"],
         "dingtalk": ["*"],
-        "qqbot": ["*"],
-        "wecom": ["*"]
+        "qqbot": ["*"]
       }
     },
     "sessions": {
