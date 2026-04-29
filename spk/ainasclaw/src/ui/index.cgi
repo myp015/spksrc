@@ -3368,7 +3368,9 @@ cat <<'HTML'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
             + '      <div id="dlg_model_selected_line" onclick="openModelDropdown(event)" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
             + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
-            + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:nowrap;">'
+            + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">'
+            + '        <button class="btn" style="white-space:nowrap;flex:0 0 auto;" onclick="selectAllModelSelections()">全选</button>'
+            + '        <button class="btn" style="white-space:nowrap;flex:0 0 auto;" onclick="clearAllModelSelections()">取消全选</button>'
             + '        <input id="dlg_model_manual_input" style="flex:1;min-width:0;" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
             + '        <button class="btn" style="white-space:nowrap;flex:0 0 auto;" onclick="addManualModelFromInput()">添加</button>'
             + '      </div>'
@@ -3633,6 +3635,16 @@ cat <<'HTML'
       const next = Array.from(new Set(curr.concat([v])));
       setModelSelectOptions(next, next);
       inp.value = '';
+    }
+    function selectAllModelSelections() {
+      const all = getAvailableModelIdsFromDropdown();
+      setModelSelectOptions(all, all);
+      setModelDialogHint('已全选模型', 'ok');
+    }
+    function clearAllModelSelections() {
+      const all = getAvailableModelIdsFromDropdown();
+      setModelSelectOptions(all, []);
+      setModelDialogHint('已取消全选', 'ok');
     }
     function syncModelTextareaFromSelect() {}
     function syncModelSelectFromTextarea() {}
