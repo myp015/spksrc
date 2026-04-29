@@ -1064,7 +1064,8 @@ const selectedPluginIds = {
   feishu: pickPluginId(["feishu", "feishu-openclaw-plugin"]),
   dingtalk: pickPluginId(["dingtalk", "openclaw-dingtalk"]),
   wecom: pickPluginId(["wecom", "wecom-openclaw-plugin", "openclaw-wecom"]),
-  qqbot: pickPluginId(["qqbot", "openclaw-qqbot"])
+  qqbot: pickPluginId(["qqbot", "openclaw-qqbot"]),
+  weixin: pickPluginId(["openclaw-weixin", "weixin"])
 };
 
 const workspaceInput = trim(process.env.WIZARD_WORKSPACE_DIR);
@@ -1144,25 +1145,35 @@ const enablePlugin = (pluginId) => {
   if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
 };
 
+const disablePlugin = (pluginId) => {
+  if (!pluginId) return;
+  if (cfg.plugins.entries && cfg.plugins.entries[pluginId]) {
+    delete cfg.plugins.entries[pluginId];
+  }
+  if (Array.isArray(cfg.plugins.allow)) {
+    cfg.plugins.allow = cfg.plugins.allow.filter((id) => id !== pluginId);
+  }
+};
+
 const feishuAppId = trim(process.env.WIZARD_FEISHU_APP_ID);
 const feishuAppSecret = trim(process.env.WIZARD_FEISHU_APP_SECRET);
 if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   cfg.channels.feishu = cfg.channels.feishu || {};
-  // Feishu schema expects credentials under accounts.<id>, not top-level appId/appSecret.
   const defaultAccountId = trim(cfg.channels.feishu.defaultAccount) || "default";
   cfg.channels.feishu.defaultAccount = defaultAccountId;
   cfg.channels.feishu.accounts = cfg.channels.feishu.accounts || {};
   cfg.channels.feishu.accounts[defaultAccountId] = cfg.channels.feishu.accounts[defaultAccountId] || {};
   cfg.channels.feishu.accounts[defaultAccountId].appId = feishuAppId;
   cfg.channels.feishu.accounts[defaultAccountId].appSecret = feishuAppSecret;
-  // Clean deprecated top-level fields to avoid strict-schema "additionalProperties" failures.
   delete cfg.channels.feishu.appId;
   delete cfg.channels.feishu.appSecret;
-  // Disable pairing gate by default for wizard provisioned Feishu credentials.
   cfg.channels.feishu.dmPolicy = "open";
   cfg.channels.feishu.groupPolicy = "open";
   cfg.channels.feishu.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.feishu);
+} else {
+  delete cfg.channels.feishu;
+  disablePlugin(selectedPluginIds.feishu);
 }
 
 const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
@@ -1171,11 +1182,13 @@ if (dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
-  // Disable pairing gate by default: credentials are enough to communicate.
   cfg.channels.dingtalk.dmPolicy = "open";
   cfg.channels.dingtalk.groupPolicy = "open";
   cfg.channels.dingtalk.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.dingtalk);
+} else {
+  delete cfg.channels.dingtalk;
+  disablePlugin(selectedPluginIds.dingtalk);
 }
 
 const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
@@ -1188,6 +1201,9 @@ if (qqbotAppId && qqbotClientSecret && selectedPluginIds.qqbot) {
   cfg.channels.qqbot.groupPolicy = "open";
   cfg.channels.qqbot.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.qqbot);
+} else {
+  delete cfg.channels.qqbot;
+  disablePlugin(selectedPluginIds.qqbot);
 }
 
 const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
@@ -1196,16 +1212,17 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
   cfg.channels.wecom = cfg.channels.wecom || {};
   cfg.channels.wecom.botId = wecomBotId;
   cfg.channels.wecom.secret = wecomSecret;
-  // Disable pairing gate by default: credentials are enough to communicate.
   cfg.channels.wecom.dmPolicy = "open";
   cfg.channels.wecom.groupPolicy = "open";
   cfg.channels.wecom.allowFrom = ["*"];
-  // SPK default: keep all channels on main agent to avoid dynamic agent/config churn.
   cfg.channels.wecom.dynamicAgents = cfg.channels.wecom.dynamicAgents || {};
   cfg.channels.wecom.dynamicAgents.enabled = false;
   cfg.channels.wecom.dm = cfg.channels.wecom.dm || {};
   cfg.channels.wecom.dm.createAgentOnFirstMessage = false;
   enablePlugin(selectedPluginIds.wecom);
+} else {
+  delete cfg.channels.wecom;
+  disablePlugin(selectedPluginIds.wecom);
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
