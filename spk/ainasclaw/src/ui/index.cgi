@@ -2907,17 +2907,17 @@ cat <<'HTML'
     body.modal-open { overflow: hidden; }
     .wrap { padding:10px; height:100%; box-sizing:border-box; zoom:.93; }
     .layout { height:100%; display:flex; gap:12px; }
-    .sidebar { width:220px; min-width:220px; background:#fff; border:1px solid #dfe3ea; border-radius:12px; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; }
+    .sidebar { width:220px; min-width:220px; background:#fff; border:1px solid #dfe3ea; border-radius:12px; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; overflow-y:auto; max-height:100%; }
     .title { font-size:20px; font-weight:700; margin:0 0 10px; }
     .sub { color:#667085; font-size:12px; margin:0 0 10px; }
     .tabs { display:flex; flex-direction:column; gap:6px; }
     .tab { text-align:left; border:1px solid #d0d5dd; background:#fff; border-radius:8px; padding:9px 10px; cursor:pointer; }
     .tab.active { background:#eaf2ff; color:#175cd3; border-color:#b7cdfa; font-weight:600; }
     .tab.disabled { opacity:1; cursor:pointer; }
-    .main { min-width:0; flex:1; display:flex; }
-    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    .main { min-width:0; flex:1; display:flex; min-height:0; overflow:auto; }
+    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; min-height:0; flex:1; display:flex; flex-direction:column; overflow:auto; }
     .toolbar { display:flex; gap:8px; margin-bottom:12px; align-items:center; }
-    #content { flex:1; min-height:0; overflow:hidden; }
+    #content { flex:1; min-height:0; overflow:auto; }
     .btn { border:1px solid #d0d5dd; background:#fff; border-radius:10px; padding:8px 12px; cursor:pointer; }
     .btn.primary { background:#1677ff; color:#fff; border-color:#1677ff; }
     .btn:disabled { cursor:not-allowed; color:#98a2b3; background:#f2f4f7; border-color:#d0d5dd; }
@@ -2984,6 +2984,8 @@ cat <<'HTML'
     const PROVIDER_PRESETS = {
       anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages', models: ['claude-3-5-sonnet-latest','claude-3-7-sonnet-latest','claude-sonnet-4-20250514','claude-opus-4-20250514'] },
       google: { label: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', api: 'openai-completions', models: ['gemini-2.5-pro','gemini-2.5-flash','gemini-2.0-flash'] },
+      siliconflow: { label: '硅基流', baseUrl: 'https://api.siliconflow.cn/v1', api: 'openai-completions', models: ['Pro/MiniMaxAI/MiniMax-M2.5','deepseek-ai/DeepSeek-V4-Flash'] },
+      deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', api: 'openai-completions', models: ['deepseek-v4-flash','deepseek-v4-pro'] },
       'minimax-cn': { label: 'MiniMax CN', baseUrl: 'https://api.minimaxi.com/anthropic', api: 'anthropic-messages', models: ['MiniMax-M2.5','MiniMax-Text-01'] },
       minimax: { label: 'MiniMax', baseUrl: 'https://api.minimax.io/anthropic', api: 'anthropic-messages', models: ['MiniMax-M2.5','MiniMax-Text-01'] },
       'kimi-coding': { label: 'Kimi Coding', baseUrl: 'https://api.kimi.com/coding/', api: 'anthropic-messages', models: ['kimi-k2-0905-preview','kimi-latest'] },
