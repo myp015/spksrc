@@ -110,7 +110,7 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
 		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
 		@soimy/dingtalk@3.5.3 \
-		@sunnoy/wecom@3.0.0 \
+		@wecom/wecom-openclaw-plugin@2026.4.23 \
 		@tencent-connect/openclaw-qqbot@1.7.1 \
 		@tencent-weixin/openclaw-weixin@2.1.8 \
 		acpx@0.5.3 \

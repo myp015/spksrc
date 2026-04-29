@@ -112,7 +112,7 @@ const path=require("path");
 const appDir=process.argv[1];
 const targets=[
   ["dist/extensions/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
-  ["node_modules/@sunnoy/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
+  ["node_modules/@wecom/wecom-openclaw-plugin/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
   ["dist/extensions/dingtalk/package.json", { zod: "4.3.6", axios: "^1.13.6" }],
   ["node_modules/@soimy/dingtalk/package.json", { zod: "4.3.6", axios: "^1.13.6" }],
   ["dist/extensions/qqbot/package.json", { zod: "4.3.6" }],
@@ -399,7 +399,7 @@ harden_extension_permissions() {
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
-        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
+        "${OPENCLAW_APP_DIR}/node_modules/@wecom/wecom-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
     do
@@ -881,7 +881,7 @@ service_postinst() {
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
-        "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
+        "${OPENCLAW_APP_DIR}/node_modules/@wecom/wecom-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
     do
