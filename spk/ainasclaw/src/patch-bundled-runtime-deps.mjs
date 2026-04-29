@@ -20,8 +20,8 @@ const candidates = fs
   .map((n) => path.join(distDir, n));
 
 if (candidates.length === 0) {
-  console.error('[patch-bundled-runtime-deps] no bundled-runtime-deps-*.js found');
-  process.exit(1);
+  console.warn('[patch-bundled-runtime-deps] no bundled-runtime-deps-*.js found; skipping patch');
+  process.exit(0);
 }
 
 let patched = 0;
