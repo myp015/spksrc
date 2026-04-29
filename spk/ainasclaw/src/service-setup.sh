@@ -1025,11 +1025,10 @@ NGINX_EOF
             else
                 echo "{}" > "${bootstrap_config_file}"
             fi
-        fi
-
-        # 安装阶段强制写回默认端口（58789），避免沿用历史随机端口。
-        if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
-            ensure_gateway_port_in_config 1 "${bootstrap_config_file}" >/dev/null 2>&1 || true
+            # 只有首次落盘时才初始化端口；重装/复用 workspace 时保留已有配置。
+            if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
+                ensure_gateway_port_in_config 1 "${bootstrap_config_file}" >/dev/null 2>&1 || true
+            fi
         fi
 
         # 同步 DSM 套件详情页端口展示（adminport）到当前 runtime 端口。
@@ -1491,6 +1490,7 @@ EOF
 
     # 用户要求：切换目录时仅按默认模板初始化，不做迁移。
     # 若目标目录未初始化（无 config）或被清空，则使用模板（或最小空配置）重建。
+    # 若工作目录已有配置文件，则保留并直接沿用，不再覆盖回模板。
     local fresh_install_config="0"
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
         if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
