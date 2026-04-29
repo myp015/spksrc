@@ -788,19 +788,8 @@ if apply_now:
             out['gatewayRunning'] = True
             out['message'] = 'gateway already running'
         else:
-            # 仅在当前确实在运行时先停旧进程；未运行时直接拉起，避免无意义超时。
-            if currently_running:
-                for cmd in (
-                    ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'stop', '--json'],
-                    ['pkill', '-f', 'openclaw-gatew'],
-                    ['pkill', '-f', '/app/openclaw/dist/index.js gateway'],
-                    ['pkill', '-f', 'openclaw gateway'],
-                ):
-                    try:
-                        subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=4)
-                    except Exception:
-                        pass
-
+            # 轻量启动：若 gateway 已停，直接用 run 拉起，不再强制先 stop 再重启。
+            # 这更接近 /root/trim.openclaw_v0.0.10.fpk 的本地直启方式。
             os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
             try:
                 with open(spawn_log, 'a', encoding='utf-8') as sf:
