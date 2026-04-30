@@ -210,31 +210,101 @@ if not service_running:
     except Exception:
         service_running = False
 
+try:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
+except Exception:
+    cfg = {}
+
 # 计算 gateway 运行时长（秒）
+# 关键：优先按“当前监听配置端口的真实进程 PID”来算，避免误命中 supervisor / 旧 pgrep 结果，
+# 否则重启后概览页运行时间可能不归零。
+def _first_int(text):
+    for token in str(text or '').replace(',', ' ').split():
+        if token.isdigit():
+            return int(token)
+    return None
+
+def _pid_from_listening_port(port_value):
+    if not isinstance(port_value, int) or port_value <= 0:
+        return None
+    commands = [
+        ['sh', '-lc', f"ss -ltnp '( sport = :{port_value} )' 2>/dev/null | head -n 5"],
+        ['sh', '-lc', f"netstat -ltnp 2>/dev/null | awk '$4 ~ /:{port_value}$/ {{print}}' | head -n 5"],
+        ['sh', '-lc', f"lsof -nP -iTCP:{port_value} -sTCP:LISTEN 2>/dev/null | head -n 5"],
+    ]
+    for cmd in commands:
+        try:
+            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=1.5)
+            txt = (r.stdout or '').strip()
+            if not txt:
+                continue
+            for line in txt.splitlines():
+                for part in line.split():
+                    if '/openclaw' in part or '/node' in part or 'users:(("node",pid=' in part or 'LISTEN' in line:
+                        pid = None
+                        if 'pid=' in part:
+                            pid = _first_int(part.split('pid=', 1)[1])
+                        if pid is None:
+                            pid = _first_int(part)
+                        if pid is None and 'pid=' in line:
+                            pid = _first_int(line.split('pid=', 1)[1])
+                        if pid and os.path.exists(f'/proc/{pid}'):
+                            return pid
+        except Exception:
+            continue
+    return None
+
+def _pid_from_gateway_process_name():
+    try:
+        r = subprocess.run(
+            ['pgrep', '-x', 'openclaw-gatewa'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=1.5,
+        )
+        for token in (r.stdout or '').split():
+            if token.isdigit() and os.path.exists(f'/proc/{token}'):
+                return int(token)
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(
+            ['sh', '-lc', "pgrep -af 'openclaw.*gateway|dist/index.js gateway' | grep -v 'app/fn-port/server' | head -n1"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=1.5,
+        )
+        line = (r.stdout or '').strip()
+        if line:
+            token = line.split(None, 1)[0]
+            if token.isdigit() and os.path.exists(f'/proc/{token}'):
+                return int(token)
+    except Exception:
+        pass
+    return None
+
 started_ts = None
 uptime_seconds = 0
 if running:
     try:
-        # 优先按 PID 读取 etimes，避免字符串匹配误差导致一直 0 秒。
-        cmdline = "pgrep -af 'openclaw.*gateway|dist/index.js gateway' | grep -v 'app/fn-port/server' | head -n1"
-        p = os.popen(cmdline)
-        line = (p.read() or '').strip()
-        p.close()
-        if line:
-            pid = line.split(None, 1)[0]
-            p2 = os.popen(f"ps -o etimes= -p {pid} | head -n1")
-            et = (p2.read() or '').strip()
-            p2.close()
+        pid = _pid_from_listening_port(port) or _pid_from_gateway_process_name()
+        if pid:
+            p2 = subprocess.run(
+                ['ps', '-o', 'etimes=', '-p', str(pid)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=1.5,
+            )
+            et = (p2.stdout or '').strip()
             if et.isdigit():
                 uptime_seconds = int(et)
                 started_ts = int(time.time()) - uptime_seconds
     except Exception:
         uptime_seconds = 0
         started_ts = None
-try:
-    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
-except Exception:
-    cfg = {}
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
 if isinstance(workspace, str) and workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
