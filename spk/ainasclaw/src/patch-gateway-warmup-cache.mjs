@@ -117,25 +117,11 @@ const toolsCatalogHandlers = { "tools.catalog": async ({ params, respond, contex
   return 0;
 }
 
-function patchImpl(file) {
-  const src = fs.readFileSync(file, 'utf8');
-  const target = 'params.onPluginServices?.(result.pluginServices);\n\t\tparams.onSidecarsReady?.();\n\t\tparams.startupTrace?.mark("sidecars.ready");';
-  const replacement = 'params.onPluginServices?.(result.pluginServices);\n\t\tparams.onSidecarsReady?.();\n\t\tparams.startupTrace?.mark("sidecars.ready");\n\t\tsetTimeout(() => {\n\t\t\tvoid loadModelCatalog({ config: params.gatewayPluginConfigAtStart }).then(() => {\n\t\t\t\tparams.log.info?.("warmup ok models.list");\n\t\t\t}).catch((err) => {\n\t\t\t\tparams.log.warn(`warmup failed models.list: ${String(err)}`);\n\t\t\t});\n\t\t}, 1e3);';
-  const out = src.replace(target, replacement);
-  if (out !== src) {
-    fs.writeFileSync(file, out, 'utf8');
-    console.log(`[patch-gateway-warmup-cache] patched ${file}`);
-    return 1;
-  }
-  return 0;
-}
-
 let patched = 0;
 for (const name of fs.readdirSync(distDir)) {
   const file = path.join(distDir, name);
   if (!fs.statSync(file).isFile() || !name.endsWith('.js')) continue;
   if (/^server-methods-.*\.js$/.test(name)) patched += patchServerMethods(file);
-  if (/^server\.impl-.*\.js$/.test(name)) patched += patchImpl(file);
 }
 
 if (patched === 0) {
