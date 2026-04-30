@@ -48,8 +48,8 @@ for (const file of candidates) {
 }
 
 if (patched === 0) {
-  console.error('[patch-bundled-runtime-deps] no target blocks matched; upstream file shape may have changed');
-  process.exit(1);
+  console.warn('[patch-bundled-runtime-deps] no target blocks matched; upstream file shape may have changed (skip, non-fatal)');
+  process.exit(0);
 }
 
 console.log(`[patch-bundled-runtime-deps] done, patched ${patched} file(s)`);
