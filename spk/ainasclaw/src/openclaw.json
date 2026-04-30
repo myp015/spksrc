@@ -38,9 +38,9 @@
     "tts": {
       "auto": "off",
       "mode": "final",
-      "provider": "edge",
+      "provider": "microsoft",
       "providers": {
-        "edge": {
+        "microsoft": {
           "voice": "zh-CN-XiaoxiaoNeural",
           "lang": "zh-CN",
           "outputFormat": "ogg-24khz-16bit-mono-opus",
