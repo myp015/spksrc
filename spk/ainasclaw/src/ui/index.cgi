@@ -289,19 +289,32 @@ started_ts = None
 uptime_seconds = 0
 if running:
     try:
-        pid = _pid_from_listening_port(port) or _pid_from_gateway_process_name()
-        if pid:
-            p2 = subprocess.run(
-                ['ps', '-o', 'etimes=', '-p', str(pid)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=1.5,
-            )
-            et = (p2.stdout or '').strip()
-            if et.isdigit():
-                uptime_seconds = int(et)
-                started_ts = int(time.time()) - uptime_seconds
+        # 优先以 runtime pid 文件的 mtime 作为“本次启动时间”，这样从停止到再次运行一定从 0 开始计时。
+        pidfile_started_ts = None
+        for pidfile in ('/var/packages/ainasclaw/var/openclaw-gateway.runtime.pid', '/volume1/@appdata/ainasclaw/openclaw-gateway.runtime.pid'):
+            if os.path.exists(pidfile):
+                try:
+                    pidfile_started_ts = int(os.stat(pidfile).st_mtime)
+                    break
+                except Exception:
+                    pass
+        if pidfile_started_ts:
+            started_ts = pidfile_started_ts
+            uptime_seconds = max(0, int(time.time()) - started_ts)
+        else:
+            pid = _pid_from_listening_port(port) or _pid_from_gateway_process_name()
+            if pid:
+                p2 = subprocess.run(
+                    ['ps', '-o', 'etimes=', '-p', str(pid)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=1.5,
+                )
+                et = (p2.stdout or '').strip()
+                if et.isdigit():
+                    uptime_seconds = int(et)
+                    started_ts = int(time.time()) - uptime_seconds
     except Exception:
         uptime_seconds = 0
         started_ts = None
@@ -1164,6 +1177,16 @@ if isinstance(payload.get('wecom'), dict):
         dm = w.get('dm') if isinstance(w.get('dm'), dict) else {}
         dm['createAgentOnFirstMessage'] = False
         w['dm'] = dm
+        # 保存企业微信后默认启用 wecom 插件，避免 doctor 报 channels.wecom 已配置但插件 disabled。
+        if 'wecom' not in allow:
+            allow.append('wecom')
+        we = entries.get('wecom')
+        if not isinstance(we, dict):
+            we = {}
+        we['enabled'] = True
+        if isinstance(we.get('config'), dict):
+            we.pop('config', None)
+        entries['wecom'] = we
     else:
         # Empty/partial WeCom input should not leave a half-configured shell behind.
         ch.pop('wecom', None)
@@ -3423,7 +3446,6 @@ cat <<'HTML'
                   + '</div>';
               }).join('')
             + '</div>'
-            + '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>'
             + '<div class="modal-mask" id="modelModalMask">'
             + '  <div class="modal model-modal">'
             + '    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
