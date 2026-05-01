@@ -3432,8 +3432,9 @@ cat <<'HTML'
           window.__modelsData = data;
           const options = ['<option value="custom-openai">自定义 OpenAI 兼容</option>'].concat(Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>')).join('');
           content.innerHTML = ''
-            + '<div style="margin-bottom:12px;"><button class="btn primary" onclick="openModelDialog()">添加模型服务器</button></div>'
-            + '<div class="list" style="height:100%;min-height:0;overflow:visible;padding-right:4px;">'
+            + '<div style="display:flex;flex-direction:column;height:100%;min-height:0;">'
+            + '  <div style="margin-bottom:12px;flex:0 0 auto;"><button class="btn primary" onclick="openModelDialog()">添加模型服务器</button></div>'
+            + '  <div class="list" style="flex:1 1 auto;min-height:0;overflow:auto;padding-right:4px;">'
             + providers.map((p, idx) => {
                 const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
                 return '<div class="item">'
@@ -3446,6 +3447,7 @@ cat <<'HTML'
                   + '</div>'
                   + '</div>';
               }).join('')
+            + '  </div>'
             + '</div>'
             + '<div class="modal-mask" id="modelModalMask">'
             + '  <div class="modal model-modal">'
