@@ -3520,17 +3520,24 @@ cat <<'HTML'
       const stopBtn = document.getElementById('btn_oc_stop');
       if (!startBtn || !stopBtn) return;
       if (busy) {
+        if (actionName === 'stop') {
+          startBtn.disabled = true;
+          stopBtn.disabled = true;
+          startBtn.textContent = '启动 OpenClaw';
+          stopBtn.textContent = '停止中...';
+          return;
+        }
         startBtn.disabled = true;
-        stopBtn.disabled = true;
+        stopBtn.disabled = false;
         startBtn.textContent = actionName === 'start' ? '启动中...' : '启动 OpenClaw';
-        stopBtn.textContent = actionName === 'stop' ? '停止中...' : '停止 OpenClaw';
+        stopBtn.textContent = '强制停止 OpenClaw';
         return;
       }
       const running = !!window.__statusRunning;
       startBtn.disabled = running;
-      stopBtn.disabled = !running;
+      stopBtn.disabled = false;
       startBtn.textContent = '启动 OpenClaw';
-      stopBtn.textContent = '停止 OpenClaw';
+      stopBtn.textContent = running ? '停止 OpenClaw' : '强制停止 OpenClaw';
     }
     function setHotReloadBusy(busy) {
       setInstallButtonsBusy('', !!busy);
@@ -3565,9 +3572,18 @@ cat <<'HTML'
             await new Promise(r => setTimeout(r, 900));
             try {
               const s = await api('status');
-              if (s && !!s.running === wantRunning) {
-                setMsg('运行状态：' + (s.running ? '运行中' : '已停止'), s.running ? 'ok' : 'err');
-                return;
+              const serviceRunning = !!(s && s.serviceRunning);
+              const gatewayRunning = !!(s && s.running);
+              if (wantRunning) {
+                if (gatewayRunning) {
+                  setMsg('运行状态：运行中', 'ok');
+                  return;
+                }
+              } else {
+                if (!gatewayRunning && !serviceRunning) {
+                  setMsg('运行状态：已停止', 'ok');
+                  return;
+                }
               }
             } catch {}
           }
