@@ -14,18 +14,23 @@ if (!fs.existsSync(distDir)) {
   process.exit(1);
 }
 
-const candidates = fs
+const runtimeRootCandidates = fs
   .readdirSync(distDir)
   .filter((n) => /^bundled-runtime-root-.*\.js$/.test(n))
   .map((n) => path.join(distDir, n));
 
-if (candidates.length === 0) {
-  console.warn('[patch-bundled-runtime-deps] no bundled-runtime-root-*.js found; skipping patch');
+const doctorCandidates = fs
+  .readdirSync(distDir)
+  .filter((n) => /^doctor-bundled-plugin-runtime-deps-.*\.js$/.test(n))
+  .map((n) => path.join(distDir, n));
+
+if (runtimeRootCandidates.length === 0 && doctorCandidates.length === 0) {
+  console.warn('[patch-bundled-runtime-deps] no bundled-runtime-root-* or doctor-bundled-plugin-runtime-deps-* files found; skipping patch');
   process.exit(0);
 }
 
 let patched = 0;
-for (const file of candidates) {
+for (const file of runtimeRootCandidates) {
   const src = fs.readFileSync(file, 'utf8');
 
   const oldPackagePlanFn = `function resolveBundledRuntimeDependencyPackageInstallRootPlan(packageRoot, options = {}) {\n\tconst env = options.env ?? process.env;\n\tconst externalRoots = resolveExternalBundledRuntimeDepsInstallRoots({\n\t\tpluginRoot: path.join(packageRoot, "dist", "extensions", "__package__"),\n\t\tenv\n\t});\n\tif (options.forceExternal || env.OPENCLAW_PLUGIN_STAGE_DIR?.trim() || env.STATE_DIRECTORY?.trim() || !isSourceCheckoutRoot(packageRoot)) return createBundledRuntimeDepsInstallRootPlan({\n\t\tinstallRoot: externalRoots.at(-1) ?? resolveExternalBundledRuntimeDepsInstallRoot({\n\t\t\tpluginRoot: path.join(packageRoot, "dist", "extensions", "__package__"),\n\t\t\tenv\n\t\t}),\n\t\tsearchRoots: externalRoots,\n\t\texternal: true\n\t});\n\tif (isWritableDirectory(packageRoot)) return createBundledRuntimeDepsInstallRootPlan({\n\t\tinstallRoot: packageRoot,\n\t\tsearchRoots: [packageRoot],\n\t\texternal: false\n\t});\n\treturn createBundledRuntimeDepsInstallRootPlan({\n\t\tinstallRoot: externalRoots.at(-1) ?? resolveExternalBundledRuntimeDepsInstallRoot({\n\t\t\tpluginRoot: path.join(packageRoot, "dist", "extensions", "__package__"),\n\t\t\tenv\n\t\t}),\n\t\tsearchRoots: externalRoots,\n\t\texternal: true\n\t});\n}`;
@@ -39,6 +44,27 @@ for (const file of candidates) {
   let out = src;
   out = out.replace(oldPackagePlanFn, newPackagePlanFn);
   out = out.replace(oldPluginPlanFn, newPluginPlanFn);
+
+  if (out !== src) {
+    fs.writeFileSync(file, out, 'utf8');
+    patched += 1;
+    console.log(`[patch-bundled-runtime-deps] patched ${file}`);
+  }
+}
+
+for (const file of doctorCandidates) {
+  const src = fs.readFileSync(file, 'utf8');
+  const oldMissingLine = `const missing = deps.filter((dep) => !fs.existsSync(path.join(params.packageRoot, dependencySentinelPath(dep.name))));`;
+  const newMissingLine = `const packagedAppRoot = path.join(params.packageRoot, "app", "openclaw");
+	const missing = deps.filter((dep) => {
+		const sentinel = dependencySentinelPath(dep.name);
+		if (fs.existsSync(path.join(params.packageRoot, sentinel))) return false;
+		if (fs.existsSync(path.join(packagedAppRoot, sentinel))) return false;
+		return true;
+	});`;
+
+  let out = src;
+  out = out.replace(oldMissingLine, newMissingLine);
 
   if (out !== src) {
     fs.writeFileSync(file, out, 'utf8');
