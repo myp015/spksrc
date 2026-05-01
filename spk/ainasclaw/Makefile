@@ -201,9 +201,15 @@ openclaw_copy_target:
 	@$(MSG) Create staging content for openclaw
 	@rm -rf $(STAGING_DIR)
 	@install -d -m 755 $(STAGING_DIR)/bin
+	@install -d -m 755 $(STAGING_DIR)/lib/node_modules
 	@install -d -m 755 $(STAGING_DIR)/app/openclaw
 	@install -d -m 755 $(STAGING_DIR)/var
 	@cp -f $(WORK_DIR)/node-runtime/bin/node $(STAGING_DIR)/bin/node
+	@cp -a $(WORK_DIR)/build-node-runtime/lib/node_modules/npm $(STAGING_DIR)/lib/node_modules/npm
+	@cp -a $(WORK_DIR)/build-node-runtime/lib/node_modules/corepack $(STAGING_DIR)/lib/node_modules/corepack
+	@cp -f $(WORK_DIR)/build-node-runtime/lib/node_modules/npm/bin/npm $(STAGING_DIR)/bin/npm || true
+	@cp -f $(WORK_DIR)/build-node-runtime/lib/node_modules/npm/bin/npx $(STAGING_DIR)/bin/npx || true
+	@chmod 755 $(STAGING_DIR)/bin/npm $(STAGING_DIR)/bin/npx 2>/dev/null || true
 	@cp -f $(WORK_DIR)/bun-runtime/bun $(STAGING_DIR)/bin/bun
 	@chmod 755 $(STAGING_DIR)/bin/bun
 	@cp -f $(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH) $(STAGING_DIR)/bin/ttyd
