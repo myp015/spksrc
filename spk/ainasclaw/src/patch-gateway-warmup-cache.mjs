@@ -117,79 +117,11 @@ const toolsCatalogHandlers = { "tools.catalog": async ({ params, respond, contex
   return 0;
 }
 
-function patchServerImpl(file) {
-  const src = fs.readFileSync(file, 'utf8');
-  let out = src;
-
-  out = out.replace(
-    /params\.log\.info\("gateway ready"\);\n\t\treturn result;\n\t\}\);/,
-    `params.log.info("gateway ready");
-		setTimeout(() => {
-			(async () => {
-				const cfg = params.gatewayPluginConfigAtStart ?? params.cfgAtStart;
-				try {
-					const [combinedStoreMod, sessionUtilsMod, { readSessionMessages }] = await Promise.all([
-						import("./combined-store-gateway-D6wKl8dT.js"),
-						import("./session-utils-dwIoA6Si.js"),
-						import("./session-utils.fs-bNM54VNU.js")
-					]);
-					const loadCombinedSessionStoreForGateway = combinedStoreMod.loadCombinedSessionStoreForGateway ?? combinedStoreMod.t;
-					const listSessionsFromStore = sessionUtilsMod.listSessionsFromStore ?? sessionUtilsMod.r;
-					const { storePath, store } = loadCombinedSessionStoreForGateway(cfg);
-					listSessionsFromStore({
-						cfg,
-						storePath,
-						store,
-						opts: { includeGlobal: true, includeUnknown: true, activeMinutes: 0, limit: 0 }
-					});
-					const main = store?.sessions?.main;
-					if (main?.sessionId) readSessionMessages(main.sessionId, storePath, main.sessionFile);
-					params.log.info("warmup ok sessions.list/chat.history");
-				} catch (err) {
-					params.log.warn(\`warmup failed sessions.list/chat.history: \${String(err)}\`);
-				}
-				try {
-					const [{ listAgentsForGateway }, { resolveAssistantIdentity }, { buildCommandsListResult }, { listDevicePairing }, { listNodePairing }] = await Promise.all([
-						import("./agents-C7vBW7FI.js"),
-						import("./assistant-identity-CM1C0tJd.js").catch(() => import("./assistant-identity.js")),
-						import("./server-methods-commands-D1Wc8m3A.js").catch(() => import("./server-methods/commands.js")),
-						import("./devices-CE2dN6GO.js").catch(() => import("./devices.js")),
-						import("./node-pairing-D4V4xD4T.js").catch(() => import("./node-pairing.js"))
-					]);
-					listAgentsForGateway?.(cfg);
-					resolveAssistantIdentity?.({ cfg, agentId: resolveDefaultAgentId(cfg) });
-					buildCommandsListResult?.({ cfg, agentId: resolveDefaultAgentId(cfg), includeArgs: true, scope: "text" });
-					await Promise.allSettled([
-						Promise.resolve(listDevicePairing?.()),
-						Promise.resolve(listNodePairing?.())
-					]);
-					params.log.info("warmup ok agents/identity/commands/nodes");
-				} catch (err) {
-					params.log.warn(\`warmup failed agents/identity/commands/nodes: \${String(err)}\`);
-				}
-				try {
-					await params.startChannels?.();
-				} catch {}
-			})();
-		}, 0);
-		return result;
-	});`,
-  );
-
-  if (out !== src) {
-    fs.writeFileSync(file, out, 'utf8');
-    console.log(`[patch-gateway-warmup-cache] patched ${file}`);
-    return 1;
-  }
-  return 0;
-}
-
 let patched = 0;
 for (const name of fs.readdirSync(distDir)) {
   const file = path.join(distDir, name);
   if (!fs.statSync(file).isFile() || !name.endsWith('.js')) continue;
   if (/^server-methods-.*\.js$/.test(name)) patched += patchServerMethods(file);
-  if (/^server\.impl-.*\.js$/.test(name)) patched += patchServerImpl(file);
 }
 
 if (patched === 0) {
