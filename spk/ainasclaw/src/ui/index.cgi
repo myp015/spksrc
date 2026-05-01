@@ -3042,7 +3042,7 @@ cat <<'HTML'
     .chip { background:#eef4ff; color:#175cd3; border:1px solid #c7d7fe; border-radius:999px; padding:2px 8px; font-size:13px; }
     .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:9999; overflow:hidden; padding:16px; }
     .modal { width:min(700px,90vw); max-height:calc(100vh - 32px); overflow:auto; background:#fff; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
-    .modal.model-modal { width:min(560px,90vw); }
+    .modal.model-modal { width:min(1400px,96vw); max-height:calc(100vh - 24px); }
     .modal h3 { margin:0 0 14px; font-size:18px; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
     @media (max-width: 900px) {
