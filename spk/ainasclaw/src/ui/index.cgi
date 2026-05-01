@@ -2619,6 +2619,8 @@ def force_stop():
     for cmd in [
         ['pkill','-f','/var/packages/ainasclaw/target/bin/openclaw gateway run'],
         ['pkill','-f','/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway'],
+        ['pkill','-f','/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway'],
+        ['pkill','-f','/volume1/@appstore/ainasclaw/bin/node /volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run'],
         ['pkill','-f','^openclaw-gateway$'],
         ['pkill','-x','openclaw-gateway']
     ]:

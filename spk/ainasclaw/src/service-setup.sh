@@ -2080,6 +2080,8 @@ stop_gateway_processes() {
     fi
     pkill -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
     pkill -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -f '/volume1/@appstore/ainasclaw/bin/node /volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
     pkill -f 'openclaw gateway run' >/dev/null 2>&1 || true
     pkill -x 'openclaw-gateway' >/dev/null 2>&1 || true
 }
