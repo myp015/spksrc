@@ -126,6 +126,7 @@ function patchServerImpl(file) {
     `params.log.info("gateway ready");
 		setTimeout(() => {
 			(async () => {
+				const cfg = params.gatewayPluginConfigAtStart ?? params.cfgAtStart;
 				try {
 					const [combinedStoreMod, sessionUtilsMod, { readSessionMessages }] = await Promise.all([
 						import("./combined-store-gateway-D6wKl8dT.js"),
@@ -134,9 +135,13 @@ function patchServerImpl(file) {
 					]);
 					const loadCombinedSessionStoreForGateway = combinedStoreMod.loadCombinedSessionStoreForGateway ?? combinedStoreMod.t;
 					const listSessionsFromStore = sessionUtilsMod.listSessionsFromStore ?? sessionUtilsMod.r;
-					const cfg = params.gatewayPluginConfigAtStart ?? params.cfgAtStart;
 					const { storePath, store } = loadCombinedSessionStoreForGateway(cfg);
-					listSessionsFromStore({ cfg, storePath, store, opts: {} });
+					listSessionsFromStore({
+						cfg,
+						storePath,
+						store,
+						opts: { includeGlobal: true, includeUnknown: true, activeMinutes: 0, limit: 0 }
+					});
 					const main = store?.sessions?.main;
 					if (main?.sessionId) readSessionMessages(main.sessionId, storePath, main.sessionFile);
 					params.log.info("warmup ok sessions.list/chat.history");
@@ -144,10 +149,29 @@ function patchServerImpl(file) {
 					params.log.warn(\`warmup failed sessions.list/chat.history: \${String(err)}\`);
 				}
 				try {
+					const [{ listAgentsForGateway }, { resolveAssistantIdentity }, { buildCommandsListResult }, { listDevicePairing }, { listNodePairing }] = await Promise.all([
+						import("./agents-C7vBW7FI.js"),
+						import("./assistant-identity-CM1C0tJd.js").catch(() => import("./assistant-identity.js")),
+						import("./server-methods-commands-D1Wc8m3A.js").catch(() => import("./server-methods/commands.js")),
+						import("./devices-CE2dN6GO.js").catch(() => import("./devices.js")),
+						import("./node-pairing-D4V4xD4T.js").catch(() => import("./node-pairing.js"))
+					]);
+					listAgentsForGateway?.(cfg);
+					resolveAssistantIdentity?.({ cfg, agentId: resolveDefaultAgentId(cfg) });
+					buildCommandsListResult?.({ cfg, agentId: resolveDefaultAgentId(cfg), includeArgs: true, scope: "text" });
+					await Promise.allSettled([
+						Promise.resolve(listDevicePairing?.()),
+						Promise.resolve(listNodePairing?.())
+					]);
+					params.log.info("warmup ok agents/identity/commands/nodes");
+				} catch (err) {
+					params.log.warn(\`warmup failed agents/identity/commands/nodes: \${String(err)}\`);
+				}
+				try {
 					await params.startChannels?.();
 				} catch {}
 			})();
-		}, 1500);
+		}, 0);
 		return result;
 	});`,
   );
