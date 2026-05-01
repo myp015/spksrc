@@ -3433,7 +3433,7 @@ cat <<'HTML'
           const options = ['<option value="custom-openai">自定义 OpenAI 兼容</option>'].concat(Object.entries(PROVIDER_PRESETS).map(([key, val]) => '<option value="' + esc(key) + '">' + esc(val.label) + '</option>')).join('');
           content.innerHTML = ''
             + '<div style="margin-bottom:12px;"><button class="btn primary" onclick="openModelDialog()">添加模型服务器</button></div>'
-            + '<div class="list" style="max-height:calc(100vh - 260px);overflow-y:auto;padding-right:4px;">'
+            + '<div class="list" style="height:100%;min-height:0;overflow:visible;padding-right:4px;">'
             + providers.map((p, idx) => {
                 const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
                 return '<div class="item">'
