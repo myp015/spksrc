@@ -1145,6 +1145,17 @@ try:
 except Exception:
     cfg = {}
 ch = cfg.setdefault('channels', {})
+
+# 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
+plugins = cfg.setdefault('plugins', {})
+plugins['enabled'] = True
+allow = plugins.get('allow')
+if not isinstance(allow, list):
+    allow = []
+entries = plugins.get('entries')
+if not isinstance(entries, dict):
+    entries = {}
+
 if isinstance(payload.get('feishu'), dict):
     f = ch.setdefault('feishu', {})
     app_id = (payload['feishu'].get('appId') or '').strip()
@@ -1216,16 +1227,6 @@ if isinstance(wx_payload, dict):
         if (not cur_default or cur_default not in acc) and account_ids:
             acc['default'] = account_ids[0]
             w['accounts'] = acc
-
-# 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
-plugins = cfg.setdefault('plugins', {})
-plugins['enabled'] = True
-allow = plugins.get('allow')
-if not isinstance(allow, list):
-    allow = []
-entries = plugins.get('entries')
-if not isinstance(entries, dict):
-    entries = {}
 
 channel_plugin_map = {
     'feishu': 'feishu',
