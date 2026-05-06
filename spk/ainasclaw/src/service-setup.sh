@@ -1458,14 +1458,44 @@ EOF
     ensure_session_store_dir
 
     # 用户要求：切换目录时仅按默认模板初始化，不做迁移。
-    # 若目标目录未初始化（无 config）或被清空，则使用模板（或最小空配置）重建。
+    # 若目标目录未初始化（无 config）或被清空，则使用模板重建。
+    # 若模板缺失，使用最小可用模板（不再写空 {}）。
     # 若工作目录已有配置文件，则保留并直接沿用，不再覆盖回模板。
     local fresh_install_config="0"
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
         if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
             cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
         else
-            echo "{}" > "${OPENCLAW_CONFIG_FILE}"
+            local fallback_token
+            fallback_token="$(tr -dc 'a-f0-9' </dev/urandom | head -c 32)"
+            [ -n "${fallback_token}" ] || fallback_token="123456"
+            cat > "${OPENCLAW_CONFIG_FILE}" <<EOF
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "port": 58789,
+    "auth": {
+      "mode": "token",
+      "token": "${fallback_token}"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "${OPENCLAW_WORKSPACE}/.openclaw"
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "bundledDiscovery": "allowlist",
+    "allow": ["browser"],
+    "entries": {
+      "browser": { "enabled": true },
+      "openclaw-weixin": { "enabled": false }
+    }
+  }
+}
+EOF
         fi
         fresh_install_config="1"
     fi
@@ -1487,11 +1517,12 @@ EOF
     # consume one-shot marker for workspace-switch default port reset
     rm -f "${SYNOPKG_PKGVAR}/force-default-port-on-next-start.flag" 2>/dev/null || true
 
-    # 始终将当前用户目录规则写回配置：
+    # 始终将当前用户目录规则写回配置，并补齐最低可运行 gateway 默认项：
     # workspace=/xxx
     # state/config=/xxx/.openclaw/openclaw.json
     "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
+const crypto = require("crypto");
 const cfgPath = process.argv[1];
 const ws = process.argv[2];
 const statePath = ws.endsWith("/.openclaw") ? ws : `${ws}/.openclaw`;
@@ -1500,11 +1531,25 @@ try {
   c.agents = c.agents || {};
   c.agents.defaults = c.agents.defaults || {};
   c.agents.defaults.workspace = statePath;
+
+  c.gateway = c.gateway || {};
+  if (!c.gateway.mode) c.gateway.mode = "local";
+  if (!c.gateway.bind) c.gateway.bind = "lan";
+  if (!c.gateway.port) c.gateway.port = 58789;
+  c.gateway.auth = c.gateway.auth || {};
+  if (!c.gateway.auth.mode) c.gateway.auth.mode = "token";
+  if (!c.gateway.auth.token) c.gateway.auth.token = crypto.randomBytes(16).toString("hex");
+
+  c.plugins = c.plugins || {};
+  if (!c.plugins.bundledDiscovery) c.plugins.bundledDiscovery = "allowlist";
+  if (Object.prototype.hasOwnProperty.call(c.plugins, "installs")) delete c.plugins.installs;
+
   c.memory = c.memory || {};
   c.memory.qmd = c.memory.qmd || {};
   c.memory.qmd.paths = Array.isArray(c.memory.qmd.paths) ? c.memory.qmd.paths : [];
   if (!c.memory.qmd.paths.length) c.memory.qmd.paths.push({ path: statePath, name: "workspace", pattern: "**/*.md" });
   else c.memory.qmd.paths[0].path = statePath;
+
   fs.writeFileSync(cfgPath, JSON.stringify(c, null, 2) + "\n", "utf8");
 } catch {}
 ' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_WORKSPACE}"
