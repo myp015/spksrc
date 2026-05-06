@@ -1500,6 +1500,44 @@ EOF
         fresh_install_config="1"
     fi
 
+    # 防御式保障：若配置文件仍不存在/为空，强制补种模板（或最小配置），避免后续 doctor 报 gateway.mode 缺失。
+    if [ ! -s "${OPENCLAW_CONFIG_FILE}" ]; then
+        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
+            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE}"
+        else
+            local fallback_token2
+            fallback_token2="$(tr -dc 'a-f0-9' </dev/urandom | head -c 32)"
+            [ -n "${fallback_token2}" ] || fallback_token2="123456"
+            cat > "${OPENCLAW_CONFIG_FILE}" <<EOF
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "port": 58789,
+    "auth": {
+      "mode": "token",
+      "token": "${fallback_token2}"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "${OPENCLAW_WORKSPACE}/.openclaw"
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "bundledDiscovery": "allowlist",
+    "allow": ["browser"],
+    "entries": {
+      "browser": { "enabled": true },
+      "openclaw-weixin": { "enabled": false }
+    }
+  }
+}
+EOF
+        fi
+    fi
+
     # 端口策略：默认固定 58789；首次安装/目录初始化强制回归 58789（不再随机）。
     local assigned_gateway_port=""
     local force_default_port="0"
