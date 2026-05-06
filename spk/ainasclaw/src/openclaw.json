@@ -84,8 +84,8 @@
         "enabled": false
       }
     },
-    "installs": {},
     "enabled": true,
+    "bundledDiscovery": "allowlist",
     "allow": [
       "browser"
     ]
