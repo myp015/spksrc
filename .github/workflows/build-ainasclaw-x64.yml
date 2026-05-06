@@ -54,3 +54,14 @@ jobs:
           name: ainasclaw-x64-7.2
           path: packages/ainasclaw_x64-7.2_*.spk
           if-no-files-found: error
+
+      - name: Upload doctor/build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ainasclaw-x64-7.2-logs
+          path: |
+            spk/ainasclaw/work-*/doctor.log
+            spk/ainasclaw/status-build.log
+            spk/ainasclaw/build-*.log
+          if-no-files-found: warn
