@@ -930,7 +930,7 @@ NGINX_EOF
             sudo -n ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
         fi
     fi
-    if nginx -t >/dev/null 2>&1; then
+    if nginx -t >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || {
             if command -v sudo >/dev/null 2>&1; then
                 sudo -n systemctl reload nginx >/dev/null 2>&1 || true
@@ -1298,7 +1298,7 @@ NGINX_EOF
             sudo -n ln -sf "${SYNOPKG_PKGVAR}/alias.openclaw-terminal.conf" /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
         fi
     fi
-    if nginx -t >/dev/null 2>&1; then
+    if nginx -t >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || {
             if command -v sudo >/dev/null 2>&1; then
                 sudo -n systemctl reload nginx >/dev/null 2>&1 || true
