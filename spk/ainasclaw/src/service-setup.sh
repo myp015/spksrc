@@ -1475,9 +1475,14 @@ EOF
     "mode": "local",
     "bind": "lan",
     "port": 58789,
+    "controlUi": {
+      "allowedOrigins": ["*"],
+      "allowInsecureAuth": true,
+      "dangerouslyDisableDeviceAuth": true
+    },
     "auth": {
       "mode": "token",
-      "token": "${fallback_token}"
+      "token": "123456"
     }
   },
   "agents": {
@@ -1514,9 +1519,14 @@ EOF
     "mode": "local",
     "bind": "lan",
     "port": 58789,
+    "controlUi": {
+      "allowedOrigins": ["*"],
+      "allowInsecureAuth": true,
+      "dangerouslyDisableDeviceAuth": true
+    },
     "auth": {
       "mode": "token",
-      "token": "${fallback_token2}"
+      "token": "123456"
     }
   },
   "agents": {

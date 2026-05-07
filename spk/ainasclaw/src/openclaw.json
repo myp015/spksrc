@@ -123,15 +123,15 @@
     "mode": "local",
     "controlUi": {
       "basePath": "/default",
-      "allowInsecureAuth": true,
-      "dangerouslyDisableDeviceAuth": true,
       "allowedOrigins": [
         "*"
-      ]
+      ],
+      "allowInsecureAuth": true,
+      "dangerouslyDisableDeviceAuth": true
     },
     "auth": {
-      "token": "123456",
-      "mode": "token"
+      "mode": "token",
+      "token": "123456"
     }
   }
 }
