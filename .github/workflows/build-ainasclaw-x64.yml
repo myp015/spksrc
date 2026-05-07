@@ -12,7 +12,7 @@ on:
       ref:
         description: 'Git ref to build (branch/tag/SHA)'
         required: false
-        default: 'be9db2d'
+        default: 'be9db2d85a664794b4df0b74a82a771495f19359'
 
 jobs:
   build-ainasclaw-x64:
@@ -23,7 +23,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.ref || 'be9db2d' }}
+          ref: ${{ github.event.inputs.ref || 'be9db2d85a664794b4df0b74a82a771495f19359' }}
           fetch-depth: 0
 
       - name: Prepare signing key
