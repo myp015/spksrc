@@ -735,7 +735,7 @@ except Exception:
 
 # keep workspace/extensions free of channel plugin copies (DSM trust checks may block uid!=0).
 # channel plugins are staged under app/dist/extensions by service script.
-for pkg_name in ['feishu-openclaw-plugin', 'dingtalk', 'wecom', 'openclaw-qqbot', 'openclaw-weixin']:
+for pkg_name in ['feishu', 'feishu-openclaw-plugin', 'dingtalk', 'wecom', 'qqbot', 'openclaw-qqbot', 'openclaw-weixin']:
     try:
         dst = os.path.join(ext_dir, pkg_name)
         import shutil

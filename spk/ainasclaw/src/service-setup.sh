@@ -349,9 +349,11 @@ sync_bundled_channel_plugins_to_extensions() {
     # Channel plugins are shipped in app/dist/extensions (root-owned) instead.
     rm -rf \
         "${ext_dir}/feishu-openclaw-plugin" \
+        "${ext_dir}/feishu" \
         "${ext_dir}/dingtalk" \
         "${ext_dir}/wecom" \
         "${ext_dir}/openclaw-qqbot" \
+        "${ext_dir}/qqbot" \
         "${ext_dir}/openclaw-weixin" 2>/dev/null || true
 }
 
@@ -397,10 +399,13 @@ harden_extension_permissions() {
     # Also harden bundled plugin directories under app/node_modules to avoid "plugin not found"
     # caused by suspicious ownership checks on direct load-path candidates.
     for path in \
+        "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
+        "${OPENCLAW_APP_DIR}/node_modules/@openclaw/qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/qqbot-connector" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
     do
         [ -d "${path}" ] || continue
@@ -658,6 +663,11 @@ ensure_openclaw_in_path() {
         if [ -x "${target_cli%/openclaw}/node" ]; then
             ln -sfn "${target_cli%/openclaw}/node" /usr/local/bin/node 2>/dev/null || true
         fi
+
+        # DSM compatibility: npm helper scripts may resolve relative to bin/node_modules/npm.
+        # Provide a stable bridge to packaged npm under lib/node_modules/npm.
+        mkdir -p "${target_cli%/openclaw}/node_modules" 2>/dev/null || true
+        ln -sfn ../../lib/node_modules/npm "${target_cli%/openclaw}/node_modules/npm" 2>/dev/null || true
     fi
 
     # Drop deprecated compatibility command.
@@ -1269,6 +1279,13 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 }
 
 service_prestart() {
+
+    # Normalize ownership before startup to avoid runtime EACCES on config/tasks/flows.
+    local eff_user="$(resolve_effective_service_user)"
+    if [ -n "${eff_user}" ]; then
+        chown "${eff_user}:${eff_user}" "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
+        chown -R "${eff_user}:${eff_user}" "${OPENCLAW_STATE_DIR}/logs" "${OPENCLAW_STATE_DIR}/tasks" "${OPENCLAW_STATE_DIR}/flows" "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/plugins" "${OPENCLAW_STATE_DIR}/agents" 2>/dev/null || true
+    fi
 
     # Ensure nginx alias survives DSM reboot/service start (postinst is not called on reboot).
     mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
@@ -2080,10 +2097,22 @@ const legacyAliases = {
   "openclaw-weixin": ["openclaw-weixin", "weixin"]
 };
 
+const preferredPluginIdByChannel = {
+  feishu: "feishu",
+  dingtalk: "dingtalk",
+  wecom: "wecom",
+  qqbot: "qqbot",
+  "openclaw-weixin": "openclaw-weixin"
+};
+
 const resolvePluginsForChannel = (channelId) => {
   const ids = [];
   for (const [pluginId, channels] of pluginChannelMap.entries()) {
     if (pluginId === channelId || channels.includes(channelId)) ids.push(pluginId);
+  }
+  const preferred = preferredPluginIdByChannel[channelId];
+  if (preferred && ids.includes(preferred)) {
+    return [preferred, ...ids.filter((id) => id !== preferred)];
   }
   return ids;
 };
@@ -2116,7 +2145,8 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
     continue;
   }
 
-  const selectedId = available[0];
+  const preferred = preferredPluginIdByChannel[channelId];
+  const selectedId = preferred && available.includes(preferred) ? preferred : available[0];
   cfg.plugins.entries[selectedId] = cfg.plugins.entries[selectedId] || {};
   if (cfg.plugins.entries[selectedId].enabled !== true) {
     cfg.plugins.entries[selectedId].enabled = true;
