@@ -652,6 +652,12 @@ ensure_openclaw_in_path() {
                 echo "[openclaw]       ln -sfn ${target_cli} ${link_cli}" 1>&2
             fi
         fi
+
+        # Ensure `#!/usr/bin/env node` can resolve the packaged node binary in shells
+        # that do not already inherit the package bin directory in PATH.
+        if [ -x "${target_cli%/openclaw}/node" ]; then
+            ln -sfn "${target_cli%/openclaw}/node" /usr/local/bin/node 2>/dev/null || true
+        fi
     fi
 
     # Drop deprecated compatibility command.
@@ -1095,9 +1101,14 @@ cfg.agents.defaults = cfg.agents.defaults || {};
 if (workspace) cfg.agents.defaults.workspace = workspace;
 
 cfg.gateway = cfg.gateway || {};
+if (!cfg.gateway.mode) cfg.gateway.mode = "local";
+if (!cfg.gateway.bind) cfg.gateway.bind = "lan";
 if (Number.isInteger(wizardGatewayPort) && wizardGatewayPort >= 1024 && wizardGatewayPort <= 65535) {
   cfg.gateway.port = wizardGatewayPort;
 }
+if (!cfg.gateway.auth || typeof cfg.gateway.auth !== "object") cfg.gateway.auth = {};
+if (!cfg.gateway.auth.mode) cfg.gateway.auth.mode = "token";
+if (!cfg.gateway.auth.token) cfg.gateway.auth.token = crypto.randomBytes(16).toString("hex");
 if (modelIdInput) {
   cfg.agents.defaults.model = cfg.agents.defaults.model || {};
   cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};
