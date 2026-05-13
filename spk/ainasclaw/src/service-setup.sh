@@ -1193,8 +1193,8 @@ if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   cfg.channels.feishu.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.feishu);
 } else {
-  delete cfg.channels.feishu;
-  disablePlugin(selectedPluginIds.feishu);
+  // Preserve existing channel/plugin config when wizard credentials are absent.
+  // This avoids wiping user-configured channels on restart/reinstall flows.
 }
 
 const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
@@ -1208,8 +1208,7 @@ if (dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
   cfg.channels.dingtalk.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.dingtalk);
 } else {
-  delete cfg.channels.dingtalk;
-  disablePlugin(selectedPluginIds.dingtalk);
+  // Preserve existing channel/plugin config when wizard credentials are absent.
 }
 
 const qqbotAppId = trim(process.env.WIZARD_QQBOT_APP_ID);
@@ -1223,8 +1222,7 @@ if (qqbotAppId && qqbotClientSecret && selectedPluginIds.qqbot) {
   cfg.channels.qqbot.allowFrom = ["*"];
   enablePlugin(selectedPluginIds.qqbot);
 } else {
-  delete cfg.channels.qqbot;
-  disablePlugin(selectedPluginIds.qqbot);
+  // Preserve existing channel/plugin config when wizard credentials are absent.
 }
 
 const wecomBotId = trim(process.env.WIZARD_WECOM_BOT_ID);
@@ -1242,8 +1240,7 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
   cfg.channels.wecom.dm.createAgentOnFirstMessage = false;
   enablePlugin(selectedPluginIds.wecom);
 } else {
-  delete cfg.channels.wecom;
-  disablePlugin(selectedPluginIds.wecom);
+  // Preserve existing channel/plugin config when wizard credentials are absent.
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
