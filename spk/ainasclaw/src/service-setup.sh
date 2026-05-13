@@ -1280,11 +1280,15 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
 service_prestart() {
 
-    # Normalize ownership before startup to avoid runtime EACCES on config/tasks/flows.
+    # Normalize ownership/permissions before startup to avoid runtime EACCES on config watcher,
+    # sessions/tasks/flows, and hot-reload paths.
     local eff_user="$(resolve_effective_service_user)"
     if [ -n "${eff_user}" ]; then
+        chown -R "${eff_user}:${eff_user}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
         chown "${eff_user}:${eff_user}" "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
-        chown -R "${eff_user}:${eff_user}" "${OPENCLAW_STATE_DIR}/logs" "${OPENCLAW_STATE_DIR}/tasks" "${OPENCLAW_STATE_DIR}/flows" "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/plugins" "${OPENCLAW_STATE_DIR}/agents" 2>/dev/null || true
+        chmod 700 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
+        chmod 600 "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
+        chmod -R u+rwX,go-rwx "${OPENCLAW_STATE_DIR}/logs" "${OPENCLAW_STATE_DIR}/tasks" "${OPENCLAW_STATE_DIR}/flows" "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/plugins" "${OPENCLAW_STATE_DIR}/agents" 2>/dev/null || true
     fi
 
     # Ensure nginx alias survives DSM reboot/service start (postinst is not called on reboot).

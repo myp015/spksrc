@@ -3635,7 +3635,7 @@ cat <<'HTML'
         document.getElementById('dlg_api').value = 'openai-completions';
         document.getElementById('dlg_base_url').value = 'http://127.0.0.1:8317/v1';
         const keyEl = document.getElementById('dlg_api_key');
-        if (keyEl && !keyEl.value) keyEl.value = 'sk-V5zPkG6MJrIpxgmDw';
+        if (keyEl && !keyEl.value) keyEl.value = 'sk-5XeLS0KyXOc9Tkq4y';
         setModelSelectOptions([], []);
         document.getElementById('dlg_model_ids').value = '';
         setMsg('已切换到 custom-openai 默认模板（已清空已选模型）', 'ok');
