@@ -74,7 +74,53 @@
       "workspaceOnly": true
     }
   },
-  "channels": {},
+  "channels": {
+    "feishu": {
+      "enabled": false,
+      "defaultAccount": "default",
+      "accounts": {
+        "default": {}
+      },
+      "dmPolicy": "open",
+      "groupPolicy": "open",
+      "allowFrom": [
+        "*"
+      ]
+    },
+    "qqbot": {
+      "enabled": false,
+      "dmPolicy": "open",
+      "groupPolicy": "open",
+      "allowFrom": [
+        "*"
+      ]
+    },
+    "dingtalk": {
+      "enabled": false,
+      "dmPolicy": "open",
+      "groupPolicy": "open",
+      "allowFrom": [
+        "*"
+      ]
+    },
+    "wecom": {
+      "enabled": false,
+      "dmPolicy": "open",
+      "groupPolicy": "open",
+      "allowFrom": [
+        "*"
+      ],
+      "dynamicAgents": {
+        "enabled": false
+      },
+      "dm": {
+        "createAgentOnFirstMessage": false
+      }
+    },
+    "openclaw-weixin": {
+      "enabled": false
+    }
+  },
   "plugins": {
     "entries": {
       "browser": {
