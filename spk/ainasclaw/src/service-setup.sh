@@ -1724,8 +1724,16 @@ try {
         rm -rf "${OPENCLAW_STATE_DIR_BASE}/extensions" 2>/dev/null || true
     fi
 
-    # Safety: if a channel config exists but its plugin is unavailable in current runtime,
-    # drop that channel config and stale plugin refs to avoid "unknown channel id" startup failures.
+    # Safety: preserve configured channels during install/upgrade.
+    #
+    # Why this exists:
+    # - Cover installs/upgrades can briefly see partial plugin discovery.
+    # - Earlier logic deleted cfg.channels entries when a plugin was not found.
+    # - That caused real user channels to disappear after reinstall/upgrade.
+    #
+    # New behavior:
+    # - Never delete an existing channel just because discovery is incomplete.
+    # - Keep the channel in cfg.channels and best-effort enable/allow its plugin.
     "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
 const path = require("path");
@@ -2137,16 +2145,8 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
     continue;
   }
 
-  if (!available.length) {
-    delete cfg.channels[channelId];
-    for (const id of aliases) delete cfg.plugins.entries[id];
-    cfg.plugins.allow = cfg.plugins.allow.filter((id) => !aliases.includes(id));
-    changed = true;
-    continue;
-  }
-
   const preferred = preferredPluginIdByChannel[channelId];
-  const selectedId = preferred && available.includes(preferred) ? preferred : available[0];
+  const selectedId = (preferred && available.includes(preferred)) ? preferred : (available[0] || channelId);
   cfg.plugins.entries[selectedId] = cfg.plugins.entries[selectedId] || {};
   if (cfg.plugins.entries[selectedId].enabled !== true) {
     cfg.plugins.entries[selectedId].enabled = true;
@@ -2156,13 +2156,17 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
     cfg.plugins.allow.push(selectedId);
     changed = true;
   }
-  // Clean stale legacy aliases if they differ from selected plugin id.
+
+  // Only normalize legacy aliases when a real replacement is visible.
+  // Do not delete the configured channel itself on discovery misses.
   for (const id of aliases) {
-    if (id !== selectedId) {
-      if (cfg.plugins.entries[id]) {
-        delete cfg.plugins.entries[id];
-        changed = true;
-      }
+    if (id === channelId || id === selectedId) continue;
+    if (available.includes(id)) continue;
+    if (selectedId !== channelId && cfg.plugins.entries[id]) {
+      delete cfg.plugins.entries[id];
+      changed = true;
+    }
+    if (selectedId !== channelId) {
       const before = cfg.plugins.allow.length;
       cfg.plugins.allow = cfg.plugins.allow.filter((x) => x !== id);
       if (cfg.plugins.allow.length !== before) changed = true;
