@@ -80,6 +80,18 @@
       "browser": {
         "enabled": true
       },
+      "feishu": {
+        "enabled": false
+      },
+      "qqbot": {
+        "enabled": false
+      },
+      "dingtalk": {
+        "enabled": false
+      },
+      "wecom": {
+        "enabled": false
+      },
       "openclaw-weixin": {
         "enabled": false
       }
