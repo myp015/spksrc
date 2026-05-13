@@ -2568,27 +2568,58 @@ if action in ('start','restart'):
     with open(cfg,'w',encoding='utf-8') as f:
         json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
 
-    # 安装后自动补齐完整默认策略（全新可用配置）
+    # 安装后自动补齐插件策略：保留已有 allowlist，并与“已启用渠道”做最小对齐。
+    # 避免把用户已配置渠道在重启后错误降级成仅 browser。
     try:
         plugins = c.setdefault('plugins', {})
         plugins['enabled'] = True
         allow = plugins.get('allow')
         if not isinstance(allow, list):
             allow = []
-        # 渠道插件默认不启用；仅在用户添加对应渠道后再写入 allow/entries。
-        plugins['allow'] = [x for x in allow if x in ('browser',)]
         entries = plugins.get('entries')
         if not isinstance(entries, dict):
             entries = {}
-        for pid in ['feishu','qqbot','dingtalk','wecom','openclaw-weixin']:
+
+        channel_plugin_map = {
+            'feishu': 'feishu',
+            'qqbot': 'qqbot',
+            'dingtalk': 'dingtalk',
+            'wecom': 'wecom',
+            'openclaw-weixin': 'openclaw-weixin',
+            'weixin': 'openclaw-weixin',
+        }
+        channels = c.get('channels') or {}
+
+        # browser 永远保留
+        if 'browser' not in allow:
+            allow.append('browser')
+        b = entries.get('browser')
+        if not isinstance(b, dict):
+            b = {}
+        b['enabled'] = True
+        entries['browser'] = b
+
+        # 仅对“当前已启用渠道”做放行与启用，未启用渠道不强行开启
+        for cid, cv in channels.items():
+            enabled = True
+            if isinstance(cv, dict):
+                enabled = bool(cv.get('enabled', True))
+            if not enabled:
+                continue
+            pid = channel_plugin_map.get(cid)
+            if not pid:
+                continue
+            if pid not in allow:
+                allow.append(pid)
             ent = entries.get(pid)
             if not isinstance(ent, dict):
                 ent = {}
-            ent['enabled'] = False
+            ent['enabled'] = True
             entries[pid] = ent
+
+        plugins['allow'] = list(dict.fromkeys(allow))
         plugins['entries'] = entries
 
-        # 不在启动流程里强行重建/启用 channels，避免用户删除后的渠道在重启后“复活”。
         with open(cfg,'w',encoding='utf-8') as f2:
             json.dump(c,f2,ensure_ascii=False,indent=2); f2.write('\n')
     except Exception:
