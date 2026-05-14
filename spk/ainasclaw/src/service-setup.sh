@@ -919,6 +919,18 @@ service_postinst() {
     ensure_openclaw_in_path
     ensure_terminal_alias_sudoers
 
+    # Guard against installer contexts that invoke postinst from non-canonical
+    # package roots (e.g. /volume1/@appstore/ainasclaw). Bootstrap/state writes
+    # must run only in canonical runtime target to avoid ownership/state rollback.
+    case "${SYNOPKG_PKGDEST}" in
+      /var/packages/ainasclaw/target|/var/packages/openclaw/target) ;;
+      *)
+        mkdir -p "${SYNOPKG_PKGVAR}" >/dev/null 2>&1 || true
+        echo "[postinst-debug] skip_noncanonical_pkgdest=${SYNOPKG_PKGDEST}" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
+        return 0
+        ;;
+    esac
+
     mkdir -p "${SYNOPKG_PKGVAR}" >/dev/null 2>&1 || true
     {
       echo "[postinst-debug] enter status=${SYNOPKG_PKG_STATUS} pkgdest=${SYNOPKG_PKGDEST}"
