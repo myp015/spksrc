@@ -1311,10 +1311,15 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         # 进而出现“ttyd 在跑但 gateway 配置缺失”的假运行状态。
         local eff_user_postinst eff_group_postinst
         eff_user_postinst="$(resolve_effective_service_user)"
+        if [ -z "${eff_user_postinst}" ] && id sc-openclaw >/dev/null 2>&1; then
+            eff_user_postinst="sc-openclaw"
+        fi
         eff_group_postinst="$(resolve_effective_service_group "${eff_user_postinst}")"
         if [ -n "${eff_user_postinst}" ] && id "${eff_user_postinst}" >/dev/null 2>&1; then
             chown -R "${eff_user_postinst}:${eff_group_postinst}" "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
-            chmod 700 "${OPENCLAW_WORKSPACE}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
+            chmod -R u+rwX "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
+            find "${OPENCLAW_WORKSPACE}" -type d -exec chmod 700 {} \; 2>/dev/null || true
+            find "${OPENCLAW_WORKSPACE}" -type f -exec chmod 600 {} \; 2>/dev/null || true
         fi
 
         ensure_session_store_dir
