@@ -1293,9 +1293,49 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         chmod 666 "${WORKSPACE_PTR_FILE}" "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
 
         mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+
+        # 全新安装时 /volume1/openclaw 常由 root 创建；若不提前改归属，
+        # DSM7 下 prestart(非 root) 会因无写权限导致 .openclaw/openclaw.json 无法落盘，
+        # 进而出现“ttyd 在跑但 gateway 配置缺失”的假运行状态。
+        local eff_user_postinst
+        eff_user_postinst="$(resolve_effective_service_user)"
+        if [ -n "${eff_user_postinst}" ] && id "${eff_user_postinst}" >/dev/null 2>&1; then
+            chown -R "${eff_user_postinst}:${eff_user_postinst}" "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
+            chmod 700 "${OPENCLAW_WORKSPACE}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
+        fi
+
         ensure_session_store_dir
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
-            cp -f "${bootstrap_config_file}" "${OPENCLAW_CONFIG_FILE}"
+            cp -f "${bootstrap_config_file}" "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+        fi
+        # 兜底：若模板复制失败（权限/路径等），直接写入最小可运行配置，保证首启不空转。
+        if [ ! -s "${OPENCLAW_CONFIG_FILE}" ]; then
+            cat > "${OPENCLAW_CONFIG_FILE}" <<EOF
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "port": 58789,
+    "auth": {
+      "mode": "token",
+      "token": "***"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "${OPENCLAW_WORKSPACE}"
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "bundledDiscovery": "allowlist",
+    "allow": ["browser"],
+    "entries": {
+      "browser": { "enabled": true }
+    }
+  }
+}
+EOF
         fi
 
         ensure_self_package_link
