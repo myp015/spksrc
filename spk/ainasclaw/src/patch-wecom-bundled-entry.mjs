@@ -20,8 +20,21 @@ const copyIfMissing = (from, to) => {
 const patchPluginManifestId = (file, nextId) => {
   if (!fs.existsSync(file)) return false;
   const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (json.id === nextId) return false;
+  const prev = JSON.stringify(json);
   json.id = nextId;
+  if (JSON.stringify(json) === prev) return false;
+  fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n', 'utf8');
+  return true;
+};
+
+const patchPluginManifestContract = (file, { id, channels, extensions }) => {
+  if (!fs.existsSync(file)) return false;
+  const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const prev = JSON.stringify(json);
+  json.id = id;
+  if (Array.isArray(channels) && channels.length) json.channels = channels;
+  if (Array.isArray(extensions) && extensions.length) json.extensions = extensions;
+  if (JSON.stringify(json) === prev) return false;
   fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n', 'utf8');
   return true;
 };
@@ -96,7 +109,11 @@ const feishuEntry = defineBundledChannelEntry({
 export default feishuEntry;
 `,
   );
-  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'feishu');
+  patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
+    id: 'feishu',
+    channels: ['feishu'],
+    extensions: ['./index.js']
+  });
   patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'feishu', 'feishu');
   return 1;
 };
@@ -139,7 +156,11 @@ const qqbotEntry = defineBundledChannelEntry({
 export default qqbotEntry;
 `,
   );
-  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'qqbot');
+  patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
+    id: 'qqbot',
+    channels: ['qqbot'],
+    extensions: ['./index.ts']
+  });
   patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'qqbot', 'qqbot');
   return 1;
 };
@@ -182,7 +203,11 @@ const dingtalkEntry = defineBundledChannelEntry({
 export default dingtalkEntry;
 `,
   );
-  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'dingtalk');
+  patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
+    id: 'dingtalk',
+    channels: ['dingtalk'],
+    extensions: ['./index.ts']
+  });
   patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'dingtalk', 'dingtalk');
   return 1;
 };
@@ -230,7 +255,11 @@ const wecomEntry = defineBundledChannelEntry({
 export default wecomEntry;
 `,
   );
-  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'wecom');
+  patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
+    id: 'wecom',
+    channels: ['wecom'],
+    extensions: ['./index.js']
+  });
   patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'wecom', 'wecom');
   return 1;
 };
@@ -271,7 +300,11 @@ const weixinEntry = defineBundledChannelEntry({
 export default weixinEntry;
 `,
   );
-  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'openclaw-weixin');
+  patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
+    id: 'openclaw-weixin',
+    channels: ['openclaw-weixin'],
+    extensions: ['./index.ts']
+  });
   patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'openclaw-weixin', 'openclaw-weixin');
   return 1;
 };
