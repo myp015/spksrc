@@ -45,6 +45,18 @@ PY
     printf '%s' ''
 }
 
+resolve_effective_service_group() {
+    local u="${1:-}"
+    [ -n "${u}" ] || return 0
+    local g
+    g="$(id -gn "${u}" 2>/dev/null || true)"
+    if [ -n "${g}" ]; then
+        printf '%s' "${g}"
+        return 0
+    fi
+    printf '%s' 'synocommunity'
+}
+
 cleanup_stale_runtime_deps_locks() {
     local deps_root="${OPENCLAW_STATE_DIR}/plugin-runtime-deps"
     [ -d "${deps_root}" ] || return 0
@@ -1297,10 +1309,11 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         # 全新安装时 /volume1/openclaw 常由 root 创建；若不提前改归属，
         # DSM7 下 prestart(非 root) 会因无写权限导致 .openclaw/openclaw.json 无法落盘，
         # 进而出现“ttyd 在跑但 gateway 配置缺失”的假运行状态。
-        local eff_user_postinst
+        local eff_user_postinst eff_group_postinst
         eff_user_postinst="$(resolve_effective_service_user)"
+        eff_group_postinst="$(resolve_effective_service_group "${eff_user_postinst}")"
         if [ -n "${eff_user_postinst}" ] && id "${eff_user_postinst}" >/dev/null 2>&1; then
-            chown -R "${eff_user_postinst}:${eff_user_postinst}" "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
+            chown -R "${eff_user_postinst}:${eff_group_postinst}" "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
             chmod 700 "${OPENCLAW_WORKSPACE}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
         fi
 
@@ -1352,9 +1365,10 @@ service_prestart() {
     # Normalize ownership/permissions before startup to avoid runtime EACCES on config watcher,
     # sessions/tasks/flows, and hot-reload paths.
     local eff_user="$(resolve_effective_service_user)"
+    local eff_group="$(resolve_effective_service_group "${eff_user}")"
     if [ -n "${eff_user}" ]; then
-        chown -R "${eff_user}:${eff_user}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
-        chown "${eff_user}:${eff_user}" "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
+        chown -R "${eff_user}:${eff_group}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
+        chown "${eff_user}:${eff_group}" "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
         chmod 700 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
         chmod 600 "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
         chmod -R u+rwX,go-rwx "${OPENCLAW_STATE_DIR}/logs" "${OPENCLAW_STATE_DIR}/tasks" "${OPENCLAW_STATE_DIR}/flows" "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/plugins" "${OPENCLAW_STATE_DIR}/agents" 2>/dev/null || true
