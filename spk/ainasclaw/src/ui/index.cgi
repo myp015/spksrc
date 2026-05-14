@@ -1157,18 +1157,19 @@ if not isinstance(entries, dict):
     entries = {}
 
 if isinstance(payload.get('feishu'), dict):
-    f = ch.setdefault('feishu', {})
     app_id = (payload['feishu'].get('appId') or '').strip()
     app_secret = (payload['feishu'].get('appSecret') or '').strip()
-    if app_id:
+    has_cred = bool(app_id and app_secret)
+    if has_cred:
+        f = ch.setdefault('feishu', {})
         f.setdefault('defaultAccount', 'default')
         ac = f.setdefault('accounts', {}).setdefault(f['defaultAccount'], {})
         ac['appId'] = app_id
-    if app_secret:
-        f.setdefault('defaultAccount', 'default')
-        ac = f.setdefault('accounts', {}).setdefault(f['defaultAccount'], {})
         ac['appSecret'] = app_secret
-    f['dmPolicy'] = 'open'; f['groupPolicy'] = 'open'; f['allowFrom'] = ['*']; f['enabled'] = True
+        f['dmPolicy'] = 'open'; f['groupPolicy'] = 'open'; f['allowFrom'] = ['*']; f['enabled'] = True
+    else:
+        # Empty/partial Feishu input should not leave a half-configured shell behind.
+        ch.pop('feishu', None)
 if isinstance(payload.get('wecom'), dict):
     bot_id = (payload['wecom'].get('botId') or '').strip()
     sec = (payload['wecom'].get('secret') or '').strip()
@@ -1202,19 +1203,29 @@ if isinstance(payload.get('wecom'), dict):
         # Empty/partial WeCom input should not leave a half-configured shell behind.
         ch.pop('wecom', None)
 if isinstance(payload.get('dingtalk'), dict):
-    d = ch.setdefault('dingtalk', {})
     cid = (payload['dingtalk'].get('clientId') or '').strip()
     csec = (payload['dingtalk'].get('clientSecret') or '').strip()
-    if cid: d['clientId'] = cid
-    if csec: d['clientSecret'] = csec
-    d['enabled'] = True; d['dmPolicy'] = 'open'; d['groupPolicy'] = 'open'; d['allowFrom'] = ['*']
+    has_cred = bool(cid and csec)
+    if has_cred:
+        d = ch.setdefault('dingtalk', {})
+        d['clientId'] = cid
+        d['clientSecret'] = csec
+        d['enabled'] = True; d['dmPolicy'] = 'open'; d['groupPolicy'] = 'open'; d['allowFrom'] = ['*']
+    else:
+        # Empty/partial DingTalk input should not leave a half-configured shell behind.
+        ch.pop('dingtalk', None)
 if isinstance(payload.get('qqbot'), dict):
-    q = ch.setdefault('qqbot', {})
     aid = (payload['qqbot'].get('appId') or '').strip()
     sec = (payload['qqbot'].get('clientSecret') or '').strip()
-    if aid: q['appId'] = aid
-    if sec: q['clientSecret'] = sec
-    q['enabled'] = True; q['dmPolicy']='open'; q['groupPolicy']='open'; q['allowFrom']=['*']
+    has_cred = bool(aid and sec)
+    if has_cred:
+        q = ch.setdefault('qqbot', {})
+        q['appId'] = aid
+        q['clientSecret'] = sec
+        q['enabled'] = True; q['dmPolicy']='open'; q['groupPolicy']='open'; q['allowFrom']=['*']
+    else:
+        # Empty/partial QQBot input should not leave a half-configured shell behind.
+        ch.pop('qqbot', None)
 wx_payload = payload.get('openclaw-weixin') if isinstance(payload.get('openclaw-weixin'), dict) else payload.get('weixin')
 if isinstance(wx_payload, dict):
     w = ch.setdefault('openclaw-weixin', {})
