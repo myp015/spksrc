@@ -48,7 +48,7 @@ jobs:
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
           entrypoint: /bin/bash
-          args: -lc "set -e; cd /github/workspace/spk/ainasclaw && SPK_SIGN_KEY_PATH=/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem make arch-x64-7.2"
+          args: -lc "set -e; cd /github/workspace/spk/ainasclaw && SPK_SIGN_KEY_PATH=/github/workspace/.openclaw/keys/ainasclaw/spk-signing-private.pem make V=s arch-x64-7.2"
 
       - name: Upload SPK artifact
         uses: actions/upload-artifact@v4
