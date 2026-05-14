@@ -362,13 +362,27 @@ sync_bundled_channel_plugins_to_stock_extensions() {
     mkdir -p "${stock_ext_dir}"
 
     # Stage DSM channel plugins into stock extension root (trusted root-owned source).
-    # Keep WeCom in node_modules for dependency resolution, and also stage a trusted
-    # dist/extensions/wecom copy so runtime/doctor can discover it as an installed plugin.
-    rm -rf "${stock_ext_dir}/wecom" 2>/dev/null || true
+    #
+    # The bundled channel entry patch rewrites vendor package entrypoints and
+    # manifests to the canonical OpenClaw channel ids we want DSM/runtime to see,
+    # so we only need one trusted dir per canonical channel id here.
+    rm -rf \
+        "${stock_ext_dir}/feishu" \
+        "${stock_ext_dir}/feishu-openclaw-plugin" \
+        "${stock_ext_dir}/dingtalk" \
+        "${stock_ext_dir}/openclaw-dingtalk" \
+        "${stock_ext_dir}/wecom" \
+        "${stock_ext_dir}/wecom-openclaw-plugin" \
+        "${stock_ext_dir}/qqbot" \
+        "${stock_ext_dir}/openclaw-qqbot" \
+        "${stock_ext_dir}/openclaw-weixin" \
+        "${stock_ext_dir}/weixin" 2>/dev/null || true
     local src dst
     for pair in \
+        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin:feishu" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk:dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom:wecom" \
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot:qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin:openclaw-weixin"
     do
         src="${pair%%:*}"
@@ -1053,16 +1067,23 @@ function safeReadJson(fp) {
   try { return JSON.parse(fs.readFileSync(fp, "utf8")); } catch { return null; }
 }
 
+function shouldSkipPluginScanPath(fullPath) {
+  const normalized = fullPath.replace(/\\/g, "/");
+  return normalized.includes("/node_modules/openclaw/dist/extensions/");
+}
+
 function walkForPluginManifests(root, maxDepth = 6) {
   const out = [];
   if (!root || !fs.existsSync(root)) return out;
   const stack = [{ p: root, d: 0 }];
   while (stack.length) {
     const cur = stack.pop();
+    if (shouldSkipPluginScanPath(cur.p)) continue;
     let ents = [];
     try { ents = fs.readdirSync(cur.p, { withFileTypes: true }); } catch { continue; }
     for (const ent of ents) {
       const full = path.join(cur.p, ent.name);
+      if (shouldSkipPluginScanPath(full)) continue;
       if (ent.isFile() && ent.name === "openclaw.plugin.json") out.push(full);
       if (ent.isDirectory() && cur.d < maxDepth) stack.push({ p: full, d: cur.d + 1 });
     }
@@ -1082,13 +1103,18 @@ function collectAvailablePluginIds(appDirPath) {
 }
 
 const availablePluginIds = collectAvailablePluginIds(appDir);
-const pickPluginId = (candidates) => candidates.find((id) => availablePluginIds.has(id)) || null;
+const pickPluginId = (preferred, aliases = []) => {
+  const ordered = [preferred, ...aliases];
+  return ordered.find((id) => availablePluginIds.has(id)) || null;
+};
 const selectedPluginIds = {
-  feishu: pickPluginId(["feishu", "feishu-openclaw-plugin"]),
-  dingtalk: pickPluginId(["dingtalk", "openclaw-dingtalk"]),
-  wecom: pickPluginId(["wecom", "wecom-openclaw-plugin", "openclaw-wecom"]),
-  qqbot: pickPluginId(["qqbot", "openclaw-qqbot"]),
-  weixin: pickPluginId(["openclaw-weixin", "weixin"])
+  // Prefer canonical channel ids after SPK bundled-entry patching. Legacy ids are
+  // only fallback aliases for older package contents.
+  feishu: pickPluginId("feishu", ["feishu-openclaw-plugin"]),
+  dingtalk: pickPluginId("dingtalk", ["openclaw-dingtalk"]),
+  wecom: pickPluginId("wecom", ["wecom-openclaw-plugin", "openclaw-wecom"]),
+  qqbot: pickPluginId("qqbot", ["openclaw-qqbot"]),
+  weixin: pickPluginId("openclaw-weixin", ["weixin"])
 };
 
 const workspaceInput = trim(process.env.WIZARD_WORKSPACE_DIR);
@@ -1752,16 +1778,22 @@ const stateDir = process.argv[3];
 function safeReadJson(fp) {
   try { return JSON.parse(fs.readFileSync(fp, "utf8")); } catch { return null; }
 }
+function shouldSkipPluginScanPath(fullPath) {
+  const normalized = fullPath.replace(/\\/g, "/");
+  return normalized.includes("/node_modules/openclaw/dist/extensions/");
+}
 function walkForPluginManifests(root, maxDepth = 6) {
   const out = [];
   if (!root || !fs.existsSync(root)) return out;
   const stack = [{ p: root, d: 0 }];
   while (stack.length) {
     const cur = stack.pop();
+    if (shouldSkipPluginScanPath(cur.p)) continue;
     let ents = [];
     try { ents = fs.readdirSync(cur.p, { withFileTypes: true }); } catch { continue; }
     for (const ent of ents) {
       const full = path.join(cur.p, ent.name);
+      if (shouldSkipPluginScanPath(full)) continue;
       if (ent.isFile() && ent.name === "openclaw.plugin.json") out.push(full);
       if (ent.isDirectory() && cur.d < maxDepth) stack.push({ p: full, d: cur.d + 1 });
     }
@@ -1796,6 +1828,22 @@ cfg.channels = cfg.channels || {};
 
 let changed = false;
 
+const legacyChannelKeyMap = {
+  "feishu-openclaw-plugin": "feishu",
+  "openclaw-qqbot": "qqbot",
+  "wecom-openclaw-plugin": "wecom",
+  "openclaw-dingtalk": "dingtalk",
+  "weixin": "openclaw-weixin"
+};
+for (const [legacyKey, canonicalKey] of Object.entries(legacyChannelKeyMap)) {
+  const legacyVal = cfg.channels[legacyKey];
+  if (!legacyVal || typeof legacyVal !== "object") continue;
+  if (!cfg.channels[canonicalKey] || typeof cfg.channels[canonicalKey] !== "object") {
+    cfg.channels[canonicalKey] = legacyVal;
+  }
+  delete cfg.channels[legacyKey];
+  changed = true;
+}
 
 const normalizePolicy = (obj, dmDefault = "open", groupDefault = "open") => {
   const norm = (v) => typeof v === "string" ? v.trim().toLowerCase() : "";
@@ -2164,20 +2212,20 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
     changed = true;
   }
 
-  // Only normalize legacy aliases when a real replacement is visible.
-  // Do not delete the configured channel itself on discovery misses.
+  // Remove legacy alias ids once a canonical selection is known.
+  // We intentionally preserve the channel itself, but any non-selected alias
+  // should be stripped from plugins.entries / plugins.allow to avoid old vendor
+  // ids (for example feishu-openclaw-plugin, openclaw-qqbot) being re-published
+  // forever after a successful canonical migration.
   for (const id of aliases) {
     if (id === channelId || id === selectedId) continue;
-    if (available.includes(id)) continue;
-    if (selectedId !== channelId && cfg.plugins.entries[id]) {
+    if (cfg.plugins.entries[id]) {
       delete cfg.plugins.entries[id];
       changed = true;
     }
-    if (selectedId !== channelId) {
-      const before = cfg.plugins.allow.length;
-      cfg.plugins.allow = cfg.plugins.allow.filter((x) => x !== id);
-      if (cfg.plugins.allow.length !== before) changed = true;
-    }
+    const before = cfg.plugins.allow.length;
+    cfg.plugins.allow = cfg.plugins.allow.filter((x) => x !== id);
+    if (cfg.plugins.allow.length !== before) changed = true;
   }
 }
 

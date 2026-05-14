@@ -4,57 +4,206 @@ import path from 'node:path';
 
 const root = process.argv[2];
 if (!root) {
-  console.error('[patch-wecom-bundled-entry] usage: node patch-wecom-bundled-entry.mjs <openclaw-bundle-dir>');
+  console.error('[patch-bundled-channel-entries] usage: node patch-wecom-bundled-entry.mjs <openclaw-bundle-dir>');
   process.exit(2);
 }
-
-const targets = [
-  path.join(root, 'dist', 'extensions', 'wecom'),
-  path.join(root, 'node_modules', '@sunnoy', 'wecom'),
-];
 
 const ensureFile = (file, content) => {
   fs.writeFileSync(file, content, 'utf8');
 };
 
-let patched = 0;
-for (const dir of targets) {
-  if (!fs.existsSync(dir)) continue;
+const copyIfMissing = (from, to) => {
+  if (!fs.existsSync(from) || fs.existsSync(to)) return;
+  fs.copyFileSync(from, to);
+};
+
+const patchPluginManifestId = (file, nextId) => {
+  if (!fs.existsSync(file)) return false;
+  const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (json.id === nextId) return false;
+  json.id = nextId;
+  fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n', 'utf8');
+  return true;
+};
+
+const patchPackageOpenClawMeta = (file, nextPluginId, nextChannelId) => {
+  if (!fs.existsSync(file)) return false;
+  const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+  let changed = false;
+  json.openclaw = json.openclaw && typeof json.openclaw === 'object' ? json.openclaw : {};
+  if (nextPluginId) {
+    if (json.openclaw.id !== nextPluginId) {
+      json.openclaw.id = nextPluginId;
+      changed = true;
+    }
+  }
+  json.openclaw.channel = json.openclaw.channel && typeof json.openclaw.channel === 'object' ? json.openclaw.channel : {};
+  if (nextChannelId && json.openclaw.channel.id !== nextChannelId) {
+    json.openclaw.channel.id = nextChannelId;
+    changed = true;
+  }
+  if (changed) fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n', 'utf8');
+  return changed;
+};
+
+const writeRegisterFullProxy = ({ file, importPath, exportName = 'default', registerName }) => {
+  ensureFile(
+    file,
+    `import pluginModule from ${JSON.stringify(importPath)};
+import * as allExports from ${JSON.stringify(importPath)};
+
+export function ${registerName}(api) {
+  const target = ${exportName === 'default' ? 'pluginModule' : `allExports[${JSON.stringify(exportName)}]`} ?? allExports?.default ?? allExports;
+  if (!target || typeof target.register !== 'function') return;
+  const proxy = Object.create(api);
+  proxy.registerChannel = () => {};
+  return target.register(proxy);
+}
+`,
+  );
+};
+
+const patchFeishu = (dir) => {
+  if (!fs.existsSync(dir)) return 0;
   const indexPath = path.join(dir, 'index.js');
   const pluginApiPath = path.join(dir, 'plugin-api.js');
-
-  if (!fs.existsSync(indexPath)) continue;
-  if (!fs.existsSync(pluginApiPath)) {
-    fs.copyFileSync(indexPath, pluginApiPath);
-  }
-
-  ensureFile(
-    path.join(dir, 'channel-plugin-api.js'),
-    'export { wecomChannelPlugin } from "./wecom/channel-plugin.js";\n',
-  );
-  ensureFile(
-    path.join(dir, 'runtime-api.js'),
-    'export { setRuntime as setWecomRuntime } from "./wecom/state.js";\n',
-  );
-  ensureFile(
-    path.join(dir, 'account-inspect-api.js'),
-    'export { describeAccount as inspectWecomReadOnlyAccount } from "./wecom/accounts.js";\n',
-  );
-  ensureFile(
-    path.join(dir, 'full-api.js'),
-    'export { register as registerWecomPluginFull } from "./plugin-api.js";\n',
-  );
-
+  if (!fs.existsSync(indexPath)) return 0;
+  copyIfMissing(indexPath, pluginApiPath);
+  ensureFile(path.join(dir, 'channel-plugin-api.js'), 'export { feishuPlugin } from "./plugin-api.js";\n');
+  writeRegisterFullProxy({
+    file: path.join(dir, 'full-api.js'),
+    importPath: './plugin-api.js',
+    registerName: 'registerFeishuPluginFull',
+  });
   ensureFile(
     indexPath,
-    `import { defineBundledChannelEntry, loadBundledEntryExportSync } from "openclaw/plugin-sdk/channel-entry-contract";
+    `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
 
-function registerWecomPluginFull(api) {
-  loadBundledEntryExportSync(import.meta.url, {
-    specifier: "./full-api.js",
-    exportName: "registerWecomPluginFull"
-  })(api);
-}
+const feishuEntry = defineBundledChannelEntry({
+  id: "feishu",
+  name: "Feishu",
+  description: "Feishu/Lark channel plugin",
+  importMetaUrl: import.meta.url,
+  plugin: {
+    specifier: "./channel-plugin-api.js",
+    exportName: "feishuPlugin"
+  },
+  registerFull(api) {
+    return import("./full-api.js").then((m) => m.registerFeishuPluginFull(api));
+  }
+});
+
+export default feishuEntry;
+`,
+  );
+  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'feishu');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'feishu', 'feishu');
+  return 1;
+};
+
+const patchQQBot = (dir) => {
+  if (!fs.existsSync(dir)) return 0;
+  const indexPath = path.join(dir, 'index.ts');
+  const pluginApiPath = path.join(dir, 'plugin-api.ts');
+  if (!fs.existsSync(indexPath)) return 0;
+  copyIfMissing(indexPath, pluginApiPath);
+  ensureFile(path.join(dir, 'channel-plugin-api.ts'), 'export { qqbotPlugin } from "./plugin-api.ts";\n');
+  ensureFile(path.join(dir, 'runtime-api.ts'), 'export { setQQBotRuntime } from "./plugin-api.ts";\n');
+  writeRegisterFullProxy({
+    file: path.join(dir, 'full-api.ts'),
+    importPath: './plugin-api.ts',
+    registerName: 'registerQQBotPluginFull',
+  });
+  ensureFile(
+    indexPath,
+    `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
+
+const qqbotEntry = defineBundledChannelEntry({
+  id: "qqbot",
+  name: "QQ Bot",
+  description: "QQ Bot channel plugin",
+  importMetaUrl: import.meta.url,
+  plugin: {
+    specifier: "./channel-plugin-api.ts",
+    exportName: "qqbotPlugin"
+  },
+  runtime: {
+    specifier: "./runtime-api.ts",
+    exportName: "setQQBotRuntime"
+  },
+  registerFull(api) {
+    return import("./full-api.ts").then((m) => m.registerQQBotPluginFull(api));
+  }
+});
+
+export default qqbotEntry;
+`,
+  );
+  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'qqbot');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'qqbot', 'qqbot');
+  return 1;
+};
+
+const patchDingTalk = (dir) => {
+  if (!fs.existsSync(dir)) return 0;
+  const indexPath = path.join(dir, 'index.ts');
+  const pluginApiPath = path.join(dir, 'plugin-api.ts');
+  if (!fs.existsSync(indexPath)) return 0;
+  copyIfMissing(indexPath, pluginApiPath);
+  ensureFile(path.join(dir, 'channel-plugin-api.ts'), 'export { dingtalkPlugin } from "./src/channel";\n');
+  ensureFile(path.join(dir, 'runtime-api.ts'), 'export { setDingTalkRuntime } from "./src/runtime";\n');
+  writeRegisterFullProxy({
+    file: path.join(dir, 'full-api.ts'),
+    importPath: './plugin-api.ts',
+    registerName: 'registerDingTalkPluginFull',
+  });
+  ensureFile(
+    indexPath,
+    `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
+
+const dingtalkEntry = defineBundledChannelEntry({
+  id: "dingtalk",
+  name: "DingTalk",
+  description: "DingTalk channel plugin",
+  importMetaUrl: import.meta.url,
+  plugin: {
+    specifier: "./channel-plugin-api.ts",
+    exportName: "dingtalkPlugin"
+  },
+  runtime: {
+    specifier: "./runtime-api.ts",
+    exportName: "setDingTalkRuntime"
+  },
+  registerFull(api) {
+    return import("./full-api.ts").then((m) => m.registerDingTalkPluginFull(api));
+  }
+});
+
+export default dingtalkEntry;
+`,
+  );
+  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'dingtalk');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'dingtalk', 'dingtalk');
+  return 1;
+};
+
+const patchWeCom = (dir) => {
+  if (!fs.existsSync(dir)) return 0;
+  const indexPath = path.join(dir, 'index.js');
+  const pluginApiPath = path.join(dir, 'plugin-api.js');
+  if (!fs.existsSync(indexPath)) return 0;
+  copyIfMissing(indexPath, pluginApiPath);
+  ensureFile(path.join(dir, 'channel-plugin-api.js'), 'export { wecomChannelPlugin } from "./wecom/channel-plugin.js";\n');
+  ensureFile(path.join(dir, 'runtime-api.js'), 'export { setRuntime as setWecomRuntime } from "./wecom/state.js";\n');
+  ensureFile(path.join(dir, 'account-inspect-api.js'), 'export { describeAccount as inspectWecomReadOnlyAccount } from "./wecom/accounts.js";\n');
+  writeRegisterFullProxy({
+    file: path.join(dir, 'full-api.js'),
+    importPath: './plugin-api.js',
+    registerName: 'registerWecomPluginFull',
+  });
+  ensureFile(
+    indexPath,
+    `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
 
 const wecomEntry = defineBundledChannelEntry({
   id: "wecom",
@@ -73,20 +222,42 @@ const wecomEntry = defineBundledChannelEntry({
     specifier: "./account-inspect-api.js",
     exportName: "inspectWecomReadOnlyAccount"
   },
-  registerFull: registerWecomPluginFull
+  registerFull(api) {
+    return import("./full-api.js").then((m) => m.registerWecomPluginFull(api));
+  }
 });
 
 export default wecomEntry;
 `,
   );
+  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'wecom');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'wecom', 'wecom');
+  return 1;
+};
 
-  patched += 1;
-  console.log(`[patch-wecom-bundled-entry] patched ${dir}`);
+const targets = [
+  // Patch node_modules source roots first. DSM service-setup stages channel dirs
+  // from these package roots into dist/extensions at runtime.
+  { name: 'node-feishu', dir: path.join(root, 'node_modules', '@larksuiteoapi', 'feishu-openclaw-plugin'), patch: patchFeishu },
+  { name: 'node-qqbot', dir: path.join(root, 'node_modules', '@tencent-connect', 'openclaw-qqbot'), patch: patchQQBot },
+  { name: 'node-dingtalk', dir: path.join(root, 'node_modules', '@soimy', 'dingtalk'), patch: patchDingTalk },
+  { name: 'node-wecom', dir: path.join(root, 'node_modules', '@sunnoy', 'wecom'), patch: patchWeCom },
+
+  // Also patch any already-staged dist/extensions copies when they exist.
+  { name: 'feishu', dir: path.join(root, 'dist', 'extensions', 'feishu'), patch: patchFeishu },
+  { name: 'qqbot', dir: path.join(root, 'dist', 'extensions', 'qqbot'), patch: patchQQBot },
+  { name: 'dingtalk', dir: path.join(root, 'dist', 'extensions', 'dingtalk'), patch: patchDingTalk },
+  { name: 'wecom', dir: path.join(root, 'dist', 'extensions', 'wecom'), patch: patchWeCom },
+];
+
+let patched = 0;
+for (const target of targets) {
+  patched += target.patch(target.dir);
 }
 
 if (patched === 0) {
-  console.warn('[patch-wecom-bundled-entry] no wecom target found; skipping');
+  console.warn('[patch-bundled-channel-entries] no target found; skipping');
   process.exit(0);
 }
 
-console.log(`[patch-wecom-bundled-entry] done, patched ${patched} target(s)`);
+console.log(`[patch-bundled-channel-entries] done, patched ${patched} target(s)`);
