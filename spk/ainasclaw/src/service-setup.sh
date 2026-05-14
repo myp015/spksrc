@@ -1362,6 +1362,46 @@ EOF
 
 service_prestart() {
 
+    # Hard bootstrap guard: even if postinst path misses in some DSM install flows,
+    # prestart must still guarantee a usable state dir + config file.
+    mkdir -p "${OPENCLAW_WORKSPACE}" "${OPENCLAW_STATE_DIR}" >/dev/null 2>&1 || true
+    if [ ! -s "${OPENCLAW_CONFIG_FILE}" ]; then
+        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
+            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+        fi
+        if [ ! -s "${OPENCLAW_CONFIG_FILE}" ]; then
+            local fallback_token_prestart
+            fallback_token_prestart="$(tr -dc 'a-f0-9' </dev/urandom | head -c 32)"
+            [ -n "${fallback_token_prestart}" ] || fallback_token_prestart="123456"
+            cat > "${OPENCLAW_CONFIG_FILE}" <<EOF
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "port": 58789,
+    "auth": {
+      "mode": "token",
+      "token": "${fallback_token_prestart}"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "${OPENCLAW_WORKSPACE}/.openclaw"
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "bundledDiscovery": "allowlist",
+    "allow": ["browser"],
+    "entries": {
+      "browser": { "enabled": true }
+    }
+  }
+}
+EOF
+        fi
+    fi
+
     # Normalize ownership/permissions before startup to avoid runtime EACCES on config watcher,
     # sessions/tasks/flows, and hot-reload paths.
     local eff_user="$(resolve_effective_service_user)"
