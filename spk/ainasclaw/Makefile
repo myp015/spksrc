@@ -276,4 +276,8 @@ $(SPK_FILE_NAME): $(WORK_DIR)/spk-info.sha256 $(WORK_DIR)/spk-info.sig
 
 .PHONY: openclaw_extra_install
 openclaw_extra_install:
-	@true
+	# Final guard: ensure packaged lifecycle script always comes from src,
+	# preventing stale work/scripts/service-setup from being reintroduced later
+	# by intermediate spksrc build steps.
+	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup
+	@chmod 755 $(STAGING_DIR)/scripts/service-setup
