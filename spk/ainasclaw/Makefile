@@ -237,6 +237,9 @@ openclaw_copy_target:
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
 	@cp -f src/spk-integrity.pub.pem $(STAGING_DIR)/app/openclaw/config/spk-integrity.pub.pem
+	# 强制覆盖最终安装脚本，避免 work 缓存导致旧版 service-setup 混入 SPK。
+	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup
+	@chmod 755 $(STAGING_DIR)/scripts/service-setup
 	@cd $(STAGING_DIR) && sha256sum \
 		bin/openclaw \
 		ui/index.cgi \
