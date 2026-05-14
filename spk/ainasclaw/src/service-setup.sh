@@ -1320,6 +1320,12 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
             chmod -R u+rwX "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
             find "${OPENCLAW_WORKSPACE}" -type d -exec chmod 700 {} \; 2>/dev/null || true
             find "${OPENCLAW_WORKSPACE}" -type f -exec chmod 600 {} \; 2>/dev/null || true
+        else
+            # Fallback for install timing where service user is not yet resolvable:
+            # keep workspace writable by synocommunity so prestart (sc-openclaw group)
+            # can materialize .openclaw/openclaw.json on first boot.
+            chown -R root:synocommunity "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
+            chmod 775 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
         fi
 
         ensure_session_store_dir
