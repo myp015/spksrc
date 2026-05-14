@@ -953,10 +953,17 @@ NGINX_EOF
             fi
         }
     fi
-    if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
-        if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
-            touch "${AUTO_INIT_ON_INSTALL_MARKER}" 2>/dev/null || true
-        fi
+    # Do not rely on SYNOPKG_PKG_STATUS here.
+    # On DSM full reinstall flows we've observed postinst succeeding while this
+    # status gate does not reliably preserve a usable bootstrap config under
+    # /volume1/openclaw/.openclaw/openclaw.json, which leaves the package
+    # "running" with only ttyd alive and no gateway process.
+    #
+    # service_postinst itself is already an install/upgrade lifecycle hook, so
+    # always run the bootstrap config initialization logic here.
+    if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
+        touch "${AUTO_INIT_ON_INSTALL_MARKER}" 2>/dev/null || true
+    fi
 
         # Wizard defaults
         local in_ws="${wizard_workspace_dir:-${WIZARD_WORKSPACE_DIR:-}}"
@@ -1272,7 +1279,6 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         sync_skills_to_workspace
         repair_plugin_registry_if_needed
         cleanup_missing_session_transcripts_if_needed
-    fi
 }
 
 service_prestart() {
