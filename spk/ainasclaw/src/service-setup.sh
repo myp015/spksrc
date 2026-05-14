@@ -919,6 +919,12 @@ service_postinst() {
     ensure_openclaw_in_path
     ensure_terminal_alias_sudoers
 
+    mkdir -p "${SYNOPKG_PKGVAR}" >/dev/null 2>&1 || true
+    {
+      echo "[postinst-debug] enter status=${SYNOPKG_PKG_STATUS} pkgdest=${SYNOPKG_PKGDEST}"
+      echo "[postinst-debug] default_ws=${OPENCLAW_WORKSPACE_DEFAULT} state_base=${OPENCLAW_STATE_DIR_BASE}"
+    } >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
+
     # Normalize bundled channel plugin ownership to root:root so OpenClaw trust checks pass.
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
@@ -1297,6 +1303,11 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         fi
         OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
         OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
+        {
+          echo "[postinst-debug] resolved_ws=${OPENCLAW_WORKSPACE}"
+          echo "[postinst-debug] resolved_state=${OPENCLAW_STATE_DIR}"
+          echo "[postinst-debug] resolved_cfg=${OPENCLAW_CONFIG_FILE}"
+        } >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
 
         # 安装阶段就写入 workspace 指针，避免 prestart 被历史 pointer 覆盖回默认目录。
         mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
@@ -1342,10 +1353,15 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
         ensure_session_store_dir
         if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
+            echo "[postinst-debug] seed_cfg_from=${bootstrap_config_file}" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
             if ! cp -f "${bootstrap_config_file}" "${OPENCLAW_CONFIG_FILE}"; then
                 echo "[ainasclaw] ERROR: failed to seed config from bootstrap: ${bootstrap_config_file} -> ${OPENCLAW_CONFIG_FILE}" >&2
+                echo "[postinst-debug] seed_cfg_failed" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
                 return 1
             fi
+            echo "[postinst-debug] seed_cfg_ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
+        else
+            echo "[postinst-debug] cfg_exists_skip_seed" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
         fi
         # 兜底：若模板复制失败（权限/路径等），直接写入最小可运行配置，保证首启不空转。
         if [ ! -s "${OPENCLAW_CONFIG_FILE}" ]; then
