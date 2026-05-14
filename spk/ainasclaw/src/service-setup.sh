@@ -1315,10 +1315,13 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         printf '%s' "${OPENCLAW_WORKSPACE}" > "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
         chmod 666 "${WORKSPACE_PTR_FILE}" "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
 
+        echo "[postinst-debug] step=mkdir enter ws=${OPENCLAW_WORKSPACE} state=${OPENCLAW_STATE_DIR}" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
         if ! mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"; then
             echo "[ainasclaw] ERROR: failed to create workspace/state dirs: ${OPENCLAW_WORKSPACE} / ${OPENCLAW_STATE_DIR}" >&2
+            echo "[postinst-debug] step=mkdir fail rc=$?" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
             return 1
         fi
+        echo "[postinst-debug] step=mkdir ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
 
         # 全新安装时 /volume1/openclaw 常由 root 创建；若不提前改归属，
         # DSM7 下 prestart(非 root) 会因无写权限导致 .openclaw/openclaw.json 无法落盘，
@@ -1330,10 +1333,13 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         fi
         eff_group_postinst="$(resolve_effective_service_group "${eff_user_postinst}")"
         if [ -n "${eff_user_postinst}" ] && id "${eff_user_postinst}" >/dev/null 2>&1; then
+            echo "[postinst-debug] step=chown enter user=${eff_user_postinst} group=${eff_group_postinst}" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
             if ! chown -R "${eff_user_postinst}:${eff_group_postinst}" "${OPENCLAW_WORKSPACE}"; then
                 echo "[ainasclaw] ERROR: failed to chown workspace to ${eff_user_postinst}:${eff_group_postinst}" >&2
+                echo "[postinst-debug] step=chown fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
                 return 1
             fi
+            echo "[postinst-debug] step=chown ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
             chmod -R u+rwX "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
             find "${OPENCLAW_WORKSPACE}" -type d -exec chmod 700 {} \; 2>/dev/null || true
             find "${OPENCLAW_WORKSPACE}" -type f -exec chmod 600 {} \; 2>/dev/null || true
@@ -1341,14 +1347,18 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
             # Fallback for install timing where service user is not yet resolvable:
             # keep workspace writable by synocommunity so prestart (sc-openclaw group)
             # can materialize .openclaw/openclaw.json on first boot.
+            echo "[postinst-debug] step=chown_fallback enter" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
             if ! chown -R root:synocommunity "${OPENCLAW_WORKSPACE}"; then
                 echo "[ainasclaw] ERROR: failed to chown workspace fallback root:synocommunity" >&2
+                echo "[postinst-debug] step=chown_fallback fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
                 return 1
             fi
             if ! chmod 775 "${OPENCLAW_WORKSPACE}"; then
                 echo "[ainasclaw] ERROR: failed to chmod workspace fallback 775" >&2
+                echo "[postinst-debug] step=chmod_fallback fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
                 return 1
             fi
+            echo "[postinst-debug] step=chown_fallback ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
         fi
 
         ensure_session_store_dir
