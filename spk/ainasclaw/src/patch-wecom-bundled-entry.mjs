@@ -39,7 +39,7 @@ const patchPluginManifestContract = (file, { id, channels, extensions }) => {
   return true;
 };
 
-const patchPackageOpenClawMeta = (file, nextPluginId, nextChannelId) => {
+const patchPackageOpenClawMeta = (file, nextPluginId, nextChannelId, nextExtensions) => {
   if (!fs.existsSync(file)) return false;
   const json = JSON.parse(fs.readFileSync(file, 'utf8'));
   let changed = false;
@@ -54,6 +54,13 @@ const patchPackageOpenClawMeta = (file, nextPluginId, nextChannelId) => {
   if (nextChannelId && json.openclaw.channel.id !== nextChannelId) {
     json.openclaw.channel.id = nextChannelId;
     changed = true;
+  }
+  if (Array.isArray(nextExtensions) && nextExtensions.length > 0) {
+    const cur = Array.isArray(json.openclaw.extensions) ? json.openclaw.extensions : [];
+    if (JSON.stringify(cur) !== JSON.stringify(nextExtensions)) {
+      json.openclaw.extensions = nextExtensions;
+      changed = true;
+    }
   }
   if (changed) fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n', 'utf8');
   return changed;
@@ -114,7 +121,7 @@ export default feishuEntry;
     channels: ['feishu'],
     extensions: ['./index.js']
   });
-  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'feishu', 'feishu');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'feishu', 'feishu', ['./index.js']);
   return 1;
 };
 
@@ -161,7 +168,7 @@ export default qqbotEntry;
     channels: ['qqbot'],
     extensions: ['./index.ts']
   });
-  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'qqbot', 'qqbot');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'qqbot', 'qqbot', ['./index.ts']);
   return 1;
 };
 
@@ -208,7 +215,7 @@ export default dingtalkEntry;
     channels: ['dingtalk'],
     extensions: ['./index.ts']
   });
-  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'dingtalk', 'dingtalk');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'dingtalk', 'dingtalk', ['./index.ts']);
   return 1;
 };
 
@@ -260,7 +267,7 @@ export default wecomEntry;
     channels: ['wecom'],
     extensions: ['./index.js']
   });
-  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'wecom', 'wecom');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'wecom', 'wecom', ['./index.js']);
   return 1;
 };
 
@@ -305,7 +312,7 @@ export default weixinEntry;
     channels: ['openclaw-weixin'],
     extensions: ['./index.ts']
   });
-  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'openclaw-weixin', 'openclaw-weixin');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'openclaw-weixin', 'openclaw-weixin', ['./index.ts']);
   return 1;
 };
 
