@@ -238,6 +238,7 @@ openclaw_copy_target:
 	@cp -f src/SPK-README-openclaw-spk.md $(STAGING_DIR)/app/openclaw/SPK-README-openclaw-spk.md
 	@cp -f src/spk-integrity.pub.pem $(STAGING_DIR)/app/openclaw/config/spk-integrity.pub.pem
 	# 强制覆盖最终安装脚本，避免 work 缓存导致旧版 service-setup 混入 SPK。
+	@install -d -m 755 $(STAGING_DIR)/scripts
 	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup
 	@chmod 755 $(STAGING_DIR)/scripts/service-setup
 	@cd $(STAGING_DIR) && sha256sum \
@@ -279,6 +280,7 @@ openclaw_extra_install:
 	# Final guard: ensure packaged lifecycle script always comes from src,
 	# preventing stale work/scripts/service-setup from being reintroduced later
 	# by intermediate spksrc build steps.
+	@install -d -m 755 $(STAGING_DIR)/scripts
 	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup
 	@chmod 755 $(STAGING_DIR)/scripts/service-setup
 	@grep -q "Hard bootstrap guard" $(STAGING_DIR)/scripts/service-setup
