@@ -1051,7 +1051,7 @@ NGINX_EOF
             export WIZARD_BASE_URL="${in_base}"
             export WIZARD_API_KEY="${in_key}"
         else
-            export WIZARD_WORKSPACE_DIR="${in_ws:-/volume1/openclaw}"
+            export WIZARD_WORKSPACE_DIR="${in_ws:-${OPENCLAW_WORKSPACE_DEFAULT}}"
             export WIZARD_GATEWAY_PORT="${in_port:-58789}"
             export WIZARD_MODEL_ID="${in_model:-}"
             export WIZARD_BASE_URL="${in_base:-}"
@@ -1478,7 +1478,7 @@ NGINX_EOF
             cat > "${term_entry}" <<'TERM_EOF'
 #!/bin/sh
 set -eu
-base="/volume1/openclaw"
+base="${HOME:-${OPENCLAW_WORKSPACE_DEFAULT}}"
 ptr="/var/packages/ainasclaw/var/workspace.path"
 hptr="/var/packages/ainasclaw/var/workspace.home.path"
 ws="$base"
