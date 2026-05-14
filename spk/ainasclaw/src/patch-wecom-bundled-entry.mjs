@@ -235,6 +235,47 @@ export default wecomEntry;
   return 1;
 };
 
+const patchWeixin = (dir) => {
+  if (!fs.existsSync(dir)) return 0;
+  const indexPath = path.join(dir, 'index.ts');
+  if (!fs.existsSync(indexPath)) return 0;
+  ensureFile(path.join(dir, 'channel-plugin-api.ts'), 'export { weixinPlugin } from "./src/channel.js";\n');
+  ensureFile(path.join(dir, 'runtime-api.ts'), 'export { setWeixinRuntime } from "./src/runtime.js";\n');
+  writeRegisterFullProxy({
+    file: path.join(dir, 'full-api.ts'),
+    importPath: './index.ts',
+    registerName: 'registerWeixinPluginFull',
+  });
+  ensureFile(
+    indexPath,
+    `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
+
+const weixinEntry = defineBundledChannelEntry({
+  id: "openclaw-weixin",
+  name: "Weixin",
+  description: "Weixin channel plugin",
+  importMetaUrl: import.meta.url,
+  plugin: {
+    specifier: "./channel-plugin-api.ts",
+    exportName: "weixinPlugin"
+  },
+  runtime: {
+    specifier: "./runtime-api.ts",
+    exportName: "setWeixinRuntime"
+  },
+  registerFull(api) {
+    return import("./full-api.ts").then((m) => m.registerWeixinPluginFull(api));
+  }
+});
+
+export default weixinEntry;
+`,
+  );
+  patchPluginManifestId(path.join(dir, 'openclaw.plugin.json'), 'openclaw-weixin');
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'openclaw-weixin', 'openclaw-weixin');
+  return 1;
+};
+
 const targets = [
   // Patch node_modules source roots first. DSM service-setup stages channel dirs
   // from these package roots into dist/extensions at runtime.
@@ -242,12 +283,14 @@ const targets = [
   { name: 'node-qqbot', dir: path.join(root, 'node_modules', '@tencent-connect', 'openclaw-qqbot'), patch: patchQQBot },
   { name: 'node-dingtalk', dir: path.join(root, 'node_modules', '@soimy', 'dingtalk'), patch: patchDingTalk },
   { name: 'node-wecom', dir: path.join(root, 'node_modules', '@sunnoy', 'wecom'), patch: patchWeCom },
+  { name: 'node-weixin', dir: path.join(root, 'node_modules', '@tencent-weixin', 'openclaw-weixin'), patch: patchWeixin },
 
   // Also patch any already-staged dist/extensions copies when they exist.
   { name: 'feishu', dir: path.join(root, 'dist', 'extensions', 'feishu'), patch: patchFeishu },
   { name: 'qqbot', dir: path.join(root, 'dist', 'extensions', 'qqbot'), patch: patchQQBot },
   { name: 'dingtalk', dir: path.join(root, 'dist', 'extensions', 'dingtalk'), patch: patchDingTalk },
   { name: 'wecom', dir: path.join(root, 'dist', 'extensions', 'wecom'), patch: patchWeCom },
+  { name: 'openclaw-weixin', dir: path.join(root, 'dist', 'extensions', 'openclaw-weixin'), patch: patchWeixin },
 ];
 
 let patched = 0;
