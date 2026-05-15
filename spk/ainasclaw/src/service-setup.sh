@@ -485,6 +485,17 @@ const disable=[
 ];
 for(const k of enable){ entries[k]=Object.assign({}, entries[k]||{}, {enabled:true}); }
 for(const k of disable){ entries[k]=Object.assign({}, entries[k]||{}, {enabled:false}); }
+
+// doctor-hints alignment: keep group/channel replies on message tool by default.
+cfg.messages = cfg.messages && typeof cfg.messages === "object" ? cfg.messages : {};
+cfg.messages.groupChat = cfg.messages.groupChat && typeof cfg.messages.groupChat === "object" ? cfg.messages.groupChat : {};
+cfg.messages.groupChat.visibleReplies = "message_tool";
+
+// avoid doctor/browser warning on DSM where managed Chromium is intentionally absent.
+if (cfg.browser && typeof cfg.browser === "object" && Object.prototype.hasOwnProperty.call(cfg.browser, "defaultProfile")) {
+  delete cfg.browser.defaultProfile;
+}
+
 fs.writeFileSync(p, JSON.stringify(cfg,null,2)+"\n", "utf8");
 ' "${OPENCLAW_CONFIG_FILE}" >/dev/null 2>&1 || true
 }

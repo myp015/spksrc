@@ -8,8 +8,7 @@
   },
   "browser": {
     "headless": true,
-    "noSandbox": true,
-    "defaultProfile": "openclaw"
+    "noSandbox": true
   },
   "models": {
     "mode": "merge",
@@ -35,6 +34,9 @@
   },
   "messages": {
     "ackReactionScope": "group-mentions",
+    "groupChat": {
+      "visibleReplies": "message_tool"
+    },
     "tts": {
       "auto": "off",
       "mode": "final",
