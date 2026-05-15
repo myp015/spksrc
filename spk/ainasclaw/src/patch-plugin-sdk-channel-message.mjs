@@ -30,7 +30,7 @@ pkg.exports['./plugin-sdk/channel-message'] = {
   default: './dist/plugin-sdk/channel-message.js',
 };
 
-const bridgeSource = `export * from "./channel-plugin-common.js";\nexport { createMessageReceiptFromOutboundResults } from "./reply-reference.js";\n`;
+const bridgeSource = `export * from "./channel-plugin-common.js";\nexport * from "./command-auth.js";\nexport { createMessageReceiptFromOutboundResults } from "./reply-reference.js";\n`;
 
 fs.writeFileSync(jsPath, bridgeSource, 'utf8');
 fs.writeFileSync(dtsPath, bridgeSource, 'utf8');
