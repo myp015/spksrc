@@ -2465,6 +2465,21 @@ stop_gateway_processes() {
     pkill -f '/volume1/@appstore/ainasclaw/bin/node /volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
     pkill -f 'openclaw gateway run' >/dev/null 2>&1 || true
     pkill -x 'openclaw-gateway' >/dev/null 2>&1 || true
+
+    # final safety-net: kill any process still listening on configured/default gateway port
+    local k_port="${SERVICE_PORT:-58789}"
+    if ! [ "${k_port}" -ge 1 ] 2>/dev/null; then k_port=58789; fi
+    local pids
+    pids="$(netstat -lntp 2>/dev/null | awk -v p=":${k_port}" '$4 ~ p"$" {print $7}' | awk -F/ '{print $1}' | grep -E '^[0-9]+$' | sort -u || true)"
+    if [ -n "${pids}" ]; then
+        for p in ${pids}; do
+            kill -TERM "${p}" >/dev/null 2>&1 || true
+        done
+        sleep 1
+        for p in ${pids}; do
+            kill -KILL "${p}" >/dev/null 2>&1 || true
+        done
+    fi
 }
 
 service_poststop() {
