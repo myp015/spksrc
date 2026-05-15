@@ -460,6 +460,33 @@ validate_or_rollback_config() {
     fi
 }
 
+apply_dsm_skill_defaults() {
+    [ -x "${OPENCLAW_NODE}" ] || return 0
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] || return 0
+
+    "${OPENCLAW_NODE}" -e '
+const fs=require("fs");
+const p=process.argv[1];
+let cfg={};
+try{ cfg=JSON.parse(fs.readFileSync(p,"utf8"))||{}; }catch{ cfg={}; }
+cfg.skills = cfg.skills && typeof cfg.skills === "object" ? cfg.skills : {};
+cfg.skills.entries = cfg.skills.entries && typeof cfg.skills.entries === "object" ? cfg.skills.entries : {};
+const entries=cfg.skills.entries;
+const enable=["browser-automation","brave-search","weather","news-summary","taskflow"];
+const disable=[
+  "1password","apple-notes","apple-reminders","bear-notes","blogwatcher","blucli","camsnap","clawhub",
+  "coding-agent","discord","eightctl","gemini","gh-issues","gifgrep","github","gog","goplaces",
+  "himalaya","imsg","mcporter","model-usage","nano-pdf","notion","obsidian","openai-whisper",
+  "openai-whisper-api","openhue","oracle","ordercli","peekaboo","sag","session-logs",
+  "sherpa-onnx-tts","slack","songsee","sonoscli","spotify-player","summarize","things-mac",
+  "tmux","trello","voice-call","wacli","xurl"
+];
+for(const k of enable){ entries[k]=Object.assign({}, entries[k]||{}, {enabled:true}); }
+for(const k of disable){ entries[k]=Object.assign({}, entries[k]||{}, {enabled:false}); }
+fs.writeFileSync(p, JSON.stringify(cfg,null,2)+"\n", "utf8");
+' "${OPENCLAW_CONFIG_FILE}" >/dev/null 2>&1 || true
+}
+
 repair_plugin_registry_if_needed() {
     local cli="/var/packages/ainasclaw/target/bin/openclaw"
     [ -x "${cli}" ] || cli="/var/packages/openclaw/target/bin/openclaw"
@@ -1420,6 +1447,7 @@ EOF
         sync_bundled_channel_plugins_to_extensions
         harden_extension_permissions
         sync_skills_to_workspace
+        apply_dsm_skill_defaults
         repair_plugin_registry_if_needed
         cleanup_missing_session_transcripts_if_needed
 }
@@ -1861,6 +1889,7 @@ try {
     sync_bundled_channel_plugins_to_stock_extensions
     sync_bundled_channel_plugins_to_extensions
     sync_skills_to_workspace
+    apply_dsm_skill_defaults
     harden_extension_permissions
 
     # 预置 runtime-deps stage 目录（使用真实 node_modules 目录，不再用软链，避免 doctor/npm reify 报
@@ -2393,6 +2422,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     ensure_openclaw_in_path
     sync_provider_models_from_upstream
     sync_skills_to_workspace
+    apply_dsm_skill_defaults
     validate_or_rollback_config
 
     # Clear stale pid marker before a fresh start.
