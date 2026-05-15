@@ -191,6 +191,7 @@ openclaw_prepare_bundle:
 		node dist/index.js doctor --fix --non-interactive | tee -a $(WORK_DIR)/doctor.log
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-bundled-runtime-deps.mjs $(WORK_DIR)/openclaw-bundle
+	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-plugin-sdk-channel-message.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-control-ui-update-banner.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-startup-sidecars.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-wecom-bundled-entry.mjs $(WORK_DIR)/openclaw-bundle
