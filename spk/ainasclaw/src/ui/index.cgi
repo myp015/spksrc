@@ -373,10 +373,13 @@ PY
             python3 - <<'PY' "${CFG_FILE}"
 import json, os, sys
 cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
+read_error = ''
+cfg_exists = bool(cfg_path and os.path.exists(cfg_path))
 try:
-    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
-except Exception:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_exists else {}
+except Exception as e:
     cfg = {}
+    read_error = f"{type(e).__name__}: {e}"
 providers_map = ((cfg.get('models') or {}).get('providers') or {})
 providers = []
 for pid, p in providers_map.items():
@@ -401,7 +404,7 @@ for pid, p in providers_map.items():
 workspace_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
 if isinstance(workspace_dir, str) and workspace_dir.endswith('/.openclaw'):
     workspace_dir = workspace_dir[:-10]
-print(json.dumps({'configuredProviders': providers, 'workspaceDir': workspace_dir, 'configPath': cfg_path, 'configExists': bool(cfg)}, ensure_ascii=False))
+print(json.dumps({'configuredProviders': providers, 'workspaceDir': workspace_dir, 'configPath': cfg_path, 'configExists': cfg_exists, 'readError': read_error}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -1097,10 +1100,13 @@ PY
             python3 - <<'PY' "${CFG_FILE}"
 import json, os, sys
 cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
+read_error = ''
+cfg_exists = bool(cfg_path and os.path.exists(cfg_path))
 try:
-    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
-except Exception:
+    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_exists else {}
+except Exception as e:
     cfg = {}
+    read_error = f"{type(e).__name__}: {e}"
 ch = cfg.get('channels') or {}
 
 def enabled_ids(channels):
@@ -1115,7 +1121,8 @@ def enabled_ids(channels):
 
 out = {
   'configPath': cfg_path,
-  'configExists': bool(cfg),
+  'configExists': cfg_exists,
+  'readError': read_error,
   'configuredChannelIds': enabled_ids(ch),
   'feishu': ch.get('feishu') or {},
   'wecom': ch.get('wecom') or {},
