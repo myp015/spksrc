@@ -30,9 +30,9 @@ pkg.exports['./plugin-sdk/channel-message'] = {
   default: './dist/plugin-sdk/channel-message.js',
 };
 
-// Compatibility bridge: route channel-message to the canonical plugin-sdk surface.
-// This avoids symbol drift when upstream moves helpers across submodules.
-const bridgeSource = `export * from "./index.js";\n`;
+// Compatibility bridge for legacy `openclaw/plugin-sdk/channel-message` imports.
+// Upstream moved symbols across submodules; keep a union export surface here.
+const bridgeSource = `export * from "./index.js";\nexport * from "./channel-plugin-common.js";\nexport * from "./command-auth.js";\nexport * from "./reply-reference.js";\n`;
 
 fs.writeFileSync(jsPath, bridgeSource, 'utf8');
 fs.writeFileSync(dtsPath, bridgeSource, 'utf8');
