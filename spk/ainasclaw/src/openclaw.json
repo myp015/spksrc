@@ -56,6 +56,24 @@
     "native": "auto",
     "nativeSkills": "auto"
   },
+  "skills": {
+    "entries": {
+      "browser-automation": { "enabled": true },
+      "brave-search": { "enabled": true },
+      "weather": { "enabled": true },
+      "news-summary": { "enabled": true },
+      "taskflow": { "enabled": true },
+
+      "session-logs": { "enabled": false },
+      "tmux": { "enabled": false },
+      "slack": { "enabled": false },
+      "discord": { "enabled": false },
+      "notion": { "enabled": false },
+      "sag": { "enabled": false },
+      "openai-whisper": { "enabled": false },
+      "openai-whisper-api": { "enabled": false }
+    }
+  },
   "tools": {
     "profile": "full",
     "elevated": {
