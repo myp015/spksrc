@@ -108,11 +108,11 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(OPENCLAW_NPM_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
-		@larksuiteoapi/feishu-openclaw-plugin@2026.3.8 \
-		@soimy/dingtalk@3.5.3 \
-		@sunnoy/wecom@3.0.0 \
-		@tencent-connect/openclaw-qqbot@1.7.1 \
-		@tencent-weixin/openclaw-weixin@2.1.8 \
+		@larksuiteoapi/feishu-openclaw-plugin@latest \
+		@soimy/dingtalk@latest \
+		@sunnoy/wecom@latest \
+		@tencent-connect/openclaw-qqbot@latest \
+		@tencent-weixin/openclaw-weixin@latest \
 		acpx@0.5.3 \
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
