@@ -30,7 +30,9 @@ pkg.exports['./plugin-sdk/channel-message'] = {
   default: './dist/plugin-sdk/channel-message.js',
 };
 
-const bridgeSource = `export * from "./channel-plugin-common.js";\nexport * from "./command-auth.js";\nexport { createMessageReceiptFromOutboundResults } from "./reply-reference.js";\n`;
+// Compatibility bridge: route channel-message to the canonical plugin-sdk surface.
+// This avoids symbol drift when upstream moves helpers across submodules.
+const bridgeSource = `export * from "./index.js";\n`;
 
 fs.writeFileSync(jsPath, bridgeSource, 'utf8');
 fs.writeFileSync(dtsPath, bridgeSource, 'utf8');
