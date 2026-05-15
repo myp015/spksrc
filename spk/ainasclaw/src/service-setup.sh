@@ -443,7 +443,9 @@ harden_extension_permissions() {
     find "${ext_dir}" -type f -exec chmod 644 {} \; 2>/dev/null || true
     # Ensure no world-writable bits remain.
     find "${ext_dir}" -perm -0002 -exec chmod o-w {} \; 2>/dev/null || true
-    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+    # DSM Control-UI (index.cgi) runs under web account and must read runtime config.
+    # Keep config world-readable to avoid UI showing empty models/channels on fresh install.
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 644 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
 }
 
 validate_or_rollback_config() {
@@ -1501,8 +1503,9 @@ EOF
     if [ -n "${eff_user}" ]; then
         chown -R "${eff_user}:${eff_group}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
         chown "${eff_user}:${eff_group}" "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
-        chmod 700 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
-        chmod 600 "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
+        # Runtime state can stay owner-only for write, but config file must remain readable by DSM web CGI.
+        chmod 755 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
+        chmod 644 "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
         chmod -R u+rwX,go-rwx "${OPENCLAW_STATE_DIR}/logs" "${OPENCLAW_STATE_DIR}/tasks" "${OPENCLAW_STATE_DIR}/flows" "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/plugins" "${OPENCLAW_STATE_DIR}/agents" 2>/dev/null || true
     fi
 
