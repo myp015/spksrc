@@ -391,7 +391,7 @@ sync_bundled_channel_plugins_to_stock_extensions() {
         "${stock_ext_dir}/weixin" 2>/dev/null || true
     local src dst
     for pair in \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuite/openclaw-lark:feishu" \
+        "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu:feishu" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk:dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom:wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot:qqbot" \
@@ -461,7 +461,6 @@ harden_extension_permissions() {
     # caused by suspicious ownership checks on direct load-path candidates.
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuite/openclaw-lark" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/qqbot" \
@@ -1015,7 +1014,7 @@ service_postinst() {
 
     # Normalize bundled channel plugin ownership to root:root so OpenClaw trust checks pass.
     for path in \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuite/openclaw-lark" \
+        "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
@@ -1216,7 +1215,7 @@ const pickPluginId = (preferred, aliases = []) => {
 const selectedPluginIds = {
   // Prefer canonical channel ids after SPK bundled-entry patching. Legacy ids are
   // only fallback aliases for older package contents.
-  feishu: pickPluginId("openclaw-lark", ["feishu"]),
+  feishu: pickPluginId("feishu", ["openclaw-lark"]),
   dingtalk: pickPluginId("dingtalk", ["openclaw-dingtalk"]),
   wecom: pickPluginId("wecom", ["wecom-openclaw-plugin", "openclaw-wecom"]),
   qqbot: pickPluginId("qqbot", ["openclaw-qqbot"]),
@@ -2408,7 +2407,7 @@ for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId))
 }
 
 const legacyAliases = {
-  feishu: ["feishu", "openclaw-lark"],
+  feishu: ["feishu"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],
   wecom: ["wecom", "wecom-openclaw-plugin", "openclaw-wecom"],
   qqbot: ["qqbot", "openclaw-qqbot"],
@@ -2416,7 +2415,7 @@ const legacyAliases = {
 };
 
 const preferredPluginIdByChannel = {
-  feishu: "openclaw-lark",
+  feishu: "feishu",
   dingtalk: "dingtalk",
   wecom: "wecom",
   qqbot: "qqbot",

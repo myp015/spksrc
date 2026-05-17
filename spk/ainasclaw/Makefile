@@ -17,7 +17,7 @@ OPENCLAW_NPM_VERS := $(shell sh -c 'set -e; \
 		v=$$(wget -qO- https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p"); \
 	fi; \
 	echo "$$v"')
-MIN_OPENCLAW_NPM_VERS := 2026.5.4
+MIN_OPENCLAW_NPM_VERS := 2026.5.13
 ifeq ($(strip $(OPENCLAW_NPM_VERS)),)
 OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
 $(warning Failed to resolve npm latest from registry; fallback to upstream git tag v$(LATEST_OPENCLAW_VERS))
@@ -133,7 +133,7 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(OPENCLAW_NPM_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
-		@larksuite/openclaw-lark@latest \
+		@openclaw/feishu@latest \
 		@soimy/dingtalk@latest \
 		@sunnoy/wecom@latest \
 		@tencent-connect/openclaw-qqbot@latest \
