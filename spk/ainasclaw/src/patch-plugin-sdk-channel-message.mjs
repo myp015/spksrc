@@ -32,7 +32,7 @@ pkg.exports['./plugin-sdk/channel-message'] = {
 
 // Compatibility bridge for legacy `openclaw/plugin-sdk/channel-message` imports.
 // Upstream moved symbols across submodules; keep a union export surface here.
-const bridgeSource = `export * from "./index.js";\nexport * from "./channel-plugin-common.js";\nexport * from "./command-auth.js";\nexport * from "./reply-reference.js";\n`;
+const bridgeSource = `export * from "./index.js";\nexport * from "./channel-plugin-common.js";\nexport * from "./command-auth.js";\nexport * from "./reply-reference.js";\nexport * from "./zalouser.js";\nexport { resolveSenderCommandAuthorization, resolveSenderCommandAuthorizationWithRuntime } from "./command-auth.js";\n`;
 
 fs.writeFileSync(jsPath, bridgeSource, 'utf8');
 fs.writeFileSync(dtsPath, bridgeSource, 'utf8');
