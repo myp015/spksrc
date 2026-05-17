@@ -360,7 +360,7 @@ sync_bundled_channel_plugins_to_extensions() {
     # OpenClaw trust checks may treat workspace-owned plugin dirs as suspicious (uid != 0).
     # Channel plugins are shipped in app/dist/extensions (root-owned) instead.
     rm -rf \
-        "${ext_dir}/feishu-openclaw-plugin" \
+        "${ext_dir}/openclaw-lark" \
         "${ext_dir}/feishu" \
         "${ext_dir}/dingtalk" \
         "${ext_dir}/wecom" \
@@ -380,7 +380,7 @@ sync_bundled_channel_plugins_to_stock_extensions() {
     # so we only need one trusted dir per canonical channel id here.
     rm -rf \
         "${stock_ext_dir}/feishu" \
-        "${stock_ext_dir}/feishu-openclaw-plugin" \
+        "${stock_ext_dir}/openclaw-lark" \
         "${stock_ext_dir}/dingtalk" \
         "${stock_ext_dir}/openclaw-dingtalk" \
         "${stock_ext_dir}/wecom" \
@@ -391,7 +391,7 @@ sync_bundled_channel_plugins_to_stock_extensions() {
         "${stock_ext_dir}/weixin" 2>/dev/null || true
     local src dst
     for pair in \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin:feishu" \
+        "${OPENCLAW_APP_DIR}/node_modules/@larksuite/openclaw-lark:feishu" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk:dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom:wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot:qqbot" \
@@ -461,7 +461,7 @@ harden_extension_permissions() {
     # caused by suspicious ownership checks on direct load-path candidates.
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
+        "${OPENCLAW_APP_DIR}/node_modules/@larksuite/openclaw-lark" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/qqbot" \
@@ -1014,7 +1014,7 @@ service_postinst() {
 
     # Normalize bundled channel plugin ownership to root:root so OpenClaw trust checks pass.
     for path in \
-        "${OPENCLAW_APP_DIR}/node_modules/@larksuiteoapi/feishu-openclaw-plugin" \
+        "${OPENCLAW_APP_DIR}/node_modules/@larksuite/openclaw-lark" \
         "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
@@ -1215,7 +1215,7 @@ const pickPluginId = (preferred, aliases = []) => {
 const selectedPluginIds = {
   // Prefer canonical channel ids after SPK bundled-entry patching. Legacy ids are
   // only fallback aliases for older package contents.
-  feishu: pickPluginId("feishu", ["feishu-openclaw-plugin"]),
+  feishu: pickPluginId("feishu", ["openclaw-lark"]),
   dingtalk: pickPluginId("dingtalk", ["openclaw-dingtalk"]),
   wecom: pickPluginId("wecom", ["wecom-openclaw-plugin", "openclaw-wecom"]),
   qqbot: pickPluginId("qqbot", ["openclaw-qqbot"]),
@@ -2081,7 +2081,7 @@ for (const id of Object.keys(cfg.plugins.entries)) {
 }
 
 const legacyChannelKeyMap = {
-  "feishu-openclaw-plugin": "feishu",
+  "openclaw-lark": "feishu",
   "openclaw-qqbot": "qqbot",
   "wecom-openclaw-plugin": "wecom",
   "openclaw-dingtalk": "dingtalk",
@@ -2405,7 +2405,7 @@ for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId))
 }
 
 const legacyAliases = {
-  feishu: ["feishu", "feishu-openclaw-plugin"],
+  feishu: ["feishu", "openclaw-lark"],
   dingtalk: ["dingtalk", "openclaw-dingtalk"],
   wecom: ["wecom", "wecom-openclaw-plugin", "openclaw-wecom"],
   qqbot: ["qqbot", "openclaw-qqbot"],
@@ -2467,7 +2467,7 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
   // Remove legacy alias ids once a canonical selection is known.
   // We intentionally preserve the channel itself, but any non-selected alias
   // should be stripped from plugins.entries / plugins.allow to avoid old vendor
-  // ids (for example feishu-openclaw-plugin, openclaw-qqbot) being re-published
+  // ids (for example openclaw-lark, openclaw-qqbot) being re-published
   // forever after a successful canonical migration.
   for (const id of aliases) {
     if (id === channelId || id === selectedId) continue;

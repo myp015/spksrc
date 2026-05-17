@@ -85,36 +85,8 @@ export function ${registerName}(api) {
 
 const patchFeishu = (dir) => {
   if (!fs.existsSync(dir)) return 0;
-  const indexPath = path.join(dir, 'index.js');
-  const pluginApiPath = path.join(dir, 'plugin-api.js');
-  if (!fs.existsSync(indexPath)) return 0;
-  copyIfMissing(indexPath, pluginApiPath);
-  ensureFile(path.join(dir, 'channel-plugin-api.js'), 'export { default as feishuPlugin } from "./plugin-api.js";\n');
-  ensureFile(
-    indexPath,
-    `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
-
-const feishuEntry = defineBundledChannelEntry({
-  id: "feishu",
-  name: "Feishu",
-  description: "Feishu/Lark channel plugin",
-  importMetaUrl: import.meta.url,
-  plugin: {
-    specifier: "./channel-plugin-api.js",
-    exportName: "feishuPlugin"
-  }
-});
-
-export default feishuEntry;
-`,
-  );
-  patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
-    id: 'feishu',
-    channels: ['feishu'],
-    extensions: ['./index.js']
-  });
-  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'feishu', 'feishu', ['./index.js']);
-  return 1;
+  // Keep official openclaw-lark entry contract unchanged.
+  return 0;
 };
 
 const patchQQBot = (dir) => {
@@ -311,7 +283,7 @@ export default weixinEntry;
 const targets = [
   // Patch node_modules source roots first. DSM service-setup stages channel dirs
   // from these package roots into dist/extensions at runtime.
-  { name: 'node-feishu', dir: path.join(root, 'node_modules', '@larksuiteoapi', 'feishu-openclaw-plugin'), patch: patchFeishu },
+  { name: 'node-feishu', dir: path.join(root, 'node_modules', '@larksuite', 'openclaw-lark'), patch: patchFeishu },
   { name: 'node-qqbot', dir: path.join(root, 'node_modules', '@tencent-connect', 'openclaw-qqbot'), patch: patchQQBot },
   { name: 'node-dingtalk', dir: path.join(root, 'node_modules', '@soimy', 'dingtalk'), patch: patchDingTalk },
   { name: 'node-wecom', dir: path.join(root, 'node_modules', '@sunnoy', 'wecom'), patch: patchWeCom },
