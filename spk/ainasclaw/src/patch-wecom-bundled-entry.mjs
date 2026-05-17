@@ -89,7 +89,7 @@ const patchFeishu = (dir) => {
   const pluginApiPath = path.join(dir, 'plugin-api.js');
   if (!fs.existsSync(indexPath)) return 0;
   copyIfMissing(indexPath, pluginApiPath);
-  ensureFile(path.join(dir, 'channel-plugin-api.js'), 'export { feishuPlugin } from "./plugin-api.js";\n');
+  ensureFile(path.join(dir, 'channel-plugin-api.js'), 'export { default as feishuPlugin } from "./plugin-api.js";\n');
   ensureFile(
     indexPath,
     `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";

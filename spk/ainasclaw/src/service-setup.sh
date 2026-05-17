@@ -2066,6 +2066,20 @@ cfg.channels = cfg.channels || {};
 
 let changed = false;
 
+// Global stale-plugin prune: remove plugin ids that are no longer discoverable,
+// even when their channel config is currently absent.
+for (const id of Object.keys(cfg.plugins.entries)) {
+  if (!availablePluginIds.has(id)) {
+    delete cfg.plugins.entries[id];
+    changed = true;
+  }
+}
+{
+  const before = cfg.plugins.allow.length;
+  cfg.plugins.allow = cfg.plugins.allow.filter((id) => typeof id === "string" && availablePluginIds.has(id));
+  if (cfg.plugins.allow.length !== before) changed = true;
+}
+
 const legacyChannelKeyMap = {
   "feishu-openclaw-plugin": "feishu",
   "openclaw-qqbot": "qqbot",
