@@ -90,11 +90,6 @@ const patchFeishu = (dir) => {
   if (!fs.existsSync(indexPath)) return 0;
   copyIfMissing(indexPath, pluginApiPath);
   ensureFile(path.join(dir, 'channel-plugin-api.js'), 'export { feishuPlugin } from "./plugin-api.js";\n');
-  writeRegisterFullProxy({
-    file: path.join(dir, 'full-api.js'),
-    importPath: './plugin-api.js',
-    registerName: 'registerFeishuPluginFull',
-  });
   ensureFile(
     indexPath,
     `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
@@ -107,9 +102,6 @@ const feishuEntry = defineBundledChannelEntry({
   plugin: {
     specifier: "./channel-plugin-api.js",
     exportName: "feishuPlugin"
-  },
-  registerFull(api) {
-    return import("./full-api.js").then((m) => m.registerFeishuPluginFull(api));
   }
 });
 

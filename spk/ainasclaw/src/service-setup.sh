@@ -409,6 +409,41 @@ sync_bundled_channel_plugins_to_stock_extensions() {
     done
 }
 
+force_js_channel_entries() {
+    [ -x "${OPENCLAW_NODE}" ] || return 0
+    "${OPENCLAW_NODE}" -e '
+const fs=require("fs"),path=require("path");
+const app=process.argv[1];
+const roots=[path.join(app,"node_modules","@soimy","dingtalk"),path.join(app,"node_modules","@tencent-weixin","openclaw-weixin"),path.join(app,"dist","extensions","dingtalk"),path.join(app,"dist","extensions","openclaw-weixin")];
+const w=(f,c)=>fs.writeFileSync(f,c,"utf8");
+const pj=(f,fn)=>{if(!fs.existsSync(f))return;const o=JSON.parse(fs.readFileSync(f,"utf8"));fn(o);fs.writeFileSync(f,JSON.stringify(o,null,2)+"\n","utf8");};
+for(const d of roots){
+  if(!fs.existsSync(d)) continue;
+  if(d.endsWith("dingtalk") && fs.existsSync(path.join(d,"dist","index.js"))){
+    w(path.join(d,"channel-plugin-api.js"),"export { dingtalkPlugin } from \"./dist/index.js\";\n");
+    w(path.join(d,"runtime-api.js"),"export { setDingTalkRuntime } from \"./dist/index.js\";\n");
+    w(path.join(d,"full-api.js"),"import e from \"./dist/index.js\";\nexport function registerDingTalkPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
+    w(path.join(d,"index.js"),"import { defineBundledChannelEntry } from \"openclaw/plugin-sdk/channel-entry-contract\";\nexport default defineBundledChannelEntry({id:\"dingtalk\",name:\"DingTalk\",description:\"DingTalk channel plugin\",importMetaUrl:import.meta.url,plugin:{specifier:\"./channel-plugin-api.js\",exportName:\"dingtalkPlugin\"},runtime:{specifier:\"./runtime-api.js\",exportName:\"setDingTalkRuntime\"},registerFull(api){return import(\"./full-api.js\").then(m=>m.registerDingTalkPluginFull(api));}});\n");
+    pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="dingtalk";o.channels=["dingtalk"];o.extensions=["./index.js"];});
+    pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="dingtalk";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="dingtalk";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
+  }
+  if(d.endsWith("openclaw-weixin") && fs.existsSync(path.join(d,"dist","src","channel.js"))){
+    w(path.join(d,"channel-plugin-api.js"),"export { weixinPlugin } from \"./dist/src/channel.js\";\n");
+    w(path.join(d,"runtime-api.js"),"export { setWeixinRuntime } from \"./dist/src/runtime.js\";\n");
+    w(path.join(d,"full-api.js"),"import e from \"./dist/index.js\";\nexport function registerWeixinPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
+    w(path.join(d,"index.js"),"import { defineBundledChannelEntry } from \"openclaw/plugin-sdk/channel-entry-contract\";\nexport default defineBundledChannelEntry({id:\"openclaw-weixin\",name:\"Weixin\",description:\"Weixin channel plugin\",importMetaUrl:import.meta.url,plugin:{specifier:\"./channel-plugin-api.js\",exportName:\"weixinPlugin\"},runtime:{specifier:\"./runtime-api.js\",exportName:\"setWeixinRuntime\"},registerFull(api){return import(\"./full-api.js\").then(m=>m.registerWeixinPluginFull(api));}});\n");
+    pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="openclaw-weixin";o.channels=["openclaw-weixin"];o.extensions=["./index.js"];});
+    pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="openclaw-weixin";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="openclaw-weixin";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
+  }
+}
+' "${OPENCLAW_APP_DIR}" >/dev/null 2>&1 || true
+
+    local loader_js="${OPENCLAW_APP_DIR}/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js"
+    if [ -f "${loader_js}" ]; then
+        sed -i 's/{ alias: getAliases() }/{ alias: getAliases(), tryNative: false }/g' "${loader_js}" 2>/dev/null || true
+    fi
+}
+
 harden_extension_permissions() {
     local ext_dir="${OPENCLAW_STATE_DIR}/extensions"
     [ -d "${ext_dir}" ] || return 0
@@ -1458,6 +1493,7 @@ EOF
         ensure_self_package_link
         sync_bundled_channel_plugins_to_stock_extensions
         sync_bundled_channel_plugins_to_extensions
+        force_js_channel_entries
         harden_extension_permissions
         sync_skills_to_workspace
         apply_dsm_skill_defaults
@@ -1902,6 +1938,7 @@ try {
     ensure_self_package_link
     sync_bundled_channel_plugins_to_stock_extensions
     sync_bundled_channel_plugins_to_extensions
+    force_js_channel_entries
     sync_skills_to_workspace
     apply_dsm_skill_defaults
     harden_extension_permissions
