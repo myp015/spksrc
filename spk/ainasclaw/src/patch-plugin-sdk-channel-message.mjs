@@ -12,6 +12,8 @@ const pkgPath = path.join(root, 'package.json');
 const distDir = path.join(root, 'dist', 'plugin-sdk');
 const jsPath = path.join(distDir, 'channel-message.js');
 const dtsPath = path.join(distDir, 'channel-message.d.ts');
+const indexJsPath = path.join(distDir, 'index.js');
+const indexDtsPath = path.join(distDir, 'src', 'plugin-sdk', 'index.d.ts');
 
 if (!fs.existsSync(pkgPath)) {
   console.error(`[patch-plugin-sdk-channel-message] package.json not found: ${pkgPath}`);
@@ -36,6 +38,32 @@ const bridgeSource = `export * from "./index.js";\nexport * from "./channel-plug
 
 fs.writeFileSync(jsPath, bridgeSource, 'utf8');
 fs.writeFileSync(dtsPath, bridgeSource, 'utf8');
+
+const compatExportLine = 'export { resolveSenderCommandAuthorization, resolveSenderCommandAuthorizationWithRuntime } from "./command-auth.js";\n';
+const compatWildcardLines = [
+  'export * from "./command-auth.js";',
+  'export * from "./allow-from.js";',
+];
+if (fs.existsSync(indexJsPath)) {
+  const indexJs = fs.readFileSync(indexJsPath, 'utf8');
+  let out = indexJs;
+  if (!out.includes('resolveSenderCommandAuthorization')) out = `${out}${out.endsWith('\n') ? '' : '\n'}${compatExportLine}`;
+  for (const line of compatWildcardLines) {
+    if (!out.includes(line)) out = `${out}${out.endsWith('\n') ? '' : '\n'}${line}\n`;
+  }
+  if (out !== indexJs) fs.writeFileSync(indexJsPath, out, 'utf8');
+}
+
+if (fs.existsSync(indexDtsPath)) {
+  const indexDts = fs.readFileSync(indexDtsPath, 'utf8');
+  let out = indexDts;
+  if (!out.includes('resolveSenderCommandAuthorization')) out = `${out}${out.endsWith('\n') ? '' : '\n'}${compatExportLine}`;
+  for (const line of compatWildcardLines) {
+    if (!out.includes(line)) out = `${out}${out.endsWith('\n') ? '' : '\n'}${line}\n`;
+  }
+  if (out !== indexDts) fs.writeFileSync(indexDtsPath, out, 'utf8');
+}
+
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 
-console.log('[patch-plugin-sdk-channel-message] ensured ./plugin-sdk/channel-message export + bridge files');
+console.log('[patch-plugin-sdk-channel-message] ensured channel-message bridge + plugin-sdk compat command-auth exports');

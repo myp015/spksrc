@@ -1247,12 +1247,12 @@ if isinstance(wx_payload, dict):
             w['accounts'] = acc
 
 channel_plugin_map = {
-    'feishu': 'feishu',
-    'qqbot': 'qqbot',
-    'dingtalk': 'dingtalk',
-    'wecom': 'wecom',
-    'openclaw-weixin': 'openclaw-weixin',
-    'weixin': 'openclaw-weixin'
+    'feishu': ['feishu', 'feishu-openclaw-plugin'],
+    'qqbot': ['qqbot', 'openclaw-qqbot'],
+    'dingtalk': ['dingtalk', 'openclaw-dingtalk'],
+    'wecom': ['wecom', 'wecom-openclaw-plugin'],
+    'openclaw-weixin': ['openclaw-weixin', 'weixin'],
+    'weixin': ['openclaw-weixin', 'weixin']
 }
 for cid, cv in (ch or {}).items():
     enabled = True
@@ -1260,20 +1260,26 @@ for cid, cv in (ch or {}).items():
         enabled = bool(cv.get('enabled', True))
     if not enabled:
         continue
-    pid = channel_plugin_map.get(cid)
-    if not pid:
+    pids = channel_plugin_map.get(cid)
+    if not pids:
         continue
-    if pid not in allow:
-        allow.append(pid)
-    e = entries.get(pid)
-    if not isinstance(e, dict):
-        e = {}
-    e['enabled'] = True
-    # 渠道保存时仅触发渠道级热更新，不要把 provider/plugin 细项写入，
-    # 否则 gateway 会判定为“需要整网关重启”。
-    if isinstance(e.get('config'), dict):
-        e.pop('config', None)
-    entries[pid] = e
+    if isinstance(pids, str):
+        pids = [pids]
+    for pid in pids:
+        if not isinstance(pid, str) or not pid.strip():
+            continue
+        pid = pid.strip()
+        if pid not in allow:
+            allow.append(pid)
+        e = entries.get(pid)
+        if not isinstance(e, dict):
+            e = {}
+        e['enabled'] = True
+        # 渠道保存时仅触发渠道级热更新，不要把 provider/plugin 细项写入，
+        # 否则 gateway 会判定为“需要整网关重启”。
+        if isinstance(e.get('config'), dict):
+            e.pop('config', None)
+        entries[pid] = e
 
 plugins['allow'] = allow
 plugins['entries'] = entries
@@ -2599,12 +2605,12 @@ if action in ('start','restart'):
             entries = {}
 
         channel_plugin_map = {
-            'feishu': 'feishu',
-            'qqbot': 'qqbot',
-            'dingtalk': 'dingtalk',
-            'wecom': 'wecom',
-            'openclaw-weixin': 'openclaw-weixin',
-            'weixin': 'openclaw-weixin',
+            'feishu': ['feishu', 'feishu-openclaw-plugin'],
+            'qqbot': ['qqbot', 'openclaw-qqbot'],
+            'dingtalk': ['dingtalk', 'openclaw-dingtalk'],
+            'wecom': ['wecom', 'wecom-openclaw-plugin'],
+            'openclaw-weixin': ['openclaw-weixin', 'weixin'],
+            'weixin': ['openclaw-weixin', 'weixin'],
         }
         channels = c.get('channels') or {}
 
@@ -2624,16 +2630,22 @@ if action in ('start','restart'):
                 enabled = bool(cv.get('enabled', True))
             if not enabled:
                 continue
-            pid = channel_plugin_map.get(cid)
-            if not pid:
+            pids = channel_plugin_map.get(cid)
+            if not pids:
                 continue
-            if pid not in allow:
-                allow.append(pid)
-            ent = entries.get(pid)
-            if not isinstance(ent, dict):
-                ent = {}
-            ent['enabled'] = True
-            entries[pid] = ent
+            if isinstance(pids, str):
+                pids = [pids]
+            for pid in pids:
+                if not isinstance(pid, str) or not pid.strip():
+                    continue
+                pid = pid.strip()
+                if pid not in allow:
+                    allow.append(pid)
+                ent = entries.get(pid)
+                if not isinstance(ent, dict):
+                    ent = {}
+                ent['enabled'] = True
+                entries[pid] = ent
 
         plugins['allow'] = list(dict.fromkeys(allow))
         plugins['entries'] = entries

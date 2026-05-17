@@ -26,6 +26,19 @@ ifneq ($(OPENCLAW_NPM_VERS),$(LATEST_OPENCLAW_VERS))
 $(warning Upstream git latest is v$(LATEST_OPENCLAW_VERS), npm latest is $(OPENCLAW_NPM_VERS); build pins npm latest)
 endif
 endif
+NODEJS_RUNTIME_VERS := $(shell sh -c 'set -e; \
+	v=""; \
+	if command -v curl >/dev/null 2>&1; then \
+		v=$$(curl -fsSL --retry 3 --retry-delay 1 https://nodejs.org/dist/index.json 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"v\\(22\\.[0-9]\\+\\.[0-9]\\+\\)\".*/\\1/p" | tr " " "\\n" | sort -V | tail -n 1); \
+	fi; \
+	if [ -z "$$v" ] && command -v wget >/dev/null 2>&1; then \
+		v=$$(wget -qO- https://nodejs.org/dist/index.json 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"v\\(22\\.[0-9]\\+\\.[0-9]\\+\\)\".*/\\1/p" | tr " " "\\n" | sort -V | tail -n 1); \
+	fi; \
+	echo "$$v"')
+ifeq ($(strip $(NODEJS_RUNTIME_VERS)),)
+NODEJS_RUNTIME_VERS := 22.22.0
+$(warning Failed to resolve latest Node.js v22.x; fallback to v$(NODEJS_RUNTIME_VERS))
+endif
 SPK_VERS := $(OPENCLAW_NPM_VERS)
 SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
 SPK_ICON = src/openclaw.png
@@ -94,8 +107,8 @@ openclaw_prepare_bundle:
 	@rm -rf $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle $(WORK_DIR)/bun-runtime
 	@install -d -m 755 $(WORK_DIR)/node-runtime $(WORK_DIR)/build-node-runtime $(WORK_DIR)/openclaw-bundle $(WORK_DIR)/bun-runtime
 	@cd $(WORK_DIR) && \
-		curl -fsSL -o node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz
-	@tar -xJf $(WORK_DIR)/node-v22.22.0-linux-$(NODE_DIST_ARCH).tar.xz -C $(WORK_DIR)/node-runtime --strip-components=1
+		curl -fsSL -o node-v$(NODEJS_RUNTIME_VERS)-linux-$(NODE_DIST_ARCH).tar.xz https://nodejs.org/dist/v$(NODEJS_RUNTIME_VERS)/node-v$(NODEJS_RUNTIME_VERS)-linux-$(NODE_DIST_ARCH).tar.xz
+	@tar -xJf $(WORK_DIR)/node-v$(NODEJS_RUNTIME_VERS)-linux-$(NODE_DIST_ARCH).tar.xz -C $(WORK_DIR)/node-runtime --strip-components=1
 	@HOST_ARCH=$$(uname -m); \
 		case "$$HOST_ARCH" in \
 			x86_64|amd64) HOST_NODE_DIST_ARCH=x64 ;; \
@@ -103,8 +116,8 @@ openclaw_prepare_bundle:
 			*) echo "Unsupported host arch for build-node-runtime: $$HOST_ARCH"; exit 1 ;; \
 		esac; \
 		cd $(WORK_DIR) && \
-		curl -fsSL -o node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz && \
-		tar -xJf node-v22.22.0-linux-$$HOST_NODE_DIST_ARCH.tar.xz -C $(WORK_DIR)/build-node-runtime --strip-components=1
+		curl -fsSL -o node-v$(NODEJS_RUNTIME_VERS)-linux-$$HOST_NODE_DIST_ARCH.tar.xz https://nodejs.org/dist/v$(NODEJS_RUNTIME_VERS)/node-v$(NODEJS_RUNTIME_VERS)-linux-$$HOST_NODE_DIST_ARCH.tar.xz && \
+		tar -xJf node-v$(NODEJS_RUNTIME_VERS)-linux-$$HOST_NODE_DIST_ARCH.tar.xz -C $(WORK_DIR)/build-node-runtime --strip-components=1
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(OPENCLAW_NPM_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
@@ -196,6 +209,7 @@ openclaw_prepare_bundle:
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-bundled-runtime-deps.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-plugin-sdk-channel-message.mjs $(WORK_DIR)/openclaw-bundle
+	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-feishu-plugin-sdk-imports.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-control-ui-update-banner.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-startup-sidecars.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-wecom-bundled-entry.mjs $(WORK_DIR)/openclaw-bundle
