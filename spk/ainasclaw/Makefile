@@ -222,6 +222,7 @@ openclaw_prepare_bundle:
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-feishu-plugin-sdk-imports.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-jiti-loader-try-native.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-channel-bundled-js-entry.mjs $(WORK_DIR)/openclaw-bundle
+	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-openclaw-lark-bundled-entry.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-control-ui-update-banner.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-startup-sidecars.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-wecom-bundled-entry.mjs $(WORK_DIR)/openclaw-bundle
