@@ -223,12 +223,9 @@ openclaw_prepare_bundle:
 		node dist/index.js doctor --fix --non-interactive | tee -a $(WORK_DIR)/doctor.log
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-pty-keys.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-bundled-runtime-deps.mjs $(WORK_DIR)/openclaw-bundle
-	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-plugin-sdk-channel-message.mjs $(WORK_DIR)/openclaw-bundle
-	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-feishu-plugin-sdk-imports.mjs $(WORK_DIR)/openclaw-bundle
-	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-feishu-runtime-store.mjs $(WORK_DIR)/openclaw-bundle
+	# Keep official OpenClaw Feishu extension as-is (no local compatibility rewrites).
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-jiti-loader-try-native.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-channel-bundled-js-entry.mjs $(WORK_DIR)/openclaw-bundle
-	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-openclaw-lark-bundled-entry.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-control-ui-update-banner.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-startup-sidecars.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-wecom-bundled-entry.mjs $(WORK_DIR)/openclaw-bundle
