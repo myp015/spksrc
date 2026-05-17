@@ -1357,36 +1357,12 @@ if not skip_reload:
             reload_ok = (p.returncode == 0)
             reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-800:]
 
-            # 兜底：若启动链路返回成功但 gateway 仍未起来，直接按 install_run 同款参数拉起 gateway run。
-            if not is_gateway_running():
-                try:
-                    os.makedirs('/var/packages/ainasclaw/var', exist_ok=True)
-                    gw_port = 58789
-                    try:
-                        c0 = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
-                        gw_port = int((((c0.get('gateway') or {}).get('port')) or 58789))
-                    except Exception:
-                        gw_port = 58789
-                    if not (1024 <= gw_port <= 65535):
-                        gw_port = 58789
-
-                    spawn_log = '/var/packages/ainasclaw/var/openclaw-gateway.spawn.log'
-                    with open(spawn_log, 'ab') as sf:
-                        p2 = subprocess.Popen(
-                            ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'run', '--allow-unconfigured', '--port', str(gw_port)],
-                            env=env,
-                            stdout=sf,
-                            stderr=subprocess.STDOUT,
-                            start_new_session=True,
-                        )
-                    try:
-                        with open('/var/packages/ainasclaw/var/openclaw-gateway.runtime.pid', 'w', encoding='utf-8') as pf:
-                            pf.write(str(p2.pid))
-                    except Exception:
-                        pass
-                    reload_out = (reload_out + '\n[fallback] spawned gateway pid=' + str(p2.pid))[-1200:]
-                except Exception as se:
-                    reload_out = (reload_out + '\n[fallback-error] ' + str(se))[-1200:]
+            # 启动链路返回后，先给 package/service 侧留出完成 gateway 启动的时间。
+            # 直接补起第二个 gateway 容易和 service-setup 的首次启动并发，导致 EADDRINUSE。
+            for _ in range(30):
+                if is_gateway_running():
+                    break
+                time.sleep(1)
 
             # 最终状态以 gateway 实际是否可见为准。
             reload_ok = is_gateway_running()
