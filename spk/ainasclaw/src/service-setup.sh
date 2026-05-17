@@ -993,6 +993,7 @@ SUDOERS_EOF
 service_postinst() {
     ensure_openclaw_in_path
     ensure_terminal_alias_sudoers
+    disable_external_gateway_supervisors
 
     # Guard against installer contexts that invoke postinst from non-canonical
     # package roots (e.g. /volume1/@appstore/ainasclaw). Bootstrap/state writes
@@ -1215,7 +1216,7 @@ const pickPluginId = (preferred, aliases = []) => {
 const selectedPluginIds = {
   // Prefer canonical channel ids after SPK bundled-entry patching. Legacy ids are
   // only fallback aliases for older package contents.
-  feishu: pickPluginId("feishu", ["openclaw-lark"]),
+  feishu: pickPluginId("openclaw-lark", ["feishu"]),
   dingtalk: pickPluginId("dingtalk", ["openclaw-dingtalk"]),
   wecom: pickPluginId("wecom", ["wecom-openclaw-plugin", "openclaw-wecom"]),
   qqbot: pickPluginId("qqbot", ["openclaw-qqbot"]),
@@ -1502,6 +1503,8 @@ EOF
 }
 
 service_prestart() {
+    disable_external_gateway_supervisors
+    stop_gateway_processes
 
     # Hard bootstrap guard: even if postinst path misses in some DSM install flows,
     # prestart must still guarantee a usable state dir + config file.
@@ -2413,7 +2416,7 @@ const legacyAliases = {
 };
 
 const preferredPluginIdByChannel = {
-  feishu: "feishu",
+  feishu: "openclaw-lark",
   dingtalk: "dingtalk",
   wecom: "wecom",
   qqbot: "qqbot",
@@ -2528,6 +2531,9 @@ stop_gateway_processes() {
     pkill -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
     pkill -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
     pkill -f '/volume1/@appstore/ainasclaw/bin/node /volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    # Kill externally installed/global OpenClaw gateway runtimes to prevent
+    # DSM package from accidentally using outdated /usr/lib/node_modules/openclaw.
+    pkill -f '/usr/lib/node_modules/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
     pkill -f 'openclaw gateway run' >/dev/null 2>&1 || true
     pkill -x 'openclaw-gateway' >/dev/null 2>&1 || true
 
@@ -2545,6 +2551,28 @@ stop_gateway_processes() {
             kill -KILL "${p}" >/dev/null 2>&1 || true
         done
     fi
+}
+
+disable_external_gateway_supervisors() {
+    # Best effort: disable user-level global openclaw gateway services that may
+    # auto-restart an old runtime outside this SPK package.
+    local eff_user
+    eff_user="$(resolve_effective_service_user)"
+    local users_to_check="root"
+    if [ -n "${eff_user}" ] && [ "${eff_user}" != "root" ]; then
+        users_to_check="${users_to_check} ${eff_user}"
+    fi
+    for u in ${users_to_check}; do
+        local home_dir
+        home_dir="$(getent passwd "${u}" 2>/dev/null | awk -F: '{print $6}')"
+        [ -n "${home_dir}" ] || continue
+        if [ -f "${home_dir}/.config/systemd/user/openclaw-gateway.service" ]; then
+            if [ "$(id -u 2>/dev/null || echo 1)" = "0" ]; then
+                su -s /bin/sh "${u}" -c 'systemctl --user disable --now openclaw-gateway.service >/dev/null 2>&1 || true' >/dev/null 2>&1 || true
+            fi
+            rm -f "${home_dir}/.config/systemd/user/openclaw-gateway.service" >/dev/null 2>&1 || true
+        fi
+    done
 }
 
 service_poststop() {

@@ -17,9 +17,14 @@ OPENCLAW_NPM_VERS := $(shell sh -c 'set -e; \
 		v=$$(wget -qO- https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p"); \
 	fi; \
 	echo "$$v"')
+MIN_OPENCLAW_NPM_VERS := 2026.5.13
 ifeq ($(strip $(OPENCLAW_NPM_VERS)),)
 OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
 $(warning Failed to resolve npm latest from registry; fallback to upstream git tag v$(LATEST_OPENCLAW_VERS))
+endif
+ifneq ($(shell printf '%s\n%s\n' $(MIN_OPENCLAW_NPM_VERS) $(OPENCLAW_NPM_VERS) | sort -V | head -n1),$(MIN_OPENCLAW_NPM_VERS))
+$(warning Resolved OpenClaw npm version $(OPENCLAW_NPM_VERS) is below minimum $(MIN_OPENCLAW_NPM_VERS); force minimum)
+OPENCLAW_NPM_VERS := $(MIN_OPENCLAW_NPM_VERS)
 endif
 ifneq ($(strip $(LATEST_OPENCLAW_VERS)),)
 ifneq ($(OPENCLAW_NPM_VERS),$(LATEST_OPENCLAW_VERS))

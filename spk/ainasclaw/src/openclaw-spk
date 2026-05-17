@@ -297,6 +297,16 @@ except Exception:
 PY
     exit 0
     ;;
+  doctor)
+    shift
+    # Default to lightweight checks for DSM runtime:
+    # - disable workspace suggestions (often scans large trees)
+    # - non-interactive path to avoid prompt stalls in panel terminal
+    if [ $# -eq 0 ]; then
+      exec "$APP_NODE" "$APP_ENTRY" doctor --no-workspace-suggestions --non-interactive
+    fi
+    exec "$APP_NODE" "$APP_ENTRY" doctor --no-workspace-suggestions "$@"
+    ;;
 esac
 
 exec "$APP_NODE" "$APP_ENTRY" "$@"
