@@ -26,18 +26,25 @@ ifneq ($(OPENCLAW_NPM_VERS),$(LATEST_OPENCLAW_VERS))
 $(warning Upstream git latest is v$(LATEST_OPENCLAW_VERS), npm latest is $(OPENCLAW_NPM_VERS); build pins npm latest)
 endif
 endif
+MIN_NODEJS_RUNTIME_VERS := 22.16.0
 NODEJS_RUNTIME_VERS := $(shell sh -c 'set -e; \
 	v=""; \
 	if command -v curl >/dev/null 2>&1; then \
-		v=$$(curl -fsSL --retry 3 --retry-delay 1 https://nodejs.org/dist/index.json 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"v\\(22\\.[0-9]\\+\\.[0-9]\\+\\)\".*/\\1/p" | tr " " "\\n" | sort -V | tail -n 1); \
+		v=$$(curl -fsSL --retry 3 --retry-delay 1 https://nodejs.org/dist/index.json 2>/dev/null | \
+			grep -oE "\"version\":\"v22\\.[0-9]+\\.[0-9]+\"" | sed -E "s/.*\"v([0-9]+\\.[0-9]+\\.[0-9]+)\".*/\\1/" | sort -V | tail -n 1); \
 	fi; \
 	if [ -z "$$v" ] && command -v wget >/dev/null 2>&1; then \
-		v=$$(wget -qO- https://nodejs.org/dist/index.json 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"v\\(22\\.[0-9]\\+\\.[0-9]\\+\\)\".*/\\1/p" | tr " " "\\n" | sort -V | tail -n 1); \
+		v=$$(wget -qO- https://nodejs.org/dist/index.json 2>/dev/null | \
+			grep -oE "\"version\":\"v22\\.[0-9]+\\.[0-9]+\"" | sed -E "s/.*\"v([0-9]+\\.[0-9]+\\.[0-9]+)\".*/\\1/" | sort -V | tail -n 1); \
 	fi; \
 	echo "$$v"')
 ifeq ($(strip $(NODEJS_RUNTIME_VERS)),)
 NODEJS_RUNTIME_VERS := 22.22.0
 $(warning Failed to resolve latest Node.js v22.x; fallback to v$(NODEJS_RUNTIME_VERS))
+endif
+ifneq ($(shell printf '%s\n%s\n' $(MIN_NODEJS_RUNTIME_VERS) $(NODEJS_RUNTIME_VERS) | sort -V | head -n1),$(MIN_NODEJS_RUNTIME_VERS))
+$(warning Resolved Node.js runtime v$(NODEJS_RUNTIME_VERS) is below minimum v$(MIN_NODEJS_RUNTIME_VERS); force minimum)
+NODEJS_RUNTIME_VERS := $(MIN_NODEJS_RUNTIME_VERS)
 endif
 SPK_VERS := $(OPENCLAW_NPM_VERS)
 SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
