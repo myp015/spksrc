@@ -579,8 +579,9 @@ ensure_session_store_dir() {
     local main_dir="${agents_dir}/main"
     local sessions_dir="${main_dir}/sessions"
 
-    mkdir -p "${sessions_dir}" 2>/dev/null || true
+    mkdir -p "${sessions_dir}" "${OPENCLAW_STATE_DIR}/credentials" 2>/dev/null || true
     chmod 775 "${agents_dir}" "${main_dir}" "${sessions_dir}" 2>/dev/null || true
+    chmod 700 "${OPENCLAW_STATE_DIR}/credentials" 2>/dev/null || true
 }
 
 get_gateway_port_from_config() {
@@ -1216,9 +1217,9 @@ const selectedPluginIds = {
   // Prefer canonical channel ids after SPK bundled-entry patching. Legacy ids are
   // only fallback aliases for older package contents.
   feishu: pickPluginId("feishu", ["openclaw-lark"]),
-  dingtalk: pickPluginId("dingtalk", ["openclaw-dingtalk"]),
-  wecom: pickPluginId("wecom", ["wecom-openclaw-plugin", "openclaw-wecom"]),
-  qqbot: pickPluginId("qqbot", ["openclaw-qqbot"]),
+  dingtalk: pickPluginId("dingtalk"),
+  wecom: pickPluginId("wecom", ["openclaw-wecom"]),
+  qqbot: pickPluginId("qqbot"),
   weixin: pickPluginId("openclaw-weixin", ["weixin"])
 };
 
@@ -1888,7 +1889,7 @@ try {
   if (!c.gateway.auth.token) c.gateway.auth.token = crypto.randomBytes(16).toString("hex");
 
   c.plugins = c.plugins || {};
-  if (!c.plugins.bundledDiscovery) c.plugins.bundledDiscovery = "allowlist";
+  c.plugins.bundledDiscovery = "allowlist";
   if (Object.prototype.hasOwnProperty.call(c.plugins, "installs")) delete c.plugins.installs;
 
   c.memory = c.memory || {};
@@ -2067,6 +2068,24 @@ cfg.plugins.allow = Array.isArray(cfg.plugins.allow) ? cfg.plugins.allow : [];
 cfg.channels = cfg.channels || {};
 
 let changed = false;
+
+const stalePluginIds = new Set([
+  "feishu-openclaw-plugin",
+  "openclaw-qqbot",
+  "openclaw-dingtalk",
+  "wecom-openclaw-plugin"
+]);
+for (const id of stalePluginIds) {
+  if (cfg.plugins.entries[id]) {
+    delete cfg.plugins.entries[id];
+    changed = true;
+  }
+}
+{
+  const before = cfg.plugins.allow.length;
+  cfg.plugins.allow = cfg.plugins.allow.filter((id) => !stalePluginIds.has(id));
+  if (cfg.plugins.allow.length !== before) changed = true;
+}
 
 // Global stale-plugin prune: remove plugin ids that are no longer discoverable,
 // even when their channel config is currently absent.
@@ -2408,9 +2427,9 @@ for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId))
 
 const legacyAliases = {
   feishu: ["feishu"],
-  dingtalk: ["dingtalk", "openclaw-dingtalk"],
-  wecom: ["wecom", "wecom-openclaw-plugin", "openclaw-wecom"],
-  qqbot: ["qqbot", "openclaw-qqbot"],
+  dingtalk: ["dingtalk"],
+  wecom: ["wecom", "openclaw-wecom"],
+  qqbot: ["qqbot"],
   "openclaw-weixin": ["openclaw-weixin", "weixin"]
 };
 

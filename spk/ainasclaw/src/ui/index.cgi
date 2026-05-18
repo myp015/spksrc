@@ -1156,6 +1156,7 @@ ch = cfg.setdefault('channels', {})
 # 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
 plugins = cfg.setdefault('plugins', {})
 plugins['enabled'] = True
+plugins['bundledDiscovery'] = 'allowlist'
 allow = plugins.get('allow')
 if not isinstance(allow, list):
     allow = []
@@ -1247,10 +1248,10 @@ if isinstance(wx_payload, dict):
             w['accounts'] = acc
 
 channel_plugin_map = {
-    'feishu': ['feishu', 'feishu-openclaw-plugin'],
-    'qqbot': ['qqbot', 'openclaw-qqbot'],
-    'dingtalk': ['dingtalk', 'openclaw-dingtalk'],
-    'wecom': ['wecom', 'wecom-openclaw-plugin'],
+    'feishu': ['feishu'],
+    'qqbot': ['qqbot'],
+    'dingtalk': ['dingtalk'],
+    'wecom': ['wecom'],
     'openclaw-weixin': ['openclaw-weixin', 'weixin'],
     'weixin': ['openclaw-weixin', 'weixin']
 }
@@ -1281,6 +1282,10 @@ for cid, cv in (ch or {}).items():
             e.pop('config', None)
         entries[pid] = e
 
+stale_plugin_ids = {'feishu-openclaw-plugin', 'openclaw-qqbot', 'openclaw-dingtalk', 'wecom-openclaw-plugin'}
+allow = [pid for pid in allow if pid not in stale_plugin_ids]
+for pid in stale_plugin_ids:
+    entries.pop(pid, None)
 plugins['allow'] = allow
 plugins['entries'] = entries
 
@@ -2573,6 +2578,7 @@ if action in ('start','restart'):
     try:
         plugins = c.setdefault('plugins', {})
         plugins['enabled'] = True
+        plugins['bundledDiscovery'] = 'allowlist'
         allow = plugins.get('allow')
         if not isinstance(allow, list):
             allow = []
@@ -2581,10 +2587,10 @@ if action in ('start','restart'):
             entries = {}
 
         channel_plugin_map = {
-            'feishu': ['feishu', 'feishu-openclaw-plugin'],
-            'qqbot': ['qqbot', 'openclaw-qqbot'],
-            'dingtalk': ['dingtalk', 'openclaw-dingtalk'],
-            'wecom': ['wecom', 'wecom-openclaw-plugin'],
+            'feishu': ['feishu'],
+            'qqbot': ['qqbot'],
+            'dingtalk': ['dingtalk'],
+            'wecom': ['wecom'],
             'openclaw-weixin': ['openclaw-weixin', 'weixin'],
             'weixin': ['openclaw-weixin', 'weixin'],
         }
@@ -2622,6 +2628,11 @@ if action in ('start','restart'):
                     ent = {}
                 ent['enabled'] = True
                 entries[pid] = ent
+
+        stale_plugin_ids = {'feishu-openclaw-plugin', 'openclaw-qqbot', 'openclaw-dingtalk', 'wecom-openclaw-plugin'}
+        allow = [pid for pid in allow if pid not in stale_plugin_ids]
+        for pid in stale_plugin_ids:
+            entries.pop(pid, None)
 
         plugins['allow'] = list(dict.fromkeys(allow))
         plugins['entries'] = entries
