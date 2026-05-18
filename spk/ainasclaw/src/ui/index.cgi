@@ -1695,6 +1695,39 @@ def log(msg):
     except Exception:
         pass
 
+def normalize_runtime_owned_state(path):
+    if not path:
+        return
+    try:
+        import pwd, grp
+        uid = pwd.getpwnam('sc-openclaw').pw_uid
+        gid = grp.getgrnam('synocommunity').gr_gid
+    except Exception:
+        uid = gid = None
+    for root, dirs, files in os.walk(path):
+        try:
+            if uid is not None and gid is not None:
+                os.chown(root, uid, gid)
+            os.chmod(root, 0o700)
+        except Exception:
+            pass
+        for name in dirs:
+            p = os.path.join(root, name)
+            try:
+                if uid is not None and gid is not None:
+                    os.chown(p, uid, gid)
+                os.chmod(p, 0o700)
+            except Exception:
+                pass
+        for name in files:
+            p = os.path.join(root, name)
+            try:
+                if uid is not None and gid is not None:
+                    os.chown(p, uid, gid)
+                os.chmod(p, 0o600)
+            except Exception:
+                pass
+
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
 env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/ainasclaw/data'
@@ -1827,6 +1860,20 @@ try:
                     cf.write('\n')
             except Exception as e2:
                 log(f'weixin_openclaw_json_update_err={e2}')
+
+            try:
+                normalize_runtime_owned_state(os.path.join(state_dir, 'openclaw-weixin'))
+                if os.path.exists(cfg_path):
+                    try:
+                        import pwd, grp
+                        uid = pwd.getpwnam('sc-openclaw').pw_uid
+                        gid = grp.getgrnam('synocommunity').gr_gid
+                        os.chown(cfg_path, uid, gid)
+                    except Exception:
+                        pass
+                    os.chmod(cfg_path, 0o600)
+            except Exception as e3:
+                log(f'weixin_state_permission_fix_err={e3}')
 
             # 不在扫码确认后重启包：避免 UI 额外等待 10~45 秒。
             # 后续由前端即时保存 channels 配置并让网关按热重载策略生效。
