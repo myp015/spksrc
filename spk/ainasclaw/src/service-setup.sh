@@ -2599,40 +2599,77 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 
 stop_gateway_processes() {
     # best-effort stop for any detached gateway process (may survive package stop/uninstall)
-    if [ -f "${GATEWAY_PID_FILE}" ]; then
+    local pid_files="${GATEWAY_PID_FILE:-}"
+    pid_files="${pid_files} /var/packages/ainasclaw/var/openclaw-gateway.runtime.pid"
+    pid_files="${pid_files} /volume1/@appdata/ainasclaw/openclaw-gateway.runtime.pid"
+    pid_files="${pid_files} /volume1/@appstore/ainasclaw/var/openclaw-gateway.runtime.pid"
+    for pid_file in ${pid_files}; do
+        [ -f "${pid_file}" ] || continue
         local gpid
-        gpid="$(cat "${GATEWAY_PID_FILE}" 2>/dev/null || true)"
+        gpid="$(cat "${pid_file}" 2>/dev/null || true)"
         if [ -n "${gpid}" ]; then
             kill -TERM "${gpid}" >/dev/null 2>&1 || true
-            sleep 1
-            kill -KILL "${gpid}" >/dev/null 2>&1 || true
         fi
-        rm -f "${GATEWAY_PID_FILE}" >/dev/null 2>&1 || true
-    fi
-    pkill -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
-    pkill -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -f '/volume1/@appstore/ainasclaw/bin/node /volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+        rm -f "${pid_file}" >/dev/null 2>&1 || true
+    done
+    sleep 1
+    for pid_file in ${pid_files}; do
+        [ -f "${pid_file}" ] || continue
+        local gpid
+        gpid="$(cat "${pid_file}" 2>/dev/null || true)"
+        [ -n "${gpid}" ] && kill -KILL "${gpid}" >/dev/null 2>&1 || true
+        rm -f "${pid_file}" >/dev/null 2>&1 || true
+    done
+
+    # Match every packaged gateway launch form. Keep these package-scoped first;
+    # the broader OpenClaw matches below are only for stale/global supervisors.
+    pkill -TERM -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -TERM -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -TERM -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -TERM -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -TERM -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -TERM -f '/volume1/@appstore/ainasclaw/bin/node .*openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
     # Kill externally installed/global OpenClaw gateway runtimes to prevent
     # DSM package from accidentally using outdated /usr/lib/node_modules/openclaw.
-    pkill -f '/usr/lib/node_modules/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -f 'openclaw gateway run' >/dev/null 2>&1 || true
-    pkill -x 'openclaw-gateway' >/dev/null 2>&1 || true
+    pkill -TERM -f '/usr/lib/node_modules/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -TERM -f 'openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -TERM -x 'openclaw-gateway' >/dev/null 2>&1 || true
+    sleep 1
+    pkill -KILL -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -KILL -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -KILL -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/volume1/@appstore/ainasclaw/bin/node .*openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/usr/lib/node_modules/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -KILL -f 'openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -x 'openclaw-gateway' >/dev/null 2>&1 || true
 
     # final safety-net: kill any process still listening on configured/default gateway port
-    local k_port="${SERVICE_PORT:-58789}"
-    if ! [ "${k_port}" -ge 1 ] 2>/dev/null; then k_port=58789; fi
-    local pids
-    pids="$(netstat -lntp 2>/dev/null | awk -v p=":${k_port}" '$4 ~ p"$" {print $7}' | awk -F/ '{print $1}' | grep -E '^[0-9]+$' | sort -u || true)"
-    if [ -n "${pids}" ]; then
-        for p in ${pids}; do
-            kill -TERM "${p}" >/dev/null 2>&1 || true
+    local ports="58789 ${SERVICE_PORT:-}"
+    local cfg_port
+    cfg_port="$(get_gateway_port_from_config 2>/dev/null || true)"
+    ports="${ports} ${cfg_port}"
+    local pass
+    for pass in 1 2 3; do
+        local killed=""
+        for k_port in ${ports}; do
+            if ! [ "${k_port}" -ge 1 ] 2>/dev/null; then continue; fi
+            local pids
+            pids="$(netstat -lntp 2>/dev/null | awk -v p=":${k_port}" '$4 ~ p"$" {print $7}' | awk -F/ '{print $1}' | grep -E '^[0-9]+$' | sort -u || true)"
+            [ -n "${pids}" ] || continue
+            killed=1
+            for p in ${pids}; do
+                if [ "${pass}" -lt 3 ]; then
+                    kill -TERM "${p}" >/dev/null 2>&1 || true
+                else
+                    kill -KILL "${p}" >/dev/null 2>&1 || true
+                fi
+            done
         done
+        [ -n "${killed}" ] || break
         sleep 1
-        for p in ${pids}; do
-            kill -KILL "${p}" >/dev/null 2>&1 || true
-        done
-    fi
+    done
 }
 
 disable_external_gateway_supervisors() {
