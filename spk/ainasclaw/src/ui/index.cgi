@@ -1325,8 +1325,8 @@ channel_plugin_map = {
     'qqbot': ['qqbot'],
     'dingtalk': ['dingtalk'],
     'wecom': ['wecom'],
-    'openclaw-weixin': ['openclaw-weixin', 'weixin'],
-    'weixin': ['openclaw-weixin', 'weixin']
+    'openclaw-weixin': ['openclaw-weixin'],
+    'weixin': ['openclaw-weixin']
 }
 for cid, cv in (ch or {}).items():
     enabled = True
@@ -1456,7 +1456,7 @@ out = {
   'wecom': channels_obj.get('wecom') or {},
   'dingtalk': channels_obj.get('dingtalk') or {},
   'qqbot': channels_obj.get('qqbot') or {},
-  'weixin': channels_obj.get('weixin') or {},
+  'weixin': channels_obj.get('openclaw-weixin') or channels_obj.get('weixin') or {},
   'reloaded': reload_ok,
   'reloadOutput': reload_out
 }
@@ -1518,7 +1518,7 @@ out = {
   'wecom': channels_obj.get('wecom') or {},
   'dingtalk': channels_obj.get('dingtalk') or {},
   'qqbot': channels_obj.get('qqbot') or {},
-  'weixin': channels_obj.get('weixin') or {},
+  'weixin': channels_obj.get('openclaw-weixin') or channels_obj.get('weixin') or {},
   'reloaded': False,
   'message': 'deleted in config only, no hot restart'
 }
@@ -2731,8 +2731,8 @@ if action in ('start','restart'):
             'qqbot': ['qqbot'],
             'dingtalk': ['dingtalk'],
             'wecom': ['wecom'],
-            'openclaw-weixin': ['openclaw-weixin', 'weixin'],
-            'weixin': ['openclaw-weixin', 'weixin'],
+            'openclaw-weixin': ['openclaw-weixin'],
+            'weixin': ['openclaw-weixin'],
         }
         channels = c.get('channels') or {}
 
@@ -4266,7 +4266,7 @@ cat <<'HTML'
         if (!clientId || !clientSecret) { setMsg('钉钉 Client ID / Client Secret 不能为空', 'err'); return; }
         payload = { dingtalk: { clientId, clientSecret } };
       } else {
-        payload = { weixin: { enabled: true } };
+        payload = { 'openclaw-weixin': { enabled: true } };
       }
       const btn = document.getElementById('btn_channel_save');
       const oldText = btn ? btn.textContent : '';
@@ -4486,11 +4486,11 @@ cat <<'HTML'
           (async () => {
             try {
               // 第一步：立即落配置（不重载）
-              const sv = await api('channels_save', 'POST', { weixin: { enabled: true }, noReload: true });
+              const sv = await api('channels_save', 'POST', { 'openclaw-weixin': { enabled: true }, noReload: true });
               if (sv && sv.error) throw new Error(sv.error);
               setMsg('微信已连接（已立即保存）', 'ok');
               // 第二步：后台再做热加载（不阻塞 UI）
-              api('channels_save', 'POST', { weixin: { enabled: true } }).catch(() => {});
+              api('channels_save', 'POST', { 'openclaw-weixin': { enabled: true } }).catch(() => {});
             } catch (e) {
               setMsg('微信已连接，但自动保存失败：' + (e.message || e), 'err');
             }

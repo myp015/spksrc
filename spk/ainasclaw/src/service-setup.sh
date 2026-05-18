@@ -2485,7 +2485,7 @@ const legacyAliases = {
   dingtalk: ["dingtalk"],
   wecom: ["wecom", "openclaw-wecom"],
   qqbot: ["qqbot"],
-  "openclaw-weixin": ["openclaw-weixin", "weixin"]
+  "openclaw-weixin": ["openclaw-weixin"]
 };
 
 const preferredPluginIdByChannel = {
@@ -2524,6 +2524,15 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
     if (!cfg.plugins.allow.includes(selectedId)) {
       cfg.plugins.allow.push(selectedId);
       changed = true;
+    }
+    if (cfg.plugins.entries.weixin) {
+      delete cfg.plugins.entries.weixin;
+      changed = true;
+    }
+    {
+      const before = cfg.plugins.allow.length;
+      cfg.plugins.allow = cfg.plugins.allow.filter((id) => id !== "weixin");
+      if (cfg.plugins.allow.length !== before) changed = true;
     }
     continue;
   }
