@@ -214,8 +214,8 @@ for value in plugins.get('allow') or []:
         ids.append(value.strip())
 entries = plugins.get('entries') or {}
 if isinstance(entries, dict):
-    for key, value in entries.items():
-        if isinstance(key, str) and key.strip() and isinstance(value, dict) and value.get('enabled') is True:
+    for key in entries.keys():
+        if isinstance(key, str) and key.strip():
             ids.append(key.strip())
 seen = set()
 out = []
@@ -223,7 +223,7 @@ for item in ids:
     if item not in seen:
         seen.add(item)
         out.append(item)
-for item in ('active-memory', 'memory-core', 'memory-wiki'):
+for item in ('browser', 'feishu', 'qqbot', 'dingtalk', 'wecom', 'openclaw-weixin', 'active-memory', 'memory-core', 'memory-wiki'):
     if item not in seen:
         seen.add(item)
         out.append(item)

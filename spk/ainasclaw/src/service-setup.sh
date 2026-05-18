@@ -328,6 +328,34 @@ resolve_home_dir_from_workspace() {
     esac
 }
 
+resolve_bundled_plugin_dir_allowlist() {
+    "${OPENCLAW_NODE:-node}" - "$OPENCLAW_CONFIG_FILE" <<'NODE' 2>/dev/null || true
+const fs = require("fs");
+const cfgPath = process.argv[1];
+const always = ["browser", "feishu", "qqbot", "dingtalk", "wecom", "openclaw-weixin", "active-memory", "memory-core", "memory-wiki"];
+const ids = [];
+function add(id) {
+  if (typeof id === "string" && id.trim() && !ids.includes(id.trim())) ids.push(id.trim());
+}
+try {
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  const plugins = cfg && typeof cfg === "object" ? cfg.plugins : null;
+  if (plugins && typeof plugins === "object") {
+    if (Array.isArray(plugins.allow)) {
+      for (const id of plugins.allow) add(id);
+    }
+    if (plugins.entries && typeof plugins.entries === "object") {
+      for (const id of Object.keys(plugins.entries)) {
+        add(id);
+      }
+    }
+  }
+} catch {}
+for (const id of always) add(id);
+process.stdout.write(ids.join(","));
+NODE
+}
+
 ensure_self_package_link() {
     # Fix ESM self-imports like `import "openclaw/..."` from bundled dist extensions.
     # On SPK layout, app root is not inside a parent node_modules tree, so we provide a local self-link.
@@ -750,10 +778,12 @@ start_gateway_if_needed() {
 
     # Run gateway under unified service account when possible.
     local eff_user="$(resolve_effective_service_user)"
+    local bundled_plugin_allowlist
+    bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
-        OPENCLAW_NO_RESPAWN=0 JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
+        OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
     sleep 1
@@ -1020,7 +1050,7 @@ service_postinst() {
     # package roots (e.g. /volume1/@appstore/ainasclaw). Bootstrap/state writes
     # must run only in canonical runtime target to avoid ownership/state rollback.
     case "${SYNOPKG_PKGDEST}" in
-      /var/packages/ainasclaw/target|/var/packages/openclaw/target) ;;
+      /var/packages/ainasclaw/target|/var/packages/openclaw/target|/volume1/@appstore/ainasclaw|/volume1/@appstore/openclaw) ;;
       *)
         mkdir -p "${SYNOPKG_PKGVAR}" >/dev/null 2>&1 || true
         echo "[postinst-debug] skip_noncanonical_pkgdest=${SYNOPKG_PKGDEST}" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
@@ -2039,10 +2069,6 @@ try {
     repair_plugin_registry_if_needed
     cleanup_missing_session_transcripts_if_needed
 
-    # Auto-start gateway when workspace exists and is writable (install + package restart/start cases).
-    if [ -d "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
-        start_gateway_if_needed
-    fi
     # Keep install marker for backward compatibility; no-op after unified auto-start.
     if [ -f "${AUTO_INIT_ON_INSTALL_MARKER}" ]; then
         rm -f "${AUTO_INIT_ON_INSTALL_MARKER}" 2>/dev/null || true
@@ -2577,6 +2603,12 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 
     # Clear stale pid marker before a fresh start.
     [ -n "${PID_FILE}" ] && rm -f "${PID_FILE}" 2>/dev/null || true
+
+    # Auto-start only after channel/plugin config has been repaired, otherwise
+    # bundledDiscovery=allowlist can launch with browser-only discovery.
+    if [ -d "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
+        start_gateway_if_needed
+    fi
 
     # fn-port monitor runtime dirs (ported from sc-openclaw)
     local fn_home_dir="${SYNOPKG_PKGVAR}/data/home"
