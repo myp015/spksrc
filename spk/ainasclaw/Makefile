@@ -225,6 +225,7 @@ openclaw_prepare_bundle:
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-bundled-runtime-deps.mjs $(WORK_DIR)/openclaw-bundle
 	# Keep official OpenClaw Feishu extension as-is (no local compatibility rewrites).
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-jiti-loader-try-native.mjs $(WORK_DIR)/openclaw-bundle
+	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-bundled-allowlist-discovery.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-channel-bundled-js-entry.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-control-ui-update-banner.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-startup-sidecars.mjs $(WORK_DIR)/openclaw-bundle

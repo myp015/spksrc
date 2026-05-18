@@ -623,13 +623,6 @@ for p in providers_payload:
             provider['models'].append({'id': mid, 'name': f"{pid} / {mid}"})
     providers_map[pid] = provider
 cfg.setdefault('models', {})['providers'] = providers_map
-# workspace changed explicitly: normalize gateway default port to 58789
-try:
-    if workspace_explicit and (workspace or '/volume1/openclaw') != (prev_workspace or '/volume1/openclaw'):
-        gw = cfg.setdefault('gateway', {})
-        gw['port'] = 58789
-except Exception:
-    pass
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
 # user requirement: changing workspace should initialize by defaults only (no migration)
@@ -832,15 +825,6 @@ if workspace_explicit and workspace_changed:
     except Exception as e:
         workspace_init_sync_ok = False
         workspace_init_sync_err = str(e)
-# Mark one-shot default-port reset when user explicitly switches workspace.
-try:
-    if workspace_explicit and workspace_changed:
-        marker = '/var/packages/ainasclaw/var/force-default-port-on-next-start.flag'
-        os.makedirs(os.path.dirname(marker), exist_ok=True)
-        with open(marker, 'w', encoding='utf-8') as mf:
-            mf.write('1\n')
-except Exception:
-    pass
 ptr_val = ''
 hptr_val = ''
 try:

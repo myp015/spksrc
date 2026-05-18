@@ -90,9 +90,15 @@ PY
 cleanup_managed_channel_plugin_installs() {
     # SPK ships these channel plugins under app/dist/extensions. Remove stale
     # user-managed npm installs that shadow the bundled copies in doctor/runtime.
-    local npm_root="${OPENCLAW_STATE_DIR}/npm/node_modules"
-    [ -d "${npm_root}" ] || return 0
+    local npm_dir="${OPENCLAW_STATE_DIR}/npm"
+    local npm_root="${npm_dir}/node_modules"
+    [ -d "${npm_dir}" ] || return 0
 
+    # Runtime plugin deps are staged under plugin-runtime-deps, not this managed
+    # npm tree. Removing it avoids slow doctor scans and stale plugin shadows.
+    if [ -d "${npm_root}" ]; then
+        rm -rf "${npm_root}" 2>/dev/null || true
+    fi
     for p in \
         "${npm_root}/@openclaw/feishu" \
         "${npm_root}/@larksuite/openclaw-lark" \
@@ -1863,10 +1869,10 @@ EOF
         fi
     fi
 
-    # 端口策略：默认固定 58789；首次安装/目录初始化强制回归 58789（不再随机）。
+    # 端口策略：默认固定 58789；用户显式配置后保持当前配置，不因 workspace 切换重置。
     local assigned_gateway_port=""
     local force_default_port="0"
-    if [ "${fresh_install_config}" = "1" ] || [ -f "${SYNOPKG_PKGVAR}/force-default-port-on-next-start.flag" ]; then
+    if [ "${fresh_install_config}" = "1" ]; then
         force_default_port="1"
     fi
     if [ "${force_default_port}" = "1" ]; then
@@ -1877,7 +1883,6 @@ EOF
 
     # 每次 prestart 同步 DSM 套件详情页端口展示。
     sync_dsm_package_info_port "${assigned_gateway_port}"
-    # consume one-shot marker for workspace-switch default port reset
     rm -f "${SYNOPKG_PKGVAR}/force-default-port-on-next-start.flag" 2>/dev/null || true
 
     # 始终将当前用户目录规则写回配置，并补齐最低可运行 gateway 默认项：

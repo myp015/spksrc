@@ -193,7 +193,47 @@ NPM_CONFIG_CACHE="$OPENCLAW_STATE_DIR/.npm"
 XDG_CACHE_HOME="$OPENCLAW_STATE_DIR/.cache"
 XDG_CONFIG_HOME="$OPENCLAW_STATE_DIR/.config"
 XDG_DATA_HOME="$OPENCLAW_STATE_DIR/.local/share"
-export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME OPENCLAW_SERVICE_USER USER LOGNAME NPM_CONFIG_CACHE XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME
+JITI_FS_CACHE="$OPENCLAW_STATE_DIR/.cache/jiti"
+TMPDIR="$OPENCLAW_STATE_DIR/.tmp"
+mkdir -p "$JITI_FS_CACHE" "$TMPDIR" 2>/dev/null || true
+
+OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="$(
+  python3 - "$OPENCLAW_CONFIG_PATH" <<'PY' 2>/dev/null || true
+import json, sys
+p = sys.argv[1]
+try:
+    c = json.load(open(p, 'r', encoding='utf-8'))
+except Exception:
+    raise SystemExit
+plugins = c.get('plugins') if isinstance(c, dict) else {}
+if not isinstance(plugins, dict) or plugins.get('bundledDiscovery') != 'allowlist':
+    raise SystemExit
+ids = []
+for value in plugins.get('allow') or []:
+    if isinstance(value, str) and value.strip():
+        ids.append(value.strip())
+entries = plugins.get('entries') or {}
+if isinstance(entries, dict):
+    for key, value in entries.items():
+        if isinstance(key, str) and key.strip() and isinstance(value, dict) and value.get('enabled') is True:
+            ids.append(key.strip())
+seen = set()
+out = []
+for item in ids:
+    if item not in seen:
+        seen.add(item)
+        out.append(item)
+for item in ('active-memory', 'memory-core', 'memory-wiki'):
+    if item not in seen:
+        seen.add(item)
+        out.append(item)
+print(','.join(out))
+PY
+)"
+if [ -n "$OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST" ]; then
+  export OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST
+fi
+export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME OPENCLAW_SERVICE_USER USER LOGNAME NPM_CONFIG_CACHE XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME JITI_FS_CACHE TMPDIR
 
 # No automatic user switching here. If needed, run manually as service user with 2 commands:
 #   su -s /bin/sh <service-user>
