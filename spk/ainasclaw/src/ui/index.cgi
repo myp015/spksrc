@@ -2929,6 +2929,13 @@ if action in ('start','restart'):
         logs.append({'cmd':'sanitize defaults.models','error':str(e)})
 
     if port_listening(gw_port):
+        listener_pids = find_port_listener_pids(gw_port)
+        if listener_pids:
+            try:
+                with open(gateway_pid_file, 'w', encoding='utf-8') as pf:
+                    pf.write(str(listener_pids[0]))
+            except Exception:
+                pass
         logs.append({'cmd':'gateway(spawn-detached)', 'skipped':'port already listening', 'port':gw_port})
     else:
         try:
