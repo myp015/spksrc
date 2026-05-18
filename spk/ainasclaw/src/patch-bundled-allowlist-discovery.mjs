@@ -44,21 +44,25 @@ const replacement = [
 ].join('\n');
 
 let patched = 0;
+let alreadyPatched = 0;
+let skipped = 0;
 for (const file of targets) {
   const source = fs.readFileSync(file, 'utf8');
   if (source.includes(replacement)) {
+    alreadyPatched += 1;
     continue;
   }
   if (!source.includes(needle)) {
-    fail(`target text not found in ${file}`);
+    skipped += 1;
+    continue;
   }
   fs.writeFileSync(file, source.replace(needle, replacement), 'utf8');
   patched += 1;
   console.log(`[patch-bundled-allowlist-discovery] patched ${file}`);
 }
 
-if (patched === 0) {
-  fail('no file patched');
+if (patched === 0 && alreadyPatched === 0) {
+  fail(`target text not found in any discovery file (scanned=${targets.length}, skipped=${skipped})`);
 }
 
-console.log(`[patch-bundled-allowlist-discovery] done, patched ${patched} file(s)`);
+console.log(`[patch-bundled-allowlist-discovery] done, patched ${patched} file(s), already=${alreadyPatched}, skipped=${skipped}`);
