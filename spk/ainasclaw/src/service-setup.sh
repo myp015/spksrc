@@ -1034,6 +1034,12 @@ service_postinst() {
       echo "[postinst-debug] default_ws=${OPENCLAW_WORKSPACE_DEFAULT} state_base=${OPENCLAW_STATE_DIR_BASE}"
     } >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
 
+    # Upgrades/reinstalls can leave a detached gateway from the previous package
+    # revision alive. Kill it before the new prestart decides whether to launch,
+    # otherwise the old process can keep the configured gateway port and the new
+    # runtime/plugins never become active.
+    stop_gateway_processes
+
     # Normalize bundled channel plugin ownership to root:root so OpenClaw trust checks pass.
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
