@@ -87,6 +87,21 @@ PY
     done
 }
 
+cleanup_managed_channel_plugin_installs() {
+    # SPK ships these channel plugins under app/dist/extensions. Remove stale
+    # user-managed npm installs that shadow the bundled copies in doctor/runtime.
+    local npm_root="${OPENCLAW_STATE_DIR}/npm/node_modules"
+    [ -d "${npm_root}" ] || return 0
+
+    for p in \
+        "${npm_root}/@openclaw/feishu" \
+        "${npm_root}/@larksuite/openclaw-lark" \
+        "${npm_root}/@larksuiteoapi/feishu-openclaw-plugin"; do
+        [ -e "${p}" ] || continue
+        rm -rf "${p}" 2>/dev/null || true
+    done
+}
+
 normalize_runtime_deps_permissions() {
     local eff_user="${1:-}"
     local deps_root="${OPENCLAW_STATE_DIR}/plugin-runtime-deps"
@@ -1879,15 +1894,27 @@ try {
   c.agents = c.agents || {};
   c.agents.defaults = c.agents.defaults || {};
   c.agents.defaults.workspace = statePath;
-  const defaultModelRef = typeof c.agents.defaults.model === "string" ? c.agents.defaults.model : c.agents.defaults.model && typeof c.agents.defaults.model === "object" ? c.agents.defaults.model.primary : "";
-  const normalizedDefaultModelRef = (defaultModelRef || "").trim().toLowerCase().split("@")[0];
+  const explicitDefaultModelRef = typeof c.agents.defaults.model === "string" ? c.agents.defaults.model : c.agents.defaults.model && typeof c.agents.defaults.model === "object" ? c.agents.defaults.model.primary : "";
+  const inferFirstConfiguredModelRef = () => {
+    const providers = c.models && typeof c.models === "object" && c.models.providers && typeof c.models.providers === "object" ? c.models.providers : {};
+    for (const [providerId, provider] of Object.entries(providers)) {
+      const models = provider && typeof provider === "object" && Array.isArray(provider.models) ? provider.models : [];
+      for (const model of models) {
+        const modelId = model && typeof model === "object" ? String(model.id || model.modelId || "").trim() : "";
+        if (modelId) return `${providerId}/${modelId}`;
+      }
+    }
+    return "";
+  };
+  const effectiveDefaultModelRef = (explicitDefaultModelRef || inferFirstConfiguredModelRef()).trim();
+  const normalizedDefaultModelRef = effectiveDefaultModelRef.toLowerCase().split("@")[0];
   const isDeepSeekV4Default = /(?:^|\/)deepseek-v4-(?:flash|pro)$/.test(normalizedDefaultModelRef);
   if (isDeepSeekV4Default) {
     c.agents.defaults.models = c.agents.defaults.models && typeof c.agents.defaults.models === "object" && !Array.isArray(c.agents.defaults.models) ? c.agents.defaults.models : {};
-    const modelEntry = c.agents.defaults.models[defaultModelRef] && typeof c.agents.defaults.models[defaultModelRef] === "object" ? c.agents.defaults.models[defaultModelRef] : {};
+    const modelEntry = c.agents.defaults.models[effectiveDefaultModelRef] && typeof c.agents.defaults.models[effectiveDefaultModelRef] === "object" ? c.agents.defaults.models[effectiveDefaultModelRef] : {};
     modelEntry.params = modelEntry.params && typeof modelEntry.params === "object" ? modelEntry.params : {};
     modelEntry.params.thinking = "xhigh";
-    c.agents.defaults.models[defaultModelRef] = modelEntry;
+    c.agents.defaults.models[effectiveDefaultModelRef] = modelEntry;
     c.agents.defaults.thinkingDefault = "xhigh";
     c.agents.defaults.reasoningDefault = "stream";
   }
@@ -1945,6 +1972,7 @@ try {
 
     # 清理无主 runtime-deps 锁，避免插件加载长时间卡在 lock timeout。
     cleanup_stale_runtime_deps_locks
+    cleanup_managed_channel_plugin_installs
 
     # 修正 runtime-deps 文件归属，避免 root/http 写入后 gateway(sc-openclaw) 出现 EACCES。
     normalize_runtime_deps_permissions "${EFF_USER}"

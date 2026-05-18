@@ -699,6 +699,8 @@ try:
         default_model_ref = str(default_model.get('primary') or '').strip().lower()
     else:
         default_model_ref = ''
+    if not default_model_ref and active_refs:
+        default_model_ref = active_refs[0].strip().lower()
     default_model_ref = default_model_ref.split('@', 1)[0]
     if re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', default_model_ref):
         defaults['thinkingDefault'] = 'xhigh'
@@ -911,6 +913,37 @@ if apply_now:
                 except Exception:
                     pass
 
+        def stop_existing_gateway_for_restart():
+            attempts = []
+            try:
+                p = subprocess.run(
+                    ['/var/packages/ainasclaw/target/bin/openclaw', 'gateway', 'stop', '--json'],
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=12,
+                )
+                attempts.append({'cmd': 'openclaw gateway stop', 'rc': p.returncode, 'out': (p.stdout or b'').decode('utf-8', 'ignore')[-400:]})
+            except Exception as e:
+                attempts.append({'cmd': 'openclaw gateway stop', 'error': str(e)})
+            for cmd in [
+                ['pkill','-f','/var/packages/ainasclaw/target/bin/openclaw gateway run'],
+                ['pkill','-f','/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway'],
+                ['pkill','-f','/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway'],
+                ['pkill','-f','/volume1/@appstore/ainasclaw/bin/node /volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run'],
+                ['pkill','-x','openclaw-gateway'],
+            ]:
+                try:
+                    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
+                    attempts.append({'cmd': ' '.join(cmd), 'rc': p.returncode})
+                except Exception as e:
+                    attempts.append({'cmd': ' '.join(cmd), 'error': str(e)})
+            for _ in range(12):
+                if not is_running(gw_port):
+                    return True, attempts
+                time.sleep(0.5)
+            return not is_running(gw_port), attempts
+
         currently_running = is_running(gw_port)
         # 如果已运行且目录未变化，避免重复拉起导致 EADDRINUSE。
         # 若目录变化则必须重启，确保 gateway 切到新 workspace。
@@ -919,6 +952,17 @@ if apply_now:
             out['gatewayRunning'] = True
             out['message'] = 'gateway already running'
         else:
+            if currently_running and workspace_changed:
+                stopped, stop_attempts = stop_existing_gateway_for_restart()
+                out['gatewayStopBeforeStart'] = stopped
+                out['gatewayStopAttempts'] = stop_attempts[-6:]
+                currently_running = is_running(gw_port)
+                if currently_running:
+                    out['gatewayAutoStartTriggered'] = False
+                    out['gatewayRunning'] = True
+                    out['gatewayAutoStartErr'] = 'port still listening after stop; skip duplicate gateway start'
+                    print(json.dumps(out, ensure_ascii=False))
+                    raise SystemExit
             # 轻量启动：若 gateway 已停，直接用 run 拉起，不再强制先 stop 再重启。
             # 这更接近 /root/trim.openclaw_v0.0.10.fpk 的本地直启方式。
             os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
@@ -2874,7 +2918,8 @@ if action in ('start','restart'):
             else:
                 defs2['model'] = {'primary': first_ref}
             primary = first_ref
-        if primary and re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', primary.lower().split('@', 1)[0]):
+        effective_primary = primary or (sorted(active_refs)[0] if active_refs else '')
+        if effective_primary and re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', effective_primary.lower().split('@', 1)[0]):
             defs2['thinkingDefault'] = 'xhigh'
             defs2['reasoningDefault'] = 'stream'
         with open(cfg,'w',encoding='utf-8') as f:
