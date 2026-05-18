@@ -1406,6 +1406,10 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 ' "${bootstrap_config_file}" "${OPENCLAW_APP_DIR}"
 
+        # Wizard values are applied by the node block above. Sync DSM package
+        # adminport after that write so a custom gateway port is reflected too.
+        sync_dsm_package_info_port "$(get_gateway_port_from_config "${bootstrap_config_file}")"
+
         OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${bootstrap_config_file}")"
         if [ -z "${OPENCLAW_WORKSPACE}" ]; then
             OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
