@@ -1879,6 +1879,18 @@ try {
   c.agents = c.agents || {};
   c.agents.defaults = c.agents.defaults || {};
   c.agents.defaults.workspace = statePath;
+  const defaultModelRef = typeof c.agents.defaults.model === "string" ? c.agents.defaults.model : c.agents.defaults.model && typeof c.agents.defaults.model === "object" ? c.agents.defaults.model.primary : "";
+  const normalizedDefaultModelRef = (defaultModelRef || "").trim().toLowerCase().split("@")[0];
+  const isDeepSeekV4Default = /(?:^|\/)deepseek-v4-(?:flash|pro)$/.test(normalizedDefaultModelRef);
+  if (isDeepSeekV4Default) {
+    c.agents.defaults.models = c.agents.defaults.models && typeof c.agents.defaults.models === "object" && !Array.isArray(c.agents.defaults.models) ? c.agents.defaults.models : {};
+    const modelEntry = c.agents.defaults.models[defaultModelRef] && typeof c.agents.defaults.models[defaultModelRef] === "object" ? c.agents.defaults.models[defaultModelRef] : {};
+    modelEntry.params = modelEntry.params && typeof modelEntry.params === "object" ? modelEntry.params : {};
+    modelEntry.params.thinking = "xhigh";
+    c.agents.defaults.models[defaultModelRef] = modelEntry;
+    c.agents.defaults.thinkingDefault = "xhigh";
+    c.agents.defaults.reasoningDefault = "stream";
+  }
 
   c.gateway = c.gateway || {};
   if (!c.gateway.mode) c.gateway.mode = "local";

@@ -661,6 +661,51 @@ if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/ainasclaw/ta
     except Exception:
         pass
 
+# DeepSeek V4: selected models get thinking=xhigh; visible reasoning applies when V4 is the primary model.
+try:
+    import re
+    defaults = cfg.setdefault('agents', {}).setdefault('defaults', {})
+    model_defaults = defaults.get('models')
+    if not isinstance(model_defaults, dict):
+        model_defaults = {}
+    active_refs = []
+    for pid, pv in providers_map.items():
+        if not isinstance(pv, dict):
+            continue
+        for m in (pv.get('models') or []):
+            if not isinstance(m, dict):
+                continue
+            mid = str(m.get('id') or m.get('modelId') or '').strip()
+            if mid:
+                active_refs.append(f'{pid}/{mid}')
+    for ref in active_refs:
+        ref_key = ref.strip()
+        if re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', ref_key.lower().split('@', 1)[0]):
+            ent = model_defaults.get(ref_key)
+            if not isinstance(ent, dict):
+                ent = {}
+            params = ent.get('params')
+            if not isinstance(params, dict):
+                params = {}
+            params['thinking'] = 'xhigh'
+            ent['params'] = params
+            model_defaults[ref_key] = ent
+    if model_defaults:
+        defaults['models'] = model_defaults
+    default_model = defaults.get('model')
+    if isinstance(default_model, str):
+        default_model_ref = default_model.strip().lower()
+    elif isinstance(default_model, dict):
+        default_model_ref = str(default_model.get('primary') or '').strip().lower()
+    else:
+        default_model_ref = ''
+    default_model_ref = default_model_ref.split('@', 1)[0]
+    if re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', default_model_ref):
+        defaults['thinkingDefault'] = 'xhigh'
+        defaults['reasoningDefault'] = 'stream'
+except Exception:
+    pass
+
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
@@ -2403,7 +2448,7 @@ PY
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body" "${CFG_FILE}" "${APP_VAR_DIR}/openclaw-gateway.spawn.log"
-import json, os, subprocess, sys, time, fcntl, pwd
+import json, os, re, socket, subprocess, sys, time, fcntl, pwd
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 cfg = sys.argv[2] if len(sys.argv) > 2 else '/volume1/openclaw/.openclaw/openclaw.json'
 spawn_log = sys.argv[3] if len(sys.argv) > 3 else '/tmp/openclaw-gateway.spawn.log'
@@ -2492,6 +2537,73 @@ if 1024 <= req_port <= 65535:
     gw_port = req_port
 elif not (1024 <= gw_port <= 65535):
     gw_port = 58789
+
+def port_listening(port=None):
+    port = gw_port if port is None else port
+    s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.settimeout(0.6)
+    try:
+        s.connect(('127.0.0.1',port)); return True
+    except Exception:
+        return False
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+def find_port_listener_pids(port):
+    pids = set()
+    commands = [
+        ['sh', '-lc', f"ss -ltnp '( sport = :{port} )' 2>/dev/null"],
+        ['sh', '-lc', f"netstat -ltnp 2>/dev/null | awk '$4 ~ /:{port}$/ {{print}}'"],
+        ['sh', '-lc', f"lsof -nP -iTCP:{port} -sTCP:LISTEN 2>/dev/null"],
+    ]
+    for cmd in commands:
+        try:
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=2)
+            for line in (p.stdout or '').splitlines():
+                parts = line.split()
+                if len(parts) > 1 and parts[1].isdigit():
+                    pids.add(int(parts[1]))
+                for marker in ('pid=',):
+                    if marker in line:
+                        tail = line.split(marker, 1)[1]
+                        digits = ''.join(ch if ch.isdigit() else ' ' for ch in tail).split()
+                        if digits:
+                            pids.add(int(digits[0]))
+                for token in line.replace(',', ' ').split():
+                    if '/' in token:
+                        left = token.split('/', 1)[0]
+                        if left.isdigit():
+                            pids.add(int(left))
+        except Exception:
+            pass
+    return sorted(pid for pid in pids if pid > 1 and pid != os.getpid() and os.path.exists(f'/proc/{pid}'))
+
+def kill_port_listeners(port):
+    killed = []
+    for pid in find_port_listener_pids(port):
+        try:
+            os.kill(pid, 15)
+            killed.append(pid)
+        except Exception:
+            pass
+    if killed:
+        time.sleep(1)
+    for pid in killed:
+        try:
+            if os.path.exists(f'/proc/{pid}'):
+                os.kill(pid, 9)
+        except Exception:
+            pass
+    return killed
+
+def wait_port_free(port, seconds=6):
+    for _ in range(max(1, int(seconds * 2))):
+        if not port_listening(port):
+            return True
+        time.sleep(0.5)
+    return not port_listening(port)
 
 # On start/restart only, create runtime config if missing.
 if action in ('start','restart'):
@@ -2701,6 +2813,10 @@ def force_stop():
             out.append((cmd,p.returncode,(p.stdout or b'').decode('utf-8','ignore')))
         except Exception as e:
             out.append((cmd,999,str(e)))
+    killed = kill_port_listeners(gw_port)
+    if killed:
+        out.append((['kill-port-listeners', str(gw_port)], 0, 'pids=' + ','.join(map(str, killed))))
+    wait_port_free(gw_port, 6)
     return out
 
 logs=[]
@@ -2735,7 +2851,14 @@ if action in ('start','restart'):
             cur_models = {k:{} for k in cur_models if isinstance(k, str)}
         if not isinstance(cur_models, dict):
             cur_models = {}
-        new_models = {k: (cur_models.get(k) if isinstance(cur_models.get(k), dict) else {}) for k in sorted(active_refs)}
+        new_models = {}
+        for k in sorted(active_refs):
+            ent = cur_models.get(k) if isinstance(cur_models.get(k), dict) else {}
+            if re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', k.lower().split('@', 1)[0]):
+                params = ent.get('params') if isinstance(ent.get('params'), dict) else {}
+                params['thinking'] = 'xhigh'
+                ent['params'] = params
+            new_models[k] = ent
         defs2['models'] = new_models
         # primary 若失效则兜底到第一个可用模型
         mobj = defs2.get('model')
@@ -2750,76 +2873,74 @@ if action in ('start','restart'):
                 mobj['primary'] = first_ref
             else:
                 defs2['model'] = {'primary': first_ref}
+            primary = first_ref
+        if primary and re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', primary.lower().split('@', 1)[0]):
+            defs2['thinkingDefault'] = 'xhigh'
+            defs2['reasoningDefault'] = 'stream'
         with open(cfg,'w',encoding='utf-8') as f:
             json.dump(c2,f,ensure_ascii=False,indent=2); f.write('\n')
         logs.append({'cmd':'sanitize defaults.models','active':len(active_refs),'kept':len(new_models)})
     except Exception as e:
         logs.append({'cmd':'sanitize defaults.models','error':str(e)})
 
-    try:
-        os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
+    if port_listening(gw_port):
+        logs.append({'cmd':'gateway(spawn-detached)', 'skipped':'port already listening', 'port':gw_port})
+    else:
         try:
-            with open(spawn_log, 'a', encoding='utf-8') as sf:
-                sf.write('[gateway-spawn] request start\n')
-        except Exception:
-            pass
-        try:
-            logf = open(spawn_log, 'ab', buffering=0)
-        except Exception:
-            logf = None
-        preexec = None
-        svc_user = None
-        try:
-            if os.geteuid() == 0:
-                svc_user = 'sc-openclaw'
-                pw = pwd.getpwnam(svc_user)
-                uid = int(pw.pw_uid)
-                gid = int(pw.pw_gid)
-                def _demote():
-                    os.setgid(gid)
-                    os.setuid(uid)
-                preexec = _demote
-        except Exception:
-            svc_user = None
+            os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
+            try:
+                with open(spawn_log, 'a', encoding='utf-8') as sf:
+                    sf.write('[gateway-spawn] request start\n')
+            except Exception:
+                pass
+            try:
+                logf = open(spawn_log, 'ab', buffering=0)
+            except Exception:
+                logf = None
             preexec = None
+            svc_user = None
+            try:
+                if os.geteuid() == 0:
+                    svc_user = 'sc-openclaw'
+                    pw = pwd.getpwnam(svc_user)
+                    uid = int(pw.pw_uid)
+                    gid = int(pw.pw_gid)
+                    def _demote():
+                        os.setgid(gid)
+                        os.setuid(uid)
+                    preexec = _demote
+            except Exception:
+                svc_user = None
+                preexec = None
 
-        p = subprocess.Popen(
-            ['/var/packages/ainasclaw/target/bin/openclaw','gateway','run','--allow-unconfigured','--port',str(gw_port)],
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=(logf if logf is not None else subprocess.DEVNULL),
-            stderr=(logf if logf is not None else subprocess.DEVNULL),
-            close_fds=True,
-            start_new_session=True,
-            preexec_fn=preexec
-        )
-        try:
-            with open(gateway_pid_file, 'w', encoding='utf-8') as pf:
-                pf.write(str(p.pid))
-        except Exception:
-            pass
-        logs.append({'cmd':'gateway(spawn-detached)','pid':p.pid, 'serviceUser': (svc_user or 'current-user')})
-        try:
-            with open(spawn_log, 'a', encoding='utf-8') as sf:
-                sf.write(f'[gateway-spawn] started pid={p.pid}\n')
-        except Exception:
-            pass
-        time.sleep(3)
-    except Exception as e:
-        ok = False
-        logs.append({'cmd':'gateway(spawn-detached)','error':str(e)})
-
-import socket
+            p = subprocess.Popen(
+                ['/var/packages/ainasclaw/target/bin/openclaw','gateway','run','--allow-unconfigured','--port',str(gw_port)],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=(logf if logf is not None else subprocess.DEVNULL),
+                stderr=(logf if logf is not None else subprocess.DEVNULL),
+                close_fds=True,
+                start_new_session=True,
+                preexec_fn=preexec
+            )
+            try:
+                with open(gateway_pid_file, 'w', encoding='utf-8') as pf:
+                    pf.write(str(p.pid))
+            except Exception:
+                pass
+            logs.append({'cmd':'gateway(spawn-detached)','pid':p.pid, 'serviceUser': (svc_user or 'current-user')})
+            try:
+                with open(spawn_log, 'a', encoding='utf-8') as sf:
+                    sf.write(f'[gateway-spawn] started pid={p.pid}\n')
+            except Exception:
+                pass
+            time.sleep(3)
+        except Exception as e:
+            ok = False
+            logs.append({'cmd':'gateway(spawn-detached)','error':str(e)})
 
 def is_running(port=None):
-    port = gw_port if port is None else port
-    s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.settimeout(0.6)
-    try:
-        s.connect(('127.0.0.1',port)); return True
-    except Exception:
-        return False
-    finally:
-        s.close()
+    return port_listening(port)
 
 running = is_running(gw_port)
 if action in ('start','restart') and not running:
