@@ -7,6 +7,7 @@
             "key": "wizard_workspace_dir",
             "defaultValue": "/volume1/openclaw",
             "desc": "{{{WORKSPACE_DIR_LABEL}}}",
+            "disabled": true,
             "validator": {
               "allowBlank": false
             }
@@ -19,11 +20,14 @@
             "key": "wizard_gateway_port",
             "defaultValue": "58789",
             "desc": "{{{GATEWAY_PORT_LABEL}}}",
+            "disabled": true,
             "validator": {
               "allowBlank": false
             }
           }
         ]
+      },{
+        "desc": "升级时固定保留现有用户目录和端口，不允许在向导中修改。"
       },{
         "desc": "{{{INSTALLATION_NOTES_TITLE}}}{{{INSTALLATION_NOTES_TEXT1}}}"
       }

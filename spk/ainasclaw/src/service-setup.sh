@@ -770,7 +770,7 @@ start_gateway_if_needed() {
     local bundled_plugin_allowlist
     bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
         OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
@@ -1147,9 +1147,10 @@ NGINX_EOF
             [ -z "${in_key}" ] && in_key="$(grep -m1 '^wizard_api_key=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
         fi
 
-        # Upgrade wizard fields have static defaults. If a previous custom workspace
-        # exists and DSM submits the default path, keep the existing workspace instead
-        # of silently switching back to /volume1/openclaw.
+        # Upgrade flow must not change the existing workspace directory or gateway
+        # port from the wizard. The upgrade UI keeps them read-only, and we also
+        # hard-ignore any submitted values here so upgrades always preserve runtime
+        # location and listening port.
         if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
             local existing_ws=""
             if [ -f "${WORKSPACE_HOME_PTR_FILE}" ]; then
@@ -1166,10 +1167,8 @@ NGINX_EOF
             case "${existing_ws}" in
                 */.openclaw) existing_ws="${existing_ws%/.openclaw}" ;;
             esac
-            if [ -n "${existing_ws}" ] && [ "${existing_ws}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
-                case "${in_ws}" in
-                    ""|"${OPENCLAW_WORKSPACE_DEFAULT}") in_ws="${existing_ws}" ;;
-                esac
+            if [ -n "${existing_ws}" ]; then
+                in_ws="${existing_ws}"
             fi
         fi
 
@@ -1198,8 +1197,14 @@ NGINX_EOF
             fi
         fi
 
+        local bootstrap_port
+        bootstrap_port="$(get_gateway_port_from_config "${bootstrap_config_file}")"
+        if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ] && [ -n "${bootstrap_port}" ]; then
+            in_port="${bootstrap_port}"
+        fi
+
         # 同步 DSM 套件详情页端口展示（adminport）到当前 runtime 端口。
-        sync_dsm_package_info_port "$(get_gateway_port_from_config "${bootstrap_config_file}")"
+        sync_dsm_package_info_port "${bootstrap_port}"
 
         mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
         {
@@ -1669,7 +1674,7 @@ case "$ws" in
 esac
 state="${ws}/.openclaw"
 mkdir -p "$ws" "$state" "$state/agents/main/sessions" 2>/dev/null || true
-export HOME="$ws"
+export HOME="$state"
 export OPENCLAW_WORKSPACE_DIR="$ws"
 export OPENCLAW_STATE_DIR="$state"
 export OPENCLAW_CONFIG_PATH="$state/openclaw.json"
@@ -1953,7 +1958,7 @@ try {
     # 用户要求：运行文件统一落在 /xxx/.openclaw
     local runtime_home_dir="${OPENCLAW_STATE_DIR}"
     local EFF_USER="$(resolve_effective_service_user)"
-    mkdir -p "${runtime_home_dir}" "${runtime_home_dir}/.npm" "${runtime_home_dir}/.cache" "${runtime_home_dir}/.cache/jiti" "${runtime_home_dir}/.config" "${runtime_home_dir}/.tmp" >/dev/null 2>&1 || true
+    mkdir -p "${runtime_home_dir}" "${runtime_home_dir}/.npm" "${runtime_home_dir}/.cache" "${runtime_home_dir}/.cache/jiti" "${runtime_home_dir}/.config" "${runtime_home_dir}/.local/share" "${runtime_home_dir}/.skillhub" "${runtime_home_dir}/.tmp" >/dev/null 2>&1 || true
 
     # 清理/修复历史 jiti 临时缓存，避免 root/http 残留导致 sc-openclaw 读取 EACCES。
     if [ -d "/tmp/jiti" ]; then
@@ -1970,7 +1975,7 @@ try {
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
     export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE}"
-    export HOME="${OPENCLAW_WORKSPACE}"
+    export HOME="${OPENCLAW_STATE_DIR}"
     export NPM_CONFIG_CACHE="${runtime_home_dir}/.npm"
     export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
     export XDG_CONFIG_HOME="${runtime_home_dir}/.config"

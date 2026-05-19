@@ -123,6 +123,7 @@ if [ "$WORKSPACE_FROM_PTR" = "1" ] && [ -z "${CLI_CONFIG_PATH:-}" ] && [ -z "${O
 elif [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
   CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
+HOME="$WORKDIR"
 
 # No implicit config migration from default workspace when switching user workspace.
 # New/empty workspace should be initialized explicitly by start/setup flow.
@@ -183,16 +184,16 @@ PY
 OPENCLAW_SERVICE_USER="$(resolve_service_user)"
 USER="$OPENCLAW_SERVICE_USER"
 LOGNAME="$OPENCLAW_SERVICE_USER"
-# Keep runtime state under .openclaw, but HOME points to user workspace root.
-HOME_DEFAULT="$WORKSPACE_DIR"
+# Keep runtime state and user-install locations under .openclaw.
+HOME_DEFAULT="$WORKSPACE_DIR/.openclaw"
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
 # Ensure doctor/session-store checks always pass regardless of HOME interpretation.
-mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/.openclaw/agents/main/sessions" 2>/dev/null || true
-chmod 700 "$OPENCLAW_STATE_DIR" "$HOME/.openclaw" 2>/dev/null || true
-NPM_CONFIG_CACHE="$OPENCLAW_STATE_DIR/.npm"
-XDG_CACHE_HOME="$OPENCLAW_STATE_DIR/.cache"
-XDG_CONFIG_HOME="$OPENCLAW_STATE_DIR/.config"
-XDG_DATA_HOME="$OPENCLAW_STATE_DIR/.local/share"
+mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/agents/main/sessions" 2>/dev/null || true
+chmod 700 "$OPENCLAW_STATE_DIR" "$HOME" 2>/dev/null || true
+NPM_CONFIG_CACHE="$HOME/.npm"
+XDG_CACHE_HOME="$HOME/.cache"
+XDG_CONFIG_HOME="$HOME/.config"
+XDG_DATA_HOME="$HOME/.local/share"
 JITI_FS_CACHE="$OPENCLAW_STATE_DIR/.cache/jiti"
 TMPDIR="$OPENCLAW_STATE_DIR/.tmp"
 mkdir -p "$JITI_FS_CACHE" "$TMPDIR" 2>/dev/null || true
@@ -288,14 +289,11 @@ case "$1" in
             *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"; HOME_DIR="$OPENCLAW_WORKSPACE_DIR" ;;
           esac
           mkdir -p "$OPENCLAW_STATE_DIR"
-          HOME="$HOME_DIR"
-          case "$HOME" in
-            */.openclaw) HOME="$(dirname "$HOME")" ;;
-          esac
-          NPM_CONFIG_CACHE="$OPENCLAW_STATE_DIR/.npm"
-          XDG_CACHE_HOME="$OPENCLAW_STATE_DIR/.cache"
-          XDG_CONFIG_HOME="$OPENCLAW_STATE_DIR/.config"
-          XDG_DATA_HOME="$OPENCLAW_STATE_DIR/.local/share"
+          HOME="$HOME_DIR/.openclaw"
+          NPM_CONFIG_CACHE="$HOME/.npm"
+          XDG_CACHE_HOME="$HOME/.cache"
+          XDG_CONFIG_HOME="$HOME/.config"
+          XDG_DATA_HOME="$HOME/.local/share"
           export OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_STATE_DIR HOME NPM_CONFIG_CACHE XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME
           shift 1
           ;;
