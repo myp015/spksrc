@@ -320,6 +320,6 @@ openclaw_extra_install:
 	@install -d -m 755 $(STAGING_DIR)/scripts
 	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup
 	@chmod 755 $(STAGING_DIR)/scripts/service-setup
-	@grep -q "Hard bootstrap guard" $(STAGING_DIR)/scripts/service-setup
+	@grep -q "cleanup_duplicate_default_config" $(STAGING_DIR)/scripts/service-setup
+	@grep -q "Upgrade wizard fields have static defaults" $(STAGING_DIR)/scripts/service-setup
 	@grep -q "resolve_effective_service_group" $(STAGING_DIR)/scripts/service-setup
-	@grep -q "fallback_token_prestart" $(STAGING_DIR)/scripts/service-setup
