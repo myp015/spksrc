@@ -1170,6 +1170,32 @@ NGINX_EOF
             [ -z "${in_key}" ] && in_key="$(grep -m1 '^wizard_api_key=' "${INST_VARIABLES}" 2>/dev/null | cut -d= -f2-)"
         fi
 
+        # Upgrade wizard fields have static defaults. If a previous custom workspace
+        # exists and DSM submits the default path, keep the existing workspace instead
+        # of silently switching back to /volume1/openclaw.
+        if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
+            local existing_ws=""
+            if [ -f "${WORKSPACE_HOME_PTR_FILE}" ]; then
+                existing_ws="$(cat "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+            fi
+            if [ -z "${existing_ws}" ] && [ -f "${WORKSPACE_PTR_FILE}" ]; then
+                existing_ws="$(cat "${WORKSPACE_PTR_FILE}" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+                case "${existing_ws}" in
+                    '$HOME'|'/var/packages/ainasclaw/home') existing_ws="" ;;
+                    '$HOME'/*|'/var/packages/ainasclaw/home'/*) existing_ws="" ;;
+                    */.openclaw) existing_ws="${existing_ws%/.openclaw}" ;;
+                esac
+            fi
+            case "${existing_ws}" in
+                */.openclaw) existing_ws="${existing_ws%/.openclaw}" ;;
+            esac
+            if [ -n "${existing_ws}" ] && [ "${existing_ws}" != "${OPENCLAW_WORKSPACE_DEFAULT}" ]; then
+                case "${in_ws}" in
+                    ""|"${OPENCLAW_WORKSPACE_DEFAULT}") in_ws="${existing_ws}" ;;
+                esac
+            fi
+        fi
+
         # 源头修复：按向导目标目录初始化 bootstrap config，避免先创建默认 /volume1/openclaw/.openclaw。
         local bootstrap_workspace="${in_ws:-${OPENCLAW_WORKSPACE_DEFAULT}}"
         case "${bootstrap_workspace}" in
