@@ -328,6 +328,18 @@ resolve_home_dir_from_workspace() {
     esac
 }
 
+cleanup_duplicate_default_config() {
+    [ "${OPENCLAW_CONFIG_FILE}" != "${OPENCLAW_CONFIG_FILE_BASE}" ] || return 0
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] || return 0
+    [ -f "${OPENCLAW_CONFIG_FILE_BASE}" ] || return 0
+
+    if cmp -s "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"; then
+        rm -f "${OPENCLAW_CONFIG_FILE_BASE}"
+        rmdir "${OPENCLAW_STATE_DIR_BASE}" 2>/dev/null || true
+        rmdir "${OPENCLAW_WORKSPACE_DEFAULT}" 2>/dev/null || true
+    fi
+}
+
 resolve_bundled_plugin_dir_allowlist() {
     "${OPENCLAW_NODE:-node}" - "$OPENCLAW_CONFIG_FILE" <<'NODE' 2>/dev/null || true
 const fs = require("fs");
@@ -1561,64 +1573,12 @@ EOF
         apply_dsm_skill_defaults
         repair_plugin_registry_if_needed
         cleanup_missing_session_transcripts_if_needed
+        cleanup_duplicate_default_config
 }
 
 service_prestart() {
     disable_external_gateway_supervisors
     stop_gateway_processes
-
-    # Hard bootstrap guard: even if postinst path misses in some DSM install flows,
-    # prestart must still guarantee a usable state dir + config file.
-    mkdir -p "${OPENCLAW_WORKSPACE}" "${OPENCLAW_STATE_DIR}" >/dev/null 2>&1 || true
-    if [ ! -s "${OPENCLAW_CONFIG_FILE}" ]; then
-        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
-            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
-        fi
-        if [ ! -s "${OPENCLAW_CONFIG_FILE}" ]; then
-            local fallback_token_prestart
-            fallback_token_prestart="$(tr -dc 'a-f0-9' </dev/urandom | head -c 32)"
-            [ -n "${fallback_token_prestart}" ] || fallback_token_prestart="123456"
-            cat > "${OPENCLAW_CONFIG_FILE}" <<EOF
-{
-  "gateway": {
-    "mode": "local",
-    "bind": "lan",
-    "port": 58789,
-    "auth": {
-      "mode": "token",
-      "token": "${fallback_token_prestart}"
-    }
-  },
-  "agents": {
-    "defaults": {
-      "workspace": "${OPENCLAW_WORKSPACE}/.openclaw"
-    }
-  },
-  "plugins": {
-    "enabled": true,
-    "bundledDiscovery": "allowlist",
-    "allow": ["browser"],
-    "entries": {
-      "browser": { "enabled": true }
-    }
-  }
-}
-EOF
-        fi
-    fi
-
-    # Normalize ownership/permissions before startup to avoid runtime EACCES on config watcher,
-    # sessions/tasks/flows, and hot-reload paths.
-    local eff_user="$(resolve_effective_service_user)"
-    local eff_group="$(resolve_effective_service_group "${eff_user}")"
-    if [ -n "${eff_user}" ]; then
-        chown -R "${eff_user}:${eff_group}" "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
-        chown "${eff_user}:${eff_group}" "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
-        # Runtime state can stay owner-only for write, but config file must remain readable by DSM web CGI.
-        chmod 755 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
-        chmod 644 "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/openclaw.json.last-good" "${OPENCLAW_STATE_DIR}/openclaw.last-known-good.json" 2>/dev/null || true
-        chmod -R u+rwX,go-rwx "${OPENCLAW_STATE_DIR}/logs" "${OPENCLAW_STATE_DIR}/tasks" "${OPENCLAW_STATE_DIR}/flows" "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/plugins" "${OPENCLAW_STATE_DIR}/agents" 2>/dev/null || true
-    fi
 
     # Ensure nginx alias survives DSM reboot/service start (postinst is not called on reboot).
     mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
@@ -1985,6 +1945,7 @@ try {
   fs.writeFileSync(cfgPath, JSON.stringify(c, null, 2) + "\n", "utf8");
 } catch {}
 ' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_WORKSPACE}"
+    cleanup_duplicate_default_config
 
     # 用户要求：运行文件统一落在 /xxx/.openclaw
     local runtime_home_dir="${OPENCLAW_STATE_DIR}"
