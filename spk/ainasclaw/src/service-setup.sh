@@ -721,17 +721,14 @@ sync_dsm_package_info_port() {
     local gw_port="$1"
     [ -n "${gw_port}" ] || return 0
 
-    # Package Center 入口使用当前网关端口，避免占用/冲突 5001。
-    local panel_port="${gw_port}"
-    local panel_url="/default/chat"
-
     local info_file="/var/packages/ainasclaw/INFO"
     [ -f "${info_file}" ] || info_file="/var/packages/openclaw/INFO"
     local resource_file="/var/packages/ainasclaw/conf/resource"
     [ -f "${resource_file}" ] || resource_file="/var/packages/openclaw/conf/resource"
 
-    # 关键修复：service_prestart 在 DSM7 通常以套件用户运行（非 root），
-    # 直接写 /var/packages/* 可能因权限失败。优先使用 sudo -n 提权写回，失败才尝试直接写。
+    # DSM Package Center caches adminurl/adminport inconsistently after runtime
+    # port changes. Remove those fields so the details panel does not show a
+    # stale gateway URL; users should open AiNasClaw via the DSM app entry.
     local use_sudo=""
     if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
         use_sudo="1"
@@ -739,37 +736,17 @@ sync_dsm_package_info_port() {
 
     if [ -f "${info_file}" ]; then
         if [ -n "${use_sudo}" ]; then
-            if grep -q '^adminport="' "${info_file}" 2>/dev/null; then
-                sudo -n sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${panel_port}\"/" "${info_file}" >/dev/null 2>&1 || true
-            else
-                printf '\nadminport="%s"\n' "${panel_port}" | sudo -n tee -a "${info_file}" >/dev/null 2>&1 || true
-            fi
-
-            if grep -q '^adminurl="' "${info_file}" 2>/dev/null; then
-                sudo -n sed -i -E "s#^adminurl=\".*\"#adminurl=\"${panel_url}\"#" "${info_file}" >/dev/null 2>&1 || true
-            else
-                printf 'adminurl="%s"\n' "${panel_url}" | sudo -n tee -a "${info_file}" >/dev/null 2>&1 || true
-            fi
+            sudo -n sed -i -E '/^adminport="/d;/^adminurl="/d' "${info_file}" >/dev/null 2>&1 || true
         else
-            if grep -q '^adminport="' "${info_file}" 2>/dev/null; then
-                sed -i -E "s/^adminport=\"[0-9]+\"/adminport=\"${panel_port}\"/" "${info_file}" 2>/dev/null || true
-            else
-                printf '\nadminport="%s"\n' "${panel_port}" >> "${info_file}" 2>/dev/null || true
-            fi
-
-            if grep -q '^adminurl="' "${info_file}" 2>/dev/null; then
-                sed -i -E "s#^adminurl=\".*\"#adminurl=\"${panel_url}\"#" "${info_file}" 2>/dev/null || true
-            else
-                printf 'adminurl="%s"\n' "${panel_url}" >> "${info_file}" 2>/dev/null || true
-            fi
+            sed -i -E '/^adminport="/d;/^adminurl="/d' "${info_file}" 2>/dev/null || true
         fi
     fi
 
     if [ -f "${resource_file}" ]; then
         if [ -n "${use_sudo}" ]; then
-            sudo -n sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${panel_port}/" "${resource_file}" >/dev/null 2>&1 || true
+            sudo -n sed -i -E '/"admin_port"[[:space:]]*:/d;/"admin_url"[[:space:]]*:/d' "${resource_file}" >/dev/null 2>&1 || true
         else
-            sed -i -E "s/(\"admin_port\"\s*:\s*)[0-9]+/\1${panel_port}/" "${resource_file}" 2>/dev/null || true
+            sed -i -E '/"admin_port"[[:space:]]*:/d;/"admin_url"[[:space:]]*:/d' "${resource_file}" 2>/dev/null || true
         fi
     fi
 }

@@ -994,7 +994,8 @@ if apply_now:
                 stderr=subprocess.STDOUT,
                 timeout=12
             )
-            # 若 synopkg metadata 仍未刷新，直接补写 INFO/adminport 作为兜底（防止套件详情仍显示 58789）。
+            # Package Center can cache stale admin URLs after gateway port
+            # changes. Remove direct gateway URL metadata instead of rewriting it.
             try:
                 info_file = '/var/packages/ainasclaw/INFO'
                 if not os.path.exists(info_file):
@@ -1002,15 +1003,7 @@ if apply_now:
                 if os.path.exists(info_file):
                     txt = open(info_file, 'r', encoding='utf-8', errors='ignore').read()
                     import re as _re
-                    n_txt = txt
-                    if _re.search(r'^adminport="\d+"', n_txt, flags=_re.M):
-                        n_txt = _re.sub(r'^adminport="\d+"', f'adminport="{gw_port}"', n_txt, flags=_re.M)
-                    else:
-                        n_txt = n_txt.rstrip('\n') + f'\nadminport="{gw_port}"\n'
-                    if _re.search(r'^adminurl=".*"', n_txt, flags=_re.M):
-                        n_txt = _re.sub(r'^adminurl=".*"', 'adminurl="/default/chat"', n_txt, flags=_re.M)
-                    else:
-                        n_txt = n_txt.rstrip('\n') + 'adminurl="/default/chat"\n'
+                    n_txt = _re.sub(r'^(adminport|adminurl)=".*"\n?', '', txt, flags=_re.M)
                     if n_txt != txt:
                         open(info_file, 'w', encoding='utf-8').write(n_txt)
             except Exception:

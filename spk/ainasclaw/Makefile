@@ -86,9 +86,6 @@ DSM_APP_NAME = SYNOCOMMUNITY.AiNasClaw.AppInstance
 SERVICE_PORT = 58789
 SERVICE_PORT_TITLE = AiNasClaw Panel (HTTP)
 SERVICE_URL = /app/openclaw/
-# Package Center details fallback metadata (runtime will sync to active gateway port).
-ADMIN_PORT = 58789
-ADMIN_URL = /default/chat
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
