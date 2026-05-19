@@ -5,6 +5,7 @@ BASE_DEFAULT="/volume1/docker/openclaw"
 BASE_STATE_DIR="${BASE_DEFAULT}/.openclaw"
 BASE_CFG="${BASE_STATE_DIR}/openclaw.json"
 LEGACY_CFG="/var/packages/openclaw/var/openclaw.json"
+WORKSPACE_POINTER="/var/packages/openclaw/var/openclaw.workspace"
 LEGACY_WORKSPACE_CFG="${BASE_DEFAULT}/openclaw.json"
 APP_NODE="/volume1/@appstore/openclaw/bin/node"
 APP_ENTRY="/volume1/@appstore/openclaw/app/openclaw/dist/index.js"
@@ -25,21 +26,35 @@ if [ "${1:-}" = "--config" ]; then
   shift 2
 fi
 
+POINTER_WORKSPACE=""
+if [ -f "$WORKSPACE_POINTER" ]; then
+  POINTER_WORKSPACE="$(sed -n '1p' "$WORKSPACE_POINTER" 2>/dev/null | tr -d '\r')"
+fi
+POINTER_CFG=""
+if [ -n "$POINTER_WORKSPACE" ]; then
+  case "$POINTER_WORKSPACE" in
+    */.openclaw) POINTER_CFG="$POINTER_WORKSPACE/openclaw.json" ;;
+    *) POINTER_CFG="$POINTER_WORKSPACE/.openclaw/openclaw.json" ;;
+  esac
+fi
+
 CONFIG_PATH=""
 if [ -n "${CLI_CONFIG_PATH:-}" ]; then
   CONFIG_PATH="$CLI_CONFIG_PATH"
 elif [ -n "${OPENCLAW_CONFIG_PATH:-}" ]; then
   CONFIG_PATH="$OPENCLAW_CONFIG_PATH"
+elif [ -n "$POINTER_CFG" ] && [ -f "$POINTER_CFG" ]; then
+  CONFIG_PATH="$POINTER_CFG"
 elif [ -f "$BASE_CFG" ]; then
   CONFIG_PATH="$BASE_CFG"
 elif [ -f "$LEGACY_CFG" ]; then
   CONFIG_PATH="$LEGACY_CFG"
 fi
 
-WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$BASE_DEFAULT}"
+WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-${POINTER_WORKSPACE:-$BASE_DEFAULT}}"
 if [ -n "$CONFIG_PATH" ]; then
   # Prefer explicit workspace when provided; otherwise derive from config.workspace.
-  if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+  if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ] && { [ -z "$POINTER_WORKSPACE" ] || [ "$CONFIG_PATH" != "$BASE_CFG" ]; }; then
     W=$(python3 - "$CONFIG_PATH" <<'PY'
 import json,sys
 p=sys.argv[1]

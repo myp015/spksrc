@@ -8,6 +8,7 @@ OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
 OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE_BASE}"
 OPENCLAW_LEGACY_CONFIG_FILE="${SYNOPKG_PKGVAR}/openclaw.json"
+OPENCLAW_WORKSPACE_POINTER="${SYNOPKG_PKGVAR}/openclaw.workspace"
 OPENCLAW_TEMPLATE_CONFIG="${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json"
 
 resolve_state_dir_from_workspace() {
@@ -24,6 +25,33 @@ resolve_home_dir_from_workspace() {
         */.openclaw) dirname "${ws}" ;;
         *) echo "${ws}" ;;
     esac
+}
+
+create_openclaw_config_if_missing() {
+    local target_config="$1"
+    mkdir -p "$(dirname "${target_config}")"
+
+    if [ ! -f "${target_config}" ]; then
+        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
+            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${target_config}"
+        elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
+            cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${target_config}"
+        else
+            echo "{}" > "${target_config}"
+        fi
+    fi
+}
+
+cleanup_duplicate_default_config() {
+    [ "${OPENCLAW_CONFIG_FILE}" != "${OPENCLAW_CONFIG_FILE_BASE}" ] || return 0
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] || return 0
+    [ -f "${OPENCLAW_CONFIG_FILE_BASE}" ] || return 0
+
+    if cmp -s "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"; then
+        rm -f "${OPENCLAW_CONFIG_FILE_BASE}"
+        rmdir "${OPENCLAW_STATE_DIR_BASE}" 2>/dev/null || true
+        rmdir "${OPENCLAW_WORKSPACE_DEFAULT}" 2>/dev/null || true
+    fi
 }
 
 sync_skills_to_workspace() {
@@ -351,18 +379,6 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
 service_postinst() {
     ensure_openclaw_in_path
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] || [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
-        mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
-
-        if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
-            if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
-                cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
-            elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
-                cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
-            else
-                echo "{}" > "${OPENCLAW_CONFIG_FILE_BASE}"
-            fi
-        fi
-
         # Wizard defaults
         if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ]; then
             export WIZARD_WORKSPACE_DIR="${wizard_workspace_dir}"
@@ -384,6 +400,25 @@ service_postinst() {
         export WIZARD_QQBOT_CLIENT_SECRET="${wizard_qqbot_client_secret}"
         export WIZARD_WECOM_BOT_ID="${wizard_wecom_bot_id}"
         export WIZARD_WECOM_SECRET="${wizard_wecom_secret}"
+
+        if [ -z "${WIZARD_WORKSPACE_DIR}" ]; then
+            if [ -f "${OPENCLAW_WORKSPACE_POINTER}" ]; then
+                WIZARD_WORKSPACE_DIR="$(sed -n '1p' "${OPENCLAW_WORKSPACE_POINTER}" 2>/dev/null | tr -d '\r')"
+            fi
+            if [ -z "${WIZARD_WORKSPACE_DIR}" ] && [ -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
+                WIZARD_WORKSPACE_DIR="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; try { const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w); } catch {}' "${OPENCLAW_CONFIG_FILE_BASE}")"
+            fi
+            WIZARD_WORKSPACE_DIR="${WIZARD_WORKSPACE_DIR:-${OPENCLAW_WORKSPACE_DEFAULT}}"
+            export WIZARD_WORKSPACE_DIR
+        fi
+
+        OPENCLAW_WORKSPACE="${WIZARD_WORKSPACE_DIR:-${OPENCLAW_WORKSPACE_DEFAULT}}"
+        OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
+        OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
+
+        mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}" "${SYNOPKG_PKGVAR}"
+        create_openclaw_config_if_missing "${OPENCLAW_CONFIG_FILE}"
+        printf '%s\n' "${OPENCLAW_WORKSPACE}" > "${OPENCLAW_WORKSPACE_POINTER}"
 
         "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
@@ -563,20 +598,20 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
 }
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-' "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_APP_DIR}"
+' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_APP_DIR}"
 
-        OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${OPENCLAW_CONFIG_FILE_BASE}")"
+        OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${OPENCLAW_CONFIG_FILE}")"
         if [ -z "${OPENCLAW_WORKSPACE}" ]; then
             OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
         fi
         OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
         OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
-        mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+        mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}" "${SYNOPKG_PKGVAR}"
         ensure_session_store_dir
-        if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
-            cp -f "${OPENCLAW_CONFIG_FILE_BASE}" "${OPENCLAW_CONFIG_FILE}"
-        fi
+        create_openclaw_config_if_missing "${OPENCLAW_CONFIG_FILE}"
+        printf '%s\n' "${OPENCLAW_WORKSPACE}" > "${OPENCLAW_WORKSPACE_POINTER}"
+        cleanup_duplicate_default_config
 
         sync_bundled_channel_plugins_to_extensions
         harden_extension_permissions
@@ -585,24 +620,20 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 }
 
 service_prestart() {
-    mkdir -p "${OPENCLAW_STATE_DIR_BASE}"
+    local selected_workspace=""
+    local selected_source_config=""
 
-    # Ensure bootstrap config exists at fixed base path.
-    if [ ! -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
-        if [ -f "${OPENCLAW_TEMPLATE_CONFIG}" ]; then
-            cp -f "${OPENCLAW_TEMPLATE_CONFIG}" "${OPENCLAW_CONFIG_FILE_BASE}"
-        elif [ -f "${OPENCLAW_LEGACY_CONFIG_FILE}" ]; then
-            cp -f "${OPENCLAW_LEGACY_CONFIG_FILE}" "${OPENCLAW_CONFIG_FILE_BASE}"
-        else
-            echo "{}" > "${OPENCLAW_CONFIG_FILE_BASE}"
+    if [ -f "${OPENCLAW_WORKSPACE_POINTER}" ]; then
+        selected_workspace="$(sed -n '1p' "${OPENCLAW_WORKSPACE_POINTER}" 2>/dev/null | tr -d '\r')"
+        if [ -n "${selected_workspace}" ]; then
+            selected_source_config="$(resolve_state_dir_from_workspace "${selected_workspace}")/openclaw.json"
         fi
     fi
 
-    local selected_workspace=""
-    local selected_source_config="${OPENCLAW_CONFIG_FILE_BASE}"
-
-    # Resolve active config source only (do not mutate config on restart).
-    IFS='|' read -r selected_workspace selected_source_config <<EOF
+    # Compatibility for packages installed before the workspace pointer existed.
+    if [ -z "${selected_workspace}" ] && [ -f "${OPENCLAW_CONFIG_FILE_BASE}" ]; then
+        # Resolve active config source only (do not mutate config on restart).
+        IFS='|' read -r selected_workspace selected_source_config <<EOF
 $(${OPENCLAW_NODE} -e '
 const fs = require("fs");
 const path = require("path");
@@ -626,25 +657,32 @@ if (wsConfigPath && wsConfigPath !== baseConfigPath && fs.existsSync(wsConfigPat
 process.stdout.write(`${wsFromBase}|${sourcePath}`);
 ' "${OPENCLAW_CONFIG_FILE_BASE}")
 EOF
+    fi
 
     if [ -z "${selected_workspace}" ]; then
         selected_workspace="${OPENCLAW_WORKSPACE_DEFAULT}"
     fi
     if [ -z "${selected_source_config}" ]; then
-        selected_source_config="${OPENCLAW_CONFIG_FILE_BASE}"
+        selected_source_config="$(resolve_state_dir_from_workspace "${selected_workspace}")/openclaw.json"
     fi
 
     OPENCLAW_WORKSPACE="${selected_workspace}"
     OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
-    mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}"
+    mkdir -p "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE}" "${SYNOPKG_PKGVAR}"
     ensure_session_store_dir
 
     # Keep runtime config under workspace path. If missing (e.g. workspace wiped), recover from selected source config.
     if [ ! -f "${OPENCLAW_CONFIG_FILE}" ]; then
-        cp -f "${selected_source_config}" "${OPENCLAW_CONFIG_FILE}"
+        if [ -f "${selected_source_config}" ]; then
+            cp -f "${selected_source_config}" "${OPENCLAW_CONFIG_FILE}"
+        else
+            create_openclaw_config_if_missing "${OPENCLAW_CONFIG_FILE}"
+        fi
     fi
+    printf '%s\n' "${OPENCLAW_WORKSPACE}" > "${OPENCLAW_WORKSPACE_POINTER}"
+    cleanup_duplicate_default_config
 
     local resolved_home_dir
     resolved_home_dir="$(resolve_home_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
