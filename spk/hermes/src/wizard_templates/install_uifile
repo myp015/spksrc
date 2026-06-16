@@ -17,7 +17,7 @@
         "desc": "{{{GATEWAY_PORT_DESCRIPTION}}}",
         "subitems": [{
             "key": "wizard_gateway_port",
-            "defaultValue": "58789",
+            "defaultValue": "58790",
             "desc": "{{{GATEWAY_PORT_LABEL}}}",
             "validator": {
               "allowBlank": false

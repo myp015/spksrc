@@ -196,7 +196,7 @@
     }
   },
   "gateway": {
-    "port": 58789,
+    "port": 58790,
     "bind": "lan",
     "mode": "local",
     "controlUi": {

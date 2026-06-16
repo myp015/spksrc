@@ -5,7 +5,7 @@ if [ -d "/volume1/@appdata/hermes" ]; then
 fi
 
 LOG_FILE="${APP_VAR_DIR}/hermes.log"
-GATEWAY_PORT="58789"
+GATEWAY_PORT="58790"
 QUERY="${QUERY_STRING:-}"
 BASE_CFG_FILE="/volume1/hermes/.hermes/hermes.json"
 
@@ -56,11 +56,11 @@ print(cfg_path)
 PY
 )"
 
-# Dynamic gateway port from active config (fallback 58789)
+# Dynamic gateway port from active config (fallback 58790)
 GATEWAY_PORT="$(python3 - <<'PY' "$CFG_FILE"
 import json, os, sys
 cfg = sys.argv[1] if len(sys.argv) > 1 else ''
-port = 58789
+port = 58790
 try:
     if cfg and os.path.exists(cfg):
         c = json.load(open(cfg, 'r', encoding='utf-8'))
@@ -484,7 +484,7 @@ try:
     except Exception:
         gw_port_chk = 0
     if not (1024 <= gw_port_chk <= 65535):
-        gw_port_chk = 58789
+        gw_port_chk = 58790
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(0.5)
     try:
@@ -878,9 +878,9 @@ if apply_now:
                 _c = json.load(_rf)
             gw_port = int((((_c.get('gateway') or {}).get('port')) or 0))
             if not (1024 <= gw_port <= 65535):
-                gw_port = 58789
+                gw_port = 58790
         except Exception:
-            gw_port = 58789
+            gw_port = 58790
 
         def is_running(port=None):
             port = gw_port if port is None else port
@@ -2604,7 +2604,7 @@ except Exception:
 if 1024 <= req_port <= 65535:
     gw_port = req_port
 elif not (1024 <= gw_port <= 65535):
-    gw_port = 58789
+    gw_port = 58790
 
 def port_listening(port=None):
     port = gw_port if port is None else port
@@ -2714,7 +2714,7 @@ if action in ('start','restart'):
     if 1024 <= req_port <= 65535:
         gw_port = req_port
     elif not (1024 <= gw_port <= 65535):
-        gw_port = 58789
+        gw_port = 58790
     gw['port'] = gw_port
     cu = gw.setdefault('controlUi', {})
     cu['basePath'] = '/default'
@@ -3536,7 +3536,7 @@ cat <<'HTML'
       try {
         const data = await api(tab);
         if (tab === 'status') {
-          window.__ainasGatewayPort = data.port || 58789;
+          window.__ainasGatewayPort = data.port || 58790;
           window.__ainasGatewayToken = data.gatewayToken || '';
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
@@ -3595,7 +3595,7 @@ cat <<'HTML'
                 gridVals[4].textContent = nextUptime;
                 gridVals[6].textContent = String(nextPort);
               }
-              window.__ainasGatewayPort = (s && s.port) || window.__ainasGatewayPort || 58789;
+              window.__ainasGatewayPort = (s && s.port) || window.__ainasGatewayPort || 58790;
               window.__ainasGatewayToken = (s && s.gatewayToken) || window.__ainasGatewayToken || '';
             } catch (_) {}
           }, 1500);
@@ -4682,7 +4682,7 @@ cat <<'HTML'
       try {
         const protocol = 'http:';
         const host = window.location.hostname || '127.0.0.1';
-        const port = Number(window.__ainasGatewayPort || 58789) || 58789;
+        const port = Number(window.__ainasGatewayPort || 58790) || 58790;
         const token = String(window.__ainasGatewayToken || '').trim();
         const url = new URL(protocol + '//' + host + ':' + port + '/default/chat');
         if (token) url.searchParams.set('token', token);

@@ -73,7 +73,7 @@ do
 done
 
 current_workspace="$workspace_home"
-current_port="58789"
+current_port="58790"
 
 if [ -n "$config_path" ]; then
   cfg_workspace="$(json_get "$config_path" 'agents.defaults.workspace')"
