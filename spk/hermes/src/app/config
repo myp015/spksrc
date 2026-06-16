@@ -1,0 +1,22 @@
+{
+    "hermes.js": {
+        "SYNOCOMMUNITY.HermesAgent.AppInstance": {
+            "type": "app",
+            "title": "Hermes Agent",
+            "version": "0.16.0",
+            "icon": "images/hermes-{0}.png",
+            "texts": "texts",
+            "allowMultiInstance": false,
+            "allUsers": true,
+            "appWindow": "SYNOCOMMUNITY.HermesAgent.AppWindow",
+            "depend": ["SYNOCOMMUNITY.HermesAgent.AppWindow"]
+        },
+        "SYNOCOMMUNITY.HermesAgent.AppWindow": {
+            "type": "lib",
+            "title": "Hermes Agent",
+            "icon": "images/hermes-{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
+    }
+}

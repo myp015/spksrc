@@ -1,0 +1,350 @@
+#!/bin/sh
+set -eu
+
+BASE_DEFAULT="/volume1/hermes"
+WORKSPACE_PTR_FILE="/var/packages/hermes/var/workspace.path"
+WORKSPACE_HOME_PTR_FILE="/var/packages/hermes/var/workspace.home.path"
+WORKSPACE_HOME_DEFAULT="$BASE_DEFAULT"
+BASE_STATE_DIR="${BASE_DEFAULT}/.hermes"
+BASE_CFG="${BASE_STATE_DIR}/hermes.json"
+LEGACY_CFG="/var/packages/hermes/var/hermes.json"
+LEGACY_WORKSPACE_CFG="${BASE_DEFAULT}/hermes.json"
+APP_NODE="/volume1/@appstore/hermes/bin/node"
+APP_ENTRY="/volume1/@appstore/hermes/app/hermes/dist/index.js"
+
+if [ ! -x "$APP_NODE" ] || [ ! -f "$APP_ENTRY" ]; then
+  APP_NODE_FALLBACK="/volume1/@appstore/hermes/bin/node"
+  APP_ENTRY_FALLBACK="/volume1/@appstore/hermes/app/hermes/dist/index.js"
+  if [ -x "$APP_NODE_FALLBACK" ] && [ -f "$APP_ENTRY_FALLBACK" ]; then
+    APP_NODE="$APP_NODE_FALLBACK"
+    APP_ENTRY="$APP_ENTRY_FALLBACK"
+  else
+    echo "❌ hermes: Hermes SPK not found under /volume1/@appstore/hermes (fallback /volume1/@appstore/hermes)" >&2
+    exit 1
+  fi
+fi
+
+ORIGINAL_ARGS="$*"
+CLI_CONFIG_PATH=""
+if [ "${1:-}" = "--config" ]; then
+  if [ $# -lt 2 ]; then
+    echo "❌ hermes: --config requires a file path" >&2
+    exit 1
+  fi
+  CLI_CONFIG_PATH="$2"
+  shift 2
+fi
+
+CONFIG_PATH=""
+if [ -n "${CLI_CONFIG_PATH:-}" ]; then
+  CONFIG_PATH="$CLI_CONFIG_PATH"
+elif [ -n "${OPENCLAW_CONFIG_PATH:-}" ]; then
+  CONFIG_PATH="$OPENCLAW_CONFIG_PATH"
+elif [ -f "$BASE_CFG" ]; then
+  CONFIG_PATH="$BASE_CFG"
+elif [ -f "$LEGACY_CFG" ]; then
+  CONFIG_PATH="$LEGACY_CFG"
+fi
+
+# Do not trust inherited OPENCLAW_WORKSPACE_DIR by default (it may come from service env and accidentally reset pointers).
+# Set OPENCLAW_RESPECT_ENV_WORKSPACE=1 only for explicit one-shot override.
+WORKSPACE_DIR="$BASE_DEFAULT"
+if [ "${OPENCLAW_RESPECT_ENV_WORKSPACE:-0}" = "1" ] && [ -n "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+  WORKSPACE_DIR="$OPENCLAW_WORKSPACE_DIR"
+fi
+WORKSPACE_FROM_PTR="0"
+if [ "${OPENCLAW_RESPECT_ENV_WORKSPACE:-0}" != "1" ] || [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ]; then
+  # Single source of truth: workspace.home.path (real user dir).
+  if [ -f "$WORKSPACE_HOME_PTR_FILE" ]; then
+    WS_HOME_RAW="$(cat "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+    if [ -n "$WS_HOME_RAW" ]; then
+      WORKSPACE_DIR="$WS_HOME_RAW"
+      WORKSPACE_FROM_PTR="1"
+    fi
+  fi
+  # Backward compatibility: if no home-pointer yet, fallback to legacy workspace.path rules.
+  if [ "$WORKSPACE_FROM_PTR" != "1" ] && [ -f "$WORKSPACE_PTR_FILE" ]; then
+    PWS="$(cat "$WORKSPACE_PTR_FILE" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+    if [ -n "$PWS" ]; then
+      case "$PWS" in
+        '$HOME'|'/var/packages/hermes/home') PWS="$WORKSPACE_HOME_DEFAULT" ;;
+        '$HOME'/*) PWS="$WORKSPACE_HOME_DEFAULT/${PWS#\$HOME/}" ;;
+        '/var/packages/hermes/home'/*) PWS="$WORKSPACE_HOME_DEFAULT/${PWS#/var/packages/hermes/home/}" ;;
+        */.hermes) PWS="${PWS%/.hermes}" ;;
+      esac
+      WORKSPACE_DIR="$PWS"
+      WORKSPACE_FROM_PTR="1"
+    fi
+  fi
+fi
+if [ -n "$CONFIG_PATH" ]; then
+  # Prefer explicit workspace when provided; otherwise derive from config.workspace.
+  # If workspace pointer exists, do not let stale base config override it.
+  if [ -z "${OPENCLAW_WORKSPACE_DIR:-}" ] && [ "$WORKSPACE_FROM_PTR" != "1" ]; then
+    W=$(python3 - "$CONFIG_PATH" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+    c=json.load(open(p,'r',encoding='utf-8'))
+    w=((c.get('agents') or {}).get('defaults') or {}).get('workspace')
+    print((w or '').strip())
+except Exception:
+    print('')
+PY
+)
+    if [ -n "$W" ]; then
+      case "$W" in
+        */.hermes) W="${W%/.hermes}" ;;
+      esac
+      WORKSPACE_DIR="$W"
+      # If current config is the bootstrap base config, switch runtime config to active workspace config.
+      if [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
+        case "$WORKSPACE_DIR" in
+          */.hermes) CONFIG_PATH="$WORKSPACE_DIR/hermes.json" ;;
+          *) CONFIG_PATH="$WORKSPACE_DIR/.hermes/hermes.json" ;;
+        esac
+      fi
+    fi
+  fi
+fi
+
+case "$WORKSPACE_DIR" in
+  */.hermes) WORKSPACE_DIR="${WORKSPACE_DIR%/.hermes}" ;;
+esac
+case "$WORKSPACE_DIR" in
+  */.hermes) WORKDIR_DEFAULT="$WORKSPACE_DIR" ;;
+  *) WORKDIR_DEFAULT="$WORKSPACE_DIR/.hermes" ;;
+esac
+WORKDIR="${OPENCLAW_STATE_DIR:-$WORKDIR_DEFAULT}"
+# If workspace comes from persistent pointer, always use that workspace config path
+# (avoid drifting to legacy/base configs).
+if [ "$WORKSPACE_FROM_PTR" = "1" ] && [ -z "${CLI_CONFIG_PATH:-}" ] && [ -z "${OPENCLAW_CONFIG_PATH:-}" ]; then
+  CONFIG_PATH="$WORKDIR/hermes.json"
+elif [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
+  CONFIG_PATH="$WORKDIR/hermes.json"
+fi
+HOME="$WORKDIR"
+
+# No implicit config migration from default workspace when switching user workspace.
+# New/empty workspace should be initialized explicitly by start/setup flow.
+
+mkdir -p "$WORKDIR"
+# Harden state dir perms for doctor/security checks.
+chmod 700 "$WORKDIR" 2>/dev/null || true
+# Keep a durable workspace pointer independent from workspace files.
+mkdir -p "$(dirname "$WORKSPACE_PTR_FILE")" 2>/dev/null || true
+# workspace.path is symbolic and stable.
+if [ ! -f "$WORKSPACE_PTR_FILE" ]; then
+  { printf '%s' '$HOME' > "$WORKSPACE_PTR_FILE"; } 2>/dev/null || true
+fi
+# Do not clobber workspace.home.path on every command; only initialize when missing.
+if [ ! -f "$WORKSPACE_HOME_PTR_FILE" ]; then
+  { printf '%s' "$WORKSPACE_DIR" > "$WORKSPACE_HOME_PTR_FILE"; } 2>/dev/null || true
+fi
+# Control-UI save runs under web service account; keep pointer files writable to avoid silent save-no-effect.
+chmod 666 "$WORKSPACE_PTR_FILE" "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null || true
+
+OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
+OPENCLAW_STATE_DIR="$WORKDIR"
+OPENCLAW_WORKSPACE_DIR="$WORKSPACE_DIR"
+
+resolve_service_user() {
+  # Canonical runtime account for this package is sc-hermes.
+  # Fallback: read DSM generated privilege username when suffixing occurs (e.g. sc-hermes2).
+  local preferred="sc-hermes"
+  if id "$preferred" >/dev/null 2>&1; then
+    printf '%s' "$preferred"
+    return 0
+  fi
+
+  local p
+  for p in /var/packages/hermes/conf/privilege /var/packages/hermes/conf/privilege; do
+    [ -f "$p" ] || continue
+    local u
+    u="$(python3 - "$p" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+  v=(json.load(open(p,'r',encoding='utf-8')) or {}).get('username') or ''
+  print(v.strip())
+except Exception:
+  print('')
+PY
+)"
+    if [ -n "$u" ] && id "$u" >/dev/null 2>&1; then
+      printf '%s' "$u"
+      return 0
+    fi
+  done
+
+  printf '%s' "$preferred"
+}
+
+# Force runtime identity vars to package service user context.
+OPENCLAW_SERVICE_USER="$(resolve_service_user)"
+USER="$OPENCLAW_SERVICE_USER"
+LOGNAME="$OPENCLAW_SERVICE_USER"
+# Keep runtime state and user-install locations under .hermes.
+HOME_DEFAULT="$WORKSPACE_DIR/.hermes"
+HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
+# Ensure doctor/session-store checks always pass regardless of HOME interpretation.
+mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/agents/main/sessions" 2>/dev/null || true
+chmod 700 "$OPENCLAW_STATE_DIR" "$HOME" 2>/dev/null || true
+NPM_CONFIG_CACHE="$HOME/.npm"
+XDG_CACHE_HOME="$HOME/.cache"
+XDG_CONFIG_HOME="$HOME/.config"
+XDG_DATA_HOME="$HOME/.local/share"
+JITI_FS_CACHE="$OPENCLAW_STATE_DIR/.cache/jiti"
+TMPDIR="$OPENCLAW_STATE_DIR/.tmp"
+mkdir -p "$JITI_FS_CACHE" "$TMPDIR" 2>/dev/null || true
+
+OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="$(
+  python3 - "$OPENCLAW_CONFIG_PATH" <<'PY' 2>/dev/null || true
+import json, sys
+p = sys.argv[1]
+try:
+    c = json.load(open(p, 'r', encoding='utf-8'))
+except Exception:
+    raise SystemExit
+plugins = c.get('plugins') if isinstance(c, dict) else {}
+if not isinstance(plugins, dict) or plugins.get('bundledDiscovery') != 'allowlist':
+    raise SystemExit
+ids = []
+for value in plugins.get('allow') or []:
+    if isinstance(value, str) and value.strip():
+        ids.append(value.strip())
+entries = plugins.get('entries') or {}
+if isinstance(entries, dict):
+    for key in entries.keys():
+        if isinstance(key, str) and key.strip():
+            ids.append(key.strip())
+seen = set()
+out = []
+for item in ids:
+    if item not in seen:
+        seen.add(item)
+        out.append(item)
+for item in ('browser', 'feishu', 'qqbot', 'dingtalk', 'wecom', 'hermes-weixin', 'active-memory', 'memory-core', 'memory-wiki'):
+    if item not in seen:
+        seen.add(item)
+        out.append(item)
+print(','.join(out))
+PY
+)"
+if [ -n "$OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST" ]; then
+  export OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST
+fi
+export OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR OPENCLAW_WORKSPACE_DIR HOME OPENCLAW_SERVICE_USER USER LOGNAME NPM_CONFIG_CACHE XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME JITI_FS_CACHE TMPDIR
+
+# No automatic user switching here. If needed, run manually as service user with 2 commands:
+#   su -s /bin/sh <service-user>
+#   hermes env
+
+show_help() {
+  cat <<'EOF'
+hermes - Hermes Agent Synology SPK wrapper
+
+What it does:
+- Auto-locates SPK user folder (default: /volume1/hermes)
+- Runtime state/config default to /volume1/hermes/.hermes
+- Respects explicit path overrides (--config /path or OPENCLAW_CONFIG_PATH)
+- Exports OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR / HOME
+- Forwards args to Hermes Agent CLI inside SPK
+
+Usage:
+  hermes [--config /path/to/hermes.json] <command> [args...]
+
+Common examples:
+  hermes gateway status
+  hermes gateway restart
+  hermes config get
+  hermes plugins install @tencent-connect/hermes-qqbot@latest
+  hermes models list
+
+Helper commands:
+  hermes env      # print resolved paths
+  hermes token    # print gateway auth token from current config
+
+Note:
+- SPK template default token is 123456 unless changed in hermes.json.
+EOF
+}
+
+if [ $# -eq 0 ]; then
+  show_help
+  exit 0
+fi
+
+# Backward compatibility: older wrappers may have forwarded --config path as first bare arg.
+# If first arg is a readable *.json file and second token looks like a CLI command, treat it as config path.
+case "$1" in
+  /*.json|*.json)
+    if [ -f "$1" ]; then
+      case "${2:-}" in
+        gateway|config|plugins|models|doctor|channels|status|logs|memory|sessions|tools|commands|help)
+          OPENCLAW_CONFIG_PATH="$1"
+          OPENCLAW_WORKSPACE_DIR="$(dirname "$1")"
+          case "$OPENCLAW_WORKSPACE_DIR" in
+            */.hermes) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR"; HOME_DIR="$(dirname "$OPENCLAW_WORKSPACE_DIR")" ;;
+            *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.hermes"; HOME_DIR="$OPENCLAW_WORKSPACE_DIR" ;;
+          esac
+          mkdir -p "$OPENCLAW_STATE_DIR"
+          HOME="$HOME_DIR/.hermes"
+          NPM_CONFIG_CACHE="$HOME/.npm"
+          XDG_CACHE_HOME="$HOME/.cache"
+          XDG_CONFIG_HOME="$HOME/.config"
+          XDG_DATA_HOME="$HOME/.local/share"
+          export OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_STATE_DIR HOME NPM_CONFIG_CACHE XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME
+          shift 1
+          ;;
+      esac
+    fi
+    ;;
+esac
+
+case "$1" in
+  --help|-h|help)
+    show_help
+    exit 0
+    ;;
+  env)
+    echo "OPENCLAW_CONFIG_PATH=$OPENCLAW_CONFIG_PATH"
+    echo "OPENCLAW_STATE_DIR=$OPENCLAW_STATE_DIR"
+    echo "HOME=$HOME"
+    exit 0
+    ;;
+  gateway)
+    case "${2:-}" in
+      restart)
+        # Keep restart managed by gateway CLI service control path (avoid detached PID drift).
+        shift 2
+        exec "$APP_NODE" "$APP_ENTRY" gateway restart "$@"
+        ;;
+    esac
+    ;;
+  token)
+    python3 - "$OPENCLAW_CONFIG_PATH" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+    c=json.load(open(p,'r',encoding='utf-8'))
+    t=((c.get('gateway') or {}).get('auth') or {}).get('token')
+    print(t if t else '')
+except Exception:
+    print('')
+PY
+    exit 0
+    ;;
+  doctor)
+    shift
+    # Default to lightweight checks for DSM runtime:
+    # - disable workspace suggestions (often scans large trees)
+    # - non-interactive path to avoid prompt stalls in panel terminal
+    if [ $# -eq 0 ]; then
+      exec "$APP_NODE" "$APP_ENTRY" doctor --no-workspace-suggestions --non-interactive
+    fi
+    exec "$APP_NODE" "$APP_ENTRY" doctor --no-workspace-suggestions "$@"
+    ;;
+esac
+
+exec "$APP_NODE" "$APP_ENTRY" "$@"
