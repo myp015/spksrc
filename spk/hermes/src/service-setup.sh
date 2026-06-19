@@ -1,6 +1,18 @@
-HERMES_NODE="${SYNOPKG_PKGDEST}/bin/node"
+HERMES_PYTHON="/usr/local/bin/python3.12"
+HERMES_NODE="${HERMES_NODE:-/usr/local/bin/node}"
+if [ ! -x "${HERMES_NODE}" ]; then
+    HERMES_NODE="$(command -v node 2>/dev/null || true)"
+fi
+run_node() {
+    local node_bin="${HERMES_NODE}"
+    if [ ! -x "${node_bin}" ]; then
+        node_bin="$(command -v node 2>/dev/null || true)"
+    fi
+    [ -n "${node_bin}" ] || return 127
+    "${node_bin}" "$@"
+}
 HERMES_APP_DIR="${SYNOPKG_PKGDEST}/app/hermes"
-HERMES_ENTRY="${HERMES_APP_DIR}/dist/index.js"
+HERMES_ENTRY="${HERMES_APP_DIR}/bin/hermes"
 HERMES_WORKSPACE_DEFAULT="/volume1/hermes"
 HERMES_STATE_DIR_BASE="${HERMES_WORKSPACE_DEFAULT}/.hermes"
 HERMES_CONFIG_FILE_BASE="${HERMES_STATE_DIR_BASE}/hermes.json"
@@ -139,7 +151,7 @@ normalize_runtime_owner_if_root() {
 }
 
 normalize_bundled_plugin_dependency_ranges() {
-    "${HERMES_NODE}" -e '
+    run_node -e '
 const fs=require("fs");
 const path=require("path");
 const appDir=process.argv[1];
@@ -253,7 +265,7 @@ cleanup_duplicate_default_config() {
 }
 
 resolve_bundled_plugin_dir_allowlist() {
-    "${HERMES_NODE:-node}" - "$HERMES_CONFIG_FILE" <<'NODE' 2>/dev/null || true
+    run_node - "$HERMES_CONFIG_FILE" <<'NODE' 2>/dev/null || true
 const fs = require("fs");
 const cfgPath = process.argv[1];
 const always = ["browser", "feishu", "qqbot", "dingtalk", "wecom", "hermes-weixin", "active-memory", "memory-core", "memory-wiki"];
@@ -384,7 +396,7 @@ sync_bundled_channel_plugins_to_stock_extensions() {
 
 force_js_channel_entries() {
     [ -x "${HERMES_NODE}" ] || return 0
-    "${HERMES_NODE}" -e '
+    run_node -e '
 const fs=require("fs"),path=require("path");
 const app=process.argv[1];
 const roots=[path.join(app,"node_modules","@soimy","dingtalk"),path.join(app,"node_modules","@tencent-weixin","hermes-weixin"),path.join(app,"dist","extensions","dingtalk"),path.join(app,"dist","extensions","hermes-weixin")];
@@ -459,7 +471,7 @@ validate_or_rollback_config() {
     local lkg="${HERMES_STATE_DIR}/hermes.last-known-good.json"
 
     # Lightweight guard only: avoid running `doctor --fix` on every start (too slow, may perform network checks).
-    if "${HERMES_NODE}" -e 'const fs=require("fs"); const p=process.argv[1]; JSON.parse(fs.readFileSync(p,"utf8"));' "${HERMES_CONFIG_FILE}" >/dev/null 2>&1; then
+    if run_node -e 'const fs=require("fs"); const p=process.argv[1]; JSON.parse(fs.readFileSync(p,"utf8"));' "${HERMES_CONFIG_FILE}" >/dev/null 2>&1; then
         cp -f "${HERMES_CONFIG_FILE}" "${lkg}"
         return 0
     fi
@@ -473,7 +485,7 @@ apply_dsm_skill_defaults() {
     [ -x "${HERMES_NODE}" ] || return 0
     [ -f "${HERMES_CONFIG_FILE}" ] || return 0
 
-    "${HERMES_NODE}" -e '
+    run_node -e '
 const fs=require("fs");
 const p=process.argv[1];
 let cfg={};
@@ -518,7 +530,7 @@ repair_plugin_registry_if_needed() {
     if [ ! -s "${inst_json}" ]; then
         needs_refresh="1"
     else
-        if ! "${HERMES_NODE}" -e 'const fs=require("fs"); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,"utf8")); if (!j || typeof j !== "object" || Array.isArray(j) || Object.keys(j).length === 0) process.exit(1);' "${inst_json}" >/dev/null 2>&1; then
+        if ! run_node -e 'const fs=require("fs"); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,"utf8")); if (!j || typeof j !== "object" || Array.isArray(j) || Object.keys(j).length === 0) process.exit(1);' "${inst_json}" >/dev/null 2>&1; then
             needs_refresh="1"
         fi
     fi
@@ -538,7 +550,7 @@ cleanup_missing_session_transcripts_if_needed() {
     [ -f "${sessions_store}" ] || return 0
 
     local need_fix="0"
-    if ! "${HERMES_NODE}" -e 'const fs=require("fs"); const path=require("path"); const storePath=process.argv[1]; const store=JSON.parse(fs.readFileSync(storePath,"utf8")); if (!store || typeof store !== "object") process.exit(1); const sessionsDir=path.join(path.dirname(storePath), ".."); const sessRoot=path.resolve(sessionsDir); const refs=new Set(); for (const [k,v] of Object.entries(store)) { if (!v || typeof v !== "object" || !v.sessionId) continue; refs.add(v.sessionId); } let missing=0; for (const sid of refs) { const candidates=[path.join(sessRoot, `${sid}.jsonl`), path.join(sessRoot, `${sid}.trajectory.jsonl`), path.join(sessRoot, `${sid}.trajectory-path.json`)]; let found=false; for (const c of candidates) { if (fs.existsSync(c)) { found=true; break; } } if (!found) missing++; } if (missing > 0) process.exit(2);' "${sessions_store}" >/dev/null 2>&1; then
+    if ! run_node -e 'const fs=require("fs"); const path=require("path"); const storePath=process.argv[1]; const store=JSON.parse(fs.readFileSync(storePath,"utf8")); if (!store || typeof store !== "object") process.exit(1); const sessionsDir=path.join(path.dirname(storePath), ".."); const sessRoot=path.resolve(sessionsDir); const refs=new Set(); for (const [k,v] of Object.entries(store)) { if (!v || typeof v !== "object" || !v.sessionId) continue; refs.add(v.sessionId); } let missing=0; for (const sid of refs) { const candidates=[path.join(sessRoot, `${sid}.jsonl`), path.join(sessRoot, `${sid}.trajectory.jsonl`), path.join(sessRoot, `${sid}.trajectory-path.json`)]; let found=false; for (const c of candidates) { if (fs.existsSync(c)) { found=true; break; } } if (!found) missing++; } if (missing > 0) process.exit(2);' "${sessions_store}" >/dev/null 2>&1; then
         need_fix="1"
     fi
 
@@ -633,21 +645,12 @@ sync_dsm_package_info_port() {
     local gw_port="$1"
     [ -n "${gw_port}" ] || return 0
 
-    local info_file="/var/packages/hermes/INFO"
-    [ -f "${info_file}" ] || info_file="/var/packages/hermes/INFO"
-    local resource_file="/var/packages/hermes/conf/resource"
-    [ -f "${resource_file}" ] || resource_file="/var/packages/hermes/conf/resource"
-
-    # DSM Package Center caches adminurl/adminport inconsistently after runtime
-    # port changes. Remove those fields so the details panel does not show a
-    # stale gateway URL; users should open Hermes Agent via the DSM app entry.
-    local use_sudo=""
-    if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-        use_sudo="1"
-    fi
+    local info_file="${SYNOPKG_PKGVAR}/../../INFO"
+    local resource_file="${SYNOPKG_PKGVAR}/../../conf/resource"
+    local dash_port=3000
 
     if [ -f "${info_file}" ]; then
-        if [ -n "${use_sudo}" ]; then
+        if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
             sudo -n sed -i -E '/^adminport="/d;/^adminurl="/d' "${info_file}" >/dev/null 2>&1 || true
         else
             sed -i -E '/^adminport="/d;/^adminurl="/d' "${info_file}" 2>/dev/null || true
@@ -655,12 +658,56 @@ sync_dsm_package_info_port() {
     fi
 
     if [ -f "${resource_file}" ]; then
-        if [ -n "${use_sudo}" ]; then
+        # Strip old-style entries
+        if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
             sudo -n sed -i -E '/"admin_port"[[:space:]]*:/d;/"admin_url"[[:space:]]*:/d' "${resource_file}" >/dev/null 2>&1 || true
         else
             sed -i -E '/"admin_port"[[:space:]]*:/d;/"admin_url"[[:space:]]*:/d' "${resource_file}" 2>/dev/null || true
         fi
+        # Inject adminport pointing to dashboard
+        if python3 -c "import json; r=json.load(open('${resource_file}')); r['adminport']=${dash_port}; json.dump(r,open('${resource_file}','w'),indent=2)" 2>/dev/null; then
+            echo "[prestart] Set resource adminport=${dash_port}"
+        fi
     fi
+}
+
+start_dashboard_if_needed() {
+    local dash_pid_file="${SYNOPKG_PKGVAR}/hermes-dashboard.pid"
+    local dash_log="${SYNOPKG_PKGVAR}/hermes-dashboard.log"
+    local dash_port=3000
+
+    # Check if dashboard pid is alive
+    if [ -f "${dash_pid_file}" ]; then
+        local old_pid="$(cat "${dash_pid_file}" 2>/dev/null)"
+        if [ -n "${old_pid}" ] && kill -0 "${old_pid}" 2>/dev/null; then
+            echo "[prestart] Hermes Dashboard already running (PID ${old_pid})"
+            return 0
+        fi
+        rm -f "${dash_pid_file}"
+    fi
+
+    # Check if port is already up (orphan dashboard)
+    if python3 -c "import socket; exit(0 if socket.socket().connect_ex(('127.0.0.1',${dash_port})) == 0 else 1)" 2>/dev/null; then
+        echo "[prestart] Hermes Dashboard already serving on port ${dash_port}"
+        return 0
+    fi
+
+    echo "[prestart] Starting Hermes Dashboard on port ${dash_port}..."
+    nohup "${HERMES_CLI_BIN}" dashboard --port ${dash_port} --insecure --skip-build \
+        >>"${dash_log}" 2>&1 &
+    local dash_pid=$!
+    echo "${dash_pid}" >"${dash_pid_file}"
+
+    # Wait for up to 15 seconds for port to become ready
+    for i in $(seq 1 15); do
+        if python3 -c "import socket; exit(0 if socket.socket().connect_ex(('127.0.0.1',${dash_port})) == 0 else 1)" 2>/dev/null; then
+            echo "[prestart] Hermes Dashboard ready on port ${dash_port} (PID ${dash_pid})"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "[prestart] Warning: Hermes Dashboard may not have started in time (PID ${dash_pid})"
+    return 0
 }
 
 start_gateway_if_needed() {
@@ -669,6 +716,9 @@ start_gateway_if_needed() {
     if [ "$(gateway_port_up "${gw_port}")" = "1" ]; then
         return 0
     fi
+
+    # Clear any stale gateway process/pid before starting a new one.
+    stop_gateway_processes
 
     local oc_cli="/var/packages/hermes/target/bin/hermes"
     [ -x "${oc_cli}" ] || oc_cli="/var/packages/hermes/target/bin/hermes"
@@ -682,10 +732,18 @@ start_gateway_if_needed() {
     local bundled_plugin_allowlist
     bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' HERMES_CONFIG_PATH='${HERMES_CONFIG_FILE}' HERMES_STATE_DIR='${HERMES_STATE_DIR}' HERMES_WORKSPACE_DIR='${HERMES_WORKSPACE}' HOME='${HERMES_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${HERMES_STATE_DIR}/.cache/jiti' TMPDIR='${HERMES_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "GATEWAY_ALLOW_ALL_USERS=true HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' HERMES_CONFIG_PATH='${HERMES_CONFIG_FILE}' HERMES_STATE_DIR='${HERMES_STATE_DIR}' HERMES_WORKSPACE_DIR='${HERMES_WORKSPACE}' HOME='${HERMES_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${HERMES_STATE_DIR}/.cache/jiti' TMPDIR='${HERMES_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --replace --accept-hooks >>'${spawn_log}' 2>&1 & echo \\$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
-        HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${HERMES_STATE_DIR}/.cache/jiti" TMPDIR="${HERMES_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
+        GATEWAY_ALLOW_ALL_USERS=true HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${HERMES_STATE_DIR}/.cache/jiti" TMPDIR="${HERMES_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --replace --accept-hooks >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
+    fi
+    # If the detached pid file is missing or stale, fall back to the newest live hermes gateway pid.
+    if ! [ -s "${GATEWAY_PID_FILE}" ] || ! kill -0 "$(cat "${GATEWAY_PID_FILE}" 2>/dev/null || echo 0)" >/dev/null 2>&1; then
+        local live_pid
+        live_pid="$(ps -eo pid=,cmd= | awk '/python3\.12 -m hermes_cli\.main gateway run --accept-hooks/ {print $1; exit}' || true)"
+        if [ -n "${live_pid}" ]; then
+            printf '%s\n' "${live_pid}" > "${GATEWAY_PID_FILE}" 2>/dev/null || true
+        fi
     fi
     sleep 1
 }
@@ -697,7 +755,7 @@ ensure_hermes_in_path() {
 
     mkdir -p /usr/local/bin 2>/dev/null || true
 
-    if [ -x "${target_cli}" ]; then
+    if [ -x "${target_cli}" ] && [ ! -e "${link_cli}" ]; then
         if ! ln -sfn "${target_cli}" "${link_cli}" 2>/dev/null; then
             # Fallback for package runtime users: use passwordless sudo when available.
             if command -v sudo >/dev/null 2>&1; then
@@ -711,16 +769,9 @@ ensure_hermes_in_path() {
             fi
         fi
 
-        # Ensure `#!/usr/bin/env node` can resolve the packaged node binary in shells
-        # that do not already inherit the package bin directory in PATH.
-        if [ -x "${target_cli%/hermes}/node" ]; then
-            ln -sfn "${target_cli%/hermes}/node" /usr/local/bin/node 2>/dev/null || true
-        fi
-
-        # DSM compatibility: npm helper scripts may resolve relative to bin/node_modules/npm.
-        # Provide a stable bridge to packaged npm under lib/node_modules/npm.
-        mkdir -p "${target_cli%/hermes}/node_modules" 2>/dev/null || true
-        ln -sfn ../../lib/node_modules/npm "${target_cli%/hermes}/node_modules/npm" 2>/dev/null || true
+        # Hermes Agent uses Python; no Node shim is required here.
+        rm -f /usr/local/bin/node 2>/dev/null || true
+        rm -rf "${target_cli%/hermes}/node_modules" 2>/dev/null || true
     fi
 
     # Drop deprecated compatibility command.
@@ -729,7 +780,7 @@ ensure_hermes_in_path() {
 }
 
 sync_provider_models_from_upstream() {
-    "${HERMES_NODE}" -e '
+    run_node -e '
 const fs = require("fs");
 
 const configPath = process.argv[1];
@@ -1150,7 +1201,7 @@ NGINX_EOF
         export WIZARD_WECOM_BOT_ID="${wizard_wecom_bot_id}"
         export WIZARD_WECOM_SECRET="${wizard_wecom_secret}"
 
-        "${HERMES_NODE}" -e '
+        run_node -e '
 const fs = require("fs");
 const path = require("path");
 const p = process.argv[1];
@@ -1378,7 +1429,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         # adminport after that write so a custom gateway port is reflected too.
         sync_dsm_package_info_port "$(get_gateway_port_from_config "${bootstrap_config_file}")"
 
-        HERMES_WORKSPACE="$(${HERMES_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${bootstrap_config_file}")"
+        HERMES_WORKSPACE="$(run_node -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${bootstrap_config_file}")"
         if [ -z "${HERMES_WORKSPACE}" ]; then
             HERMES_WORKSPACE="${HERMES_WORKSPACE_DEFAULT}"
         fi
@@ -1392,7 +1443,7 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
         # 安装阶段就写入 workspace 指针，避免 prestart 被历史 pointer 覆盖回默认目录。
         mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
-        printf '%s' '$HOME' > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
+        printf '%s' "${HERMES_WORKSPACE}" > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
         printf '%s' "${HERMES_WORKSPACE}" > "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
         chmod 666 "${WORKSPACE_PTR_FILE}" "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
 
@@ -1415,15 +1466,14 @@ fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
         eff_group_postinst="$(resolve_effective_service_group "${eff_user_postinst}")"
         if [ -n "${eff_user_postinst}" ] && id "${eff_user_postinst}" >/dev/null 2>&1; then
             echo "[postinst-debug] step=chown enter user=${eff_user_postinst} group=${eff_group_postinst}" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
-            if ! chown -R "${eff_user_postinst}:${eff_group_postinst}" "${HERMES_WORKSPACE}"; then
-                echo "[hermes] ERROR: failed to chown workspace to ${eff_user_postinst}:${eff_group_postinst}" >&2
-                echo "[postinst-debug] step=chown fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
-                return 1
-            fi
+            for p in "${HERMES_WORKSPACE}" "${HERMES_STATE_DIR}" "${HERMES_STATE_DIR}/agents" "${HERMES_STATE_DIR}/agents/main" "${HERMES_STATE_DIR}/agents/main/sessions"; do
+                [ -e "${p}" ] || continue
+                chown -R "${eff_user_postinst}:${eff_group_postinst}" "${p}" 2>/dev/null || true
+            done
             echo "[postinst-debug] step=chown ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
-            chmod -R u+rwX "${HERMES_WORKSPACE}" 2>/dev/null || true
-            find "${HERMES_WORKSPACE}" -type d -exec chmod 700 {} \; 2>/dev/null || true
-            find "${HERMES_WORKSPACE}" -type f -exec chmod 600 {} \; 2>/dev/null || true
+            chmod -R u+rwX "${HERMES_STATE_DIR}" 2>/dev/null || true
+            find "${HERMES_STATE_DIR}" -type d -exec chmod 700 {} \; 2>/dev/null || true
+            find "${HERMES_STATE_DIR}" -type f -exec chmod 600 {} \; 2>/dev/null || true
         else
             # Fallback for install timing where service user is not yet resolvable:
             # keep workspace writable by synocommunity so prestart (sc-hermes group)
@@ -1611,8 +1661,8 @@ TERM_EOF
     local selected_source_config="${HERMES_CONFIG_FILE_BASE}"
 
     # Resolve active config source only (do not mutate config on restart).
-    IFS='|' read -r selected_workspace selected_source_config <<EOF
-$(${HERMES_NODE} -e '
+    local selected_cfg
+    selected_cfg="$(run_node -e '
 const fs = require("fs");
 const path = require("path");
 
@@ -1633,7 +1683,9 @@ if (wsConfigPath && wsConfigPath !== baseConfigPath && fs.existsSync(wsConfigPat
 }
 
 process.stdout.write(`${wsFromBase}|${sourcePath}`);
-' "${HERMES_CONFIG_FILE_BASE}")
+' "${HERMES_CONFIG_FILE_BASE}")"
+    IFS='|' read -r selected_workspace selected_source_config <<EOF
+${selected_cfg}
 EOF
 
     # Prefer explicit workspace.home.path (authoritative user home dir), then fallback to workspace.path.
@@ -1684,8 +1736,8 @@ EOF
 
     # Persist workspace pointers outside workspace tree; survives workspace deletion.
     mkdir -p "$(dirname "${WORKSPACE_PTR_FILE}")" >/dev/null 2>&1 || true
-    # Keep workspace.path symbolic and workspace.home.path as actual resolved dir.
-    printf '%s' '$HOME' > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
+    # Keep both pointers as absolute paths to avoid '$HOME' / truncated-path bugs.
+    printf '%s' "${HERMES_WORKSPACE}" > "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
     printf '%s' "${HERMES_WORKSPACE}" > "${WORKSPACE_HOME_PTR_FILE}" 2>/dev/null || true
     # Keep both pointer files writable by Control-UI web account to avoid save-no-effect.
     [ -f "${WORKSPACE_PTR_FILE}" ] && chmod 666 "${WORKSPACE_PTR_FILE}" 2>/dev/null || true
@@ -1808,7 +1860,7 @@ EOF
     # 始终将当前用户目录规则写回配置，并补齐最低可运行 gateway 默认项：
     # workspace=/xxx
     # state/config=/xxx/.hermes/hermes.json
-    "${HERMES_NODE}" -e '
+    run_node -e '
 const fs = require("fs");
 const crypto = require("crypto");
 const cfgPath = process.argv[1];
@@ -1915,7 +1967,7 @@ try {
     # 预置 runtime-deps stage 目录（使用真实 node_modules 目录，不再用软链，避免 doctor/npm reify 报
     # "Removing non-directory .../node_modules" 并导致后续缺失检查误判）。
     local STAGE_DIR
-    STAGE_DIR="$(${HERMES_NODE} -e '
+    STAGE_DIR="$(run_node -e '
 const fs=require("fs");
 const path=require("path");
 const crypto=require("crypto");
@@ -1970,7 +2022,7 @@ try {
     # New behavior:
     # - Never delete an existing channel just because discovery is incomplete.
     # - Keep the channel in cfg.channels and best-effort enable/allow its plugin.
-    "${HERMES_NODE}" -e '
+    run_node -e '
 const fs = require("fs");
 const path = require("path");
 
@@ -2489,6 +2541,11 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # bundledDiscovery=allowlist can launch with browser-only discovery.
     if [ -d "${HERMES_WORKSPACE}" ] && [ -w "${HERMES_WORKSPACE}" ] && [ -w "${HERMES_STATE_DIR}" ]; then
         start_gateway_if_needed
+
+        # Auto-start dashboard if gateway started successfully
+        if gateway_status 2>/dev/null; then
+            start_dashboard_if_needed
+        fi
     fi
 
     # fn-port monitor runtime dirs (ported from sc-hermes)
@@ -2537,16 +2594,10 @@ stop_gateway_processes() {
     # Match every packaged gateway launch form. Keep these package-scoped first;
     # the broader Hermes Agent matches below are only for stale/global supervisors.
     pkill -TERM -f '/var/packages/hermes/target/bin/hermes gateway run' >/dev/null 2>&1 || true
-    pkill -TERM -f '/var/packages/hermes/target/app/hermes/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -TERM -f '/var/packages/hermes/target/app/hermes/dist/index.js gateway run' >/dev/null 2>&1 || true
-    pkill -TERM -f '/volume1/@appstore/hermes/app/hermes/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -TERM -f '/volume1/@appstore/hermes/app/hermes/dist/index.js gateway run' >/dev/null 2>&1 || true
-    pkill -TERM -f '/volume1/@appstore/hermes/bin/node .*hermes/dist/index.js gateway run' >/dev/null 2>&1 || true
-    # Kill externally installed/global Hermes Agent gateway runtimes to prevent
-    # DSM package from accidentally using outdated /usr/lib/node_modules/hermes.
-    pkill -TERM -f '/usr/lib/node_modules/hermes/dist/index.js gateway' >/dev/null 2>&1 || true
     pkill -TERM -f 'hermes gateway run' >/dev/null 2>&1 || true
     pkill -TERM -x 'hermes-gateway' >/dev/null 2>&1 || true
+    # Also clear any stale global Hermes Agent gateway supervisor.
+    pkill -TERM -f 'gateway run' >/dev/null 2>&1 || true
     sleep 1
     pkill -KILL -f '/var/packages/hermes/target/bin/hermes gateway run' >/dev/null 2>&1 || true
     pkill -KILL -f '/var/packages/hermes/target/app/hermes/dist/index.js gateway' >/dev/null 2>&1 || true

@@ -1,4 +1,4 @@
-name: Build Hermes Agent SPK (x64-7.2)
+name: Build Hermes SPK (x64-7.2)
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       ref:
         description: 'Git ref to build (branch/tag/SHA)'
         required: false
-        default: ''
+        default: 'master'
 
 jobs:
   build-hermes-x64:
@@ -21,13 +21,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.ref != '' && github.event.inputs.ref || github.sha }}
+          ref: ${{ github.event.inputs.ref || 'master' }}
           fetch-depth: 0
 
       - name: Cache toolchains
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: toolchain/*/work
           key: toolchain-x64-7.2-hermes-v1-${{ hashFiles('toolchain/syno-x64-7.2/digests') }}
@@ -36,22 +36,11 @@ jobs:
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
           entrypoint: /bin/bash
-          args: -lc "set -e; cd /github/workspace/spk/hermes && make V=s arch-x64-7.2"
+          args: -lc "set -e; cd /github/workspace/spk/hermes && make arch-x64-7.2"
 
       - name: Upload SPK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: hermes-x64-7.2
           path: packages/hermes_x64-7.2_*.spk
           if-no-files-found: error
-
-      - name: Upload build logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hermes-x64-7.2-logs
-          path: |
-            spk/hermes/work-*/doctor.log
-            spk/hermes/status-build.log
-            spk/hermes/build-*.log
-          if-no-files-found: warn

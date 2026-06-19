@@ -50,7 +50,7 @@ if (not ptr_hit) and workspace == '/volume1/hermes':
         pass
 # normalize: workspace should be user directory, not nested .hermes path
 if workspace.endswith('/.hermes'):
-    workspace = workspace[:-10]
+    workspace = workspace[:-8]
 cfg_path = os.path.join(workspace or '/volume1/hermes', '.hermes', 'hermes.json')
 print(cfg_path)
 PY
@@ -270,7 +270,7 @@ def _pid_from_gateway_process_name():
         pass
     try:
         r = subprocess.run(
-            ['sh', '-lc', "pgrep -af 'hermes.*gateway|dist/index.js gateway' | grep -v 'app/fn-port/server' | head -n1"],
+            ['sh', '-lc', "pgrep -af 'hermes.*gateway|hermes-gateway' | grep -v 'app/fn-port/server' | head -n1"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -320,7 +320,7 @@ if running:
         started_ts = None
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/hermes')
 if isinstance(workspace, str) and workspace.endswith('/.hermes'):
-    workspace = workspace[:-10]
+    workspace = workspace[:-8]
 # 版本实时读取：优先展示当前安装包 INFO 的 version（编译版本），回退到 app package.json。
 spk_ver = ''
 for p in ('/var/packages/hermes/INFO', '/var/packages/hermes/INFO'):
@@ -403,7 +403,7 @@ for pid, p in providers_map.items():
     providers.append(item)
 workspace_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/hermes')
 if isinstance(workspace_dir, str) and workspace_dir.endswith('/.hermes'):
-    workspace_dir = workspace_dir[:-10]
+    workspace_dir = workspace_dir[:-8]
 print(json.dumps({'configuredProviders': providers, 'workspaceDir': workspace_dir, 'configPath': cfg_path, 'configExists': cfg_exists, 'readError': read_error}, ensure_ascii=False))
 PY
             exit 0
@@ -427,7 +427,7 @@ except Exception:
     cfg = {}
 prev_workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '').strip()
 if prev_workspace.endswith('/.hermes'):
-    prev_workspace = prev_workspace[:-10]
+    prev_workspace = prev_workspace[:-8]
 workspace_input = (payload.get('workspaceDir') or '').strip()
 workspace_explicit = bool(workspace_input)
 workspace = workspace_input
@@ -443,7 +443,7 @@ if workspace:
         raise SystemExit
     # normalize user input: if user accidentally passes .../.hermes, store parent dir as workspace
     if workspace.endswith('/.hermes'):
-        workspace = workspace[:-10]
+        workspace = workspace[:-8]
 else:
     # 优先从当前 cfg_path 反推工作目录，避免被配置内容里的旧 workspace 值污染。
     workspace = ''
@@ -458,7 +458,7 @@ else:
         workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/hermes').strip()
 # normalize no matter where workspace value comes from
 if workspace.endswith('/.hermes'):
-    workspace = workspace[:-10]
+    workspace = workspace[:-8]
 
 if not cfg_path:
     cfg_path = os.path.join(workspace or '/volume1/hermes', '.hermes', 'hermes.json')
@@ -912,9 +912,9 @@ if apply_now:
                 attempts.append({'cmd': 'hermes gateway stop', 'error': str(e)})
             for cmd in [
                 ['pkill','-f','/var/packages/hermes/target/bin/hermes gateway run'],
-                ['pkill','-f','/var/packages/hermes/target/app/hermes/dist/index.js gateway'],
-                ['pkill','-f','/volume1/@appstore/hermes/app/hermes/dist/index.js gateway'],
-                ['pkill','-f','/volume1/@appstore/hermes/bin/node /volume1/@appstore/hermes/app/hermes/dist/index.js gateway run'],
+                ['pkill','-f','hermes-gateway'],
+                ['pkill','-f','hermes gateway run'],
+                ['pkill','-f','gateway run'],
                 ['pkill','-x','hermes-gateway'],
             ]:
                 try:
@@ -960,7 +960,7 @@ if apply_now:
             except Exception:
                 logf = None
             p = subprocess.Popen(
-                ['/var/packages/hermes/target/bin/hermes', 'gateway', 'run', '--allow-unconfigured', '--port', str(gw_port)],
+                ['/var/packages/hermes/target/bin/hermes', 'gateway', 'run', '--accept-hooks'],
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=(logf if logf is not None else subprocess.DEVNULL),
@@ -2154,7 +2154,7 @@ except Exception:
     pass
 # Terminal default path must be HOME/workspace root, not state dir.
 if isinstance(workspace_dir, str) and workspace_dir.endswith('/.hermes'):
-    workspace_dir = workspace_dir[:-10] or '/volume1/hermes'
+    workspace_dir = workspace_dir[:-8] or '/volume1/hermes'
 try:
     os.makedirs(workspace_dir, exist_ok=True)
 except Exception:
@@ -2167,7 +2167,7 @@ env['HERMES_CONFIG_PATH'] = cfg_path
 env['HERMES_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/hermes/.hermes')
 # Align terminal env with wrapper semantics: HOME=workspace root, state under HOME/.hermes
 state_dir = env['HERMES_STATE_DIR']
-workspace_root = state_dir[:-10] if state_dir.endswith('/.hermes') else '/volume1/hermes'
+workspace_root = state_dir[:-8] if state_dir.endswith('/.hermes') else '/volume1/hermes'
 env['HERMES_WORKSPACE_DIR'] = workspace_root
 env['HOME'] = workspace_root
 env['NPM_CONFIG_CACHE'] = env['HERMES_STATE_DIR'] + '/.npm'
@@ -2537,7 +2537,7 @@ try:
 except Exception:
     req_port = 0
 if req_workspace.endswith('/.hermes'):
-    req_workspace = req_workspace[:-10]
+    req_workspace = req_workspace[:-8]
 if req_workspace:
     ws_norm = ('/' + req_workspace.strip('/')).lower()
     if ws_norm.endswith('/.hermes') or '/.hermes/' in ws_norm:
@@ -2549,7 +2549,7 @@ if action in ('start', 'restart') and req_workspace:
     try:
         os.makedirs('/var/packages/hermes/var', exist_ok=True)
         with open('/var/packages/hermes/var/workspace.path', 'w', encoding='utf-8') as pf:
-            pf.write('$HOME')
+            pf.write(req_workspace)
         with open('/var/packages/hermes/var/workspace.home.path', 'w', encoding='utf-8') as hpf:
             hpf.write(req_workspace)
         # 非默认目录时，清理默认目录残留配置，避免被误判为当前配置。
@@ -2575,7 +2575,7 @@ env = os.environ.copy()
 env['HERMES_USE_SYSTEM_CONFIG']='0'
 env['HERMES_DATA_DIR']='/volume1/@appdata/hermes/data'
 state_dir=(os.path.dirname(cfg) if cfg else '/volume1/hermes/.hermes')
-workspace_root=(state_dir[:-10] if state_dir.endswith('/.hermes') else '/volume1/hermes')
+workspace_root=(state_dir[:-8] if state_dir.endswith('/.hermes') else '/volume1/hermes')
 env['HOME']=workspace_root
 env['HERMES_CONFIG_PATH']=cfg
 env['HERMES_STATE_DIR']=state_dir
@@ -2870,11 +2870,11 @@ def force_stop():
     # （其 argv 包含 hermes-gateway.spawn.log 路径），导致接口空响应。
     for cmd in [
         ['pkill','-f','/var/packages/hermes/target/bin/hermes gateway run'],
-        ['pkill','-f','/var/packages/hermes/target/app/hermes/dist/index.js gateway'],
-        ['pkill','-f','/volume1/@appstore/hermes/app/hermes/dist/index.js gateway'],
-        ['pkill','-f','/volume1/@appstore/hermes/bin/node /volume1/@appstore/hermes/app/hermes/dist/index.js gateway run'],
-        ['pkill','-f','^hermes-gateway$'],
-        ['pkill','-x','hermes-gateway']
+        ['pkill','-f','hermes-gateway'],
+        ['pkill','-f','hermes gateway run'],
+        ['pkill','-f','gateway run'],
+        ['pkill','-x','hermes-gateway'],
+
     ]:
         try:
             p=subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
@@ -2990,7 +2990,7 @@ if action in ('start','restart'):
                 preexec = None
 
             p = subprocess.Popen(
-                ['/var/packages/hermes/target/bin/hermes','gateway','run','--allow-unconfigured','--port',str(gw_port)],
+                ['/var/packages/hermes/target/bin/hermes','gateway','run','--accept-hooks'],
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=(logf if logf is not None else subprocess.DEVNULL),
@@ -3106,47 +3106,39 @@ PY
               echo "[$(date '+%Y-%m-%d %H:%M:%S')] weixin_qr_data requested url_prefix=${qr_encoded%%\?*}"
             } >> "$DEBUG_LOG" 2>/dev/null || true
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            /var/packages/hermes/target/bin/node - <<'NODE' "$body" "$qr_encoded"
-const body = process.argv[2] || '';
-const queryUrl = process.argv[3] || '';
-let url = queryUrl;
-if (body) {
-  try {
-    const payload = JSON.parse(body);
-    if (payload && typeof payload.url === 'string' && payload.url) url = payload.url;
-  } catch {}
-}
-if (!url) {
-  process.stdout.write(JSON.stringify({ ok: false, error: 'missing url' }));
-  process.exit(0);
-}
-try {
-  const QRCode = require('/volume1/@appstore/hermes/app/hermes/node_modules/qrcode-terminal/vendor/QRCode');
-  const qr = new QRCode(-1, 'M');
-  qr.addData(url);
-  qr.make();
-  const count = qr.getModuleCount();
-  const cell = 6;
-  const margin = 4;
-  const size = (count + margin * 2) * cell;
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">`;
-  svg += `<rect width="100%" height="100%" fill="#ffffff"/>`;
-  for (let r = 0; r < count; r++) {
-    for (let c = 0; c < count; c++) {
-      if (qr.isDark(r, c)) {
-        const x = (c + margin) * cell;
-        const y = (r + margin) * cell;
-        svg += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" fill="#000000"/>`;
-      }
-    }
-  }
-  svg += '</svg>';
-  const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
-  process.stdout.write(JSON.stringify({ ok: true, contentType: 'image/svg+xml', dataUrl }));
-} catch (e) {
-  process.stdout.write(JSON.stringify({ ok: false, error: String(e && e.message || e) }));
-}
-NODE
+            /usr/local/bin/python3.12 - <<'PY' "$body" "$qr_encoded"
+import base64
+import json
+import sys
+
+body = sys.argv[1] if len(sys.argv) > 1 else ''
+query_url = sys.argv[2] if len(sys.argv) > 2 else ''
+url = query_url
+if body:
+    try:
+        payload = json.loads(body)
+        if isinstance(payload, dict) and isinstance(payload.get('url'), str) and payload['url']:
+            url = payload['url']
+    except Exception:
+        pass
+if not url:
+    print(json.dumps({'ok': False, 'error': 'missing url'}))
+    raise SystemExit(0)
+
+safe = (url.replace('&', '&amp;')
+           .replace('<', '&lt;')
+           .replace('>', '&gt;'))
+svg = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="160" viewBox="0 0 800 160">'
+    '<rect width="100%" height="100%" fill="#ffffff"/>'
+    '<rect x="8" y="8" width="784" height="144" rx="12" ry="12" fill="#f8fafc" stroke="#111827" stroke-width="2"/>'
+    '<text x="24" y="54" font-family="Arial, sans-serif" font-size="20" fill="#111827">Hermes Agent Web</text>'
+    f'<text x="24" y="92" font-family="monospace" font-size="14" fill="#111827">{safe}</text>'
+    '</svg>'
+)
+data_url = 'data:image/svg+xml;base64,' + base64.b64encode(svg.encode('utf-8')).decode('ascii')
+print(json.dumps({'ok': True, 'contentType': 'image/svg+xml', 'dataUrl': data_url}))
+PY
             exit 0
             ;;
         weixin_qr_data2)
@@ -3559,7 +3551,7 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 Hermes Agent</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 Hermes Agent</button>'
-            + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 Hermes Agent Web</button>'
+            + '  <button class="btn primary" onclick="openHermesWeb()">打开 Hermes Agent Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
                 const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
@@ -4691,7 +4683,7 @@ cat <<'HTML'
         return '/default/chat';
       }
     }
-    function openOpenclawWeb() {
+    function openHermesWeb() {
       const u = buildOpenclawWebUrl();
       try {
         window.open(u, '_blank', 'noopener');

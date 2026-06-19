@@ -11,7 +11,7 @@ UNSUPPORTED_ARCHS = $(i686_ARCHS) $(ARMv7_ARCHS) $(ARMv5_ARCHS) $(PPC_ARCHS)
 # Bundled Node.js runtime requires newer glibc; keep DSM floor at 7.2.
 REQUIRED_MIN_DSM = 7.2
 
-MAINTAINER = openclaw
+MAINTAINER = myp015
 MAINTAINER_URL = https://github.com/NousResearch/hermes-agent
 DESCRIPTION = Hermes Agent for Synology — self-improving AI agent framework by Nous Research
 DISPLAY_NAME = Hermes Agent
