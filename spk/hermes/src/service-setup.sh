@@ -993,10 +993,34 @@ SUDOERS_EOF
     chmod 440 "${sudoers_file}" 2>/dev/null || true
 }
 
+# Fix .so mismatch: pip may produce cp313 .so files incompatible with Python 3.12
+fix_native_so_after_install() {
+    local system_py="/usr/local/bin/python3.12"
+    local system_site="${SYNOPKG_PKGDEST}/target/lib/python3.12/site-packages"
+    local bundle_dir="${HERMES_APP_DIR}"
+    [ -d "${bundle_dir}" ] || return 0
+    if [ ! -d "${system_site}" ]; then
+        system_site="$(${system_py} -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || true)"
+        [ -n "${system_site}" ] && [ -d "${system_site}" ] || return 0
+    fi
+    find "${system_site}" -name '*.cpython-312-*.so' 2>/dev/null | while IFS= read -r so; do
+        local rel="${so#${system_site}/}"
+        local pkg="${rel%%/*}"
+        local soname="${rel##*/}"
+        local dst="${bundle_dir}/${pkg}"
+        if [ -d "${dst}" ]; then
+            find "${dst}" -name '*.cpython-3[!1][!2]*.so' -delete 2>/dev/null || true
+            cp -f "${so}" "${dst}/${soname}"
+        fi
+    done
+    chown -R sc-hermes:synocommunity "${bundle_dir}/jiter" 2>/dev/null || true
+}
+
 service_postinst() {
     ensure_hermes_in_path
     ensure_terminal_alias_sudoers
     disable_external_gateway_supervisors
+    fix_native_so_after_install
 
     # Guard against installer contexts that invoke postinst from non-canonical
     # package roots (e.g. /volume1/@appstore/hermes). Bootstrap/state writes
