@@ -57,7 +57,7 @@ hermes_prepare_bundle:
 	@rm -rf $(WORK_DIR)/hermes-bundle $(WORK_DIR)/hermes-runtime
 	@install -d -m 755 $(WORK_DIR)/hermes-bundle $(WORK_DIR)/hermes-runtime
 	@cd $(WORK_DIR) && \
-		pip install hermes-agent==$(SPK_VERS) python-multipart jiter -t $(WORK_DIR)/hermes-bundle --quiet
+		/usr/local/bin/python3.12 -m pip install --no-cache-dir hermes-agent==$(SPK_VERS) python-multipart jiter -t $(WORK_DIR)/hermes-bundle --quiet
 	@# Patch web_server.py for DSM reverse proxy (insecure mode)
 	@python3 src/patch_web_server.py "$(WORK_DIR)/hermes-bundle/hermes_cli/web_server.py"
 	@# Verify the bundle
