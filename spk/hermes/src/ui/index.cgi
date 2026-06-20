@@ -714,18 +714,29 @@ try:
         if token:
             yf.write('auth:\n  token: "' + token + '"\n\n')
         if providers_map:
-            yf.write('model:\n')
+            yf.write('models:\n  mode: merge\n  providers:\n')
             for pid, p in providers_map.items():
                 if not isinstance(p, dict):
                     continue
-                yf.write('  provider: ' + pid + '\n')
+                yf.write('    ' + pid + ':\n')
+                yf.write('      api: ' + str(p.get('api') or 'openai-completions') + '\n')
                 base_url = str(p.get('baseUrl') or '')
                 if base_url:
-                    yf.write('  base_url: ' + base_url + '\n')
+                    yf.write('      baseUrl: ' + base_url + '\n')
                 api_key = str(p.get('apiKey') or '')
                 if api_key:
-                    yf.write('  api_key: ' + api_key + '\n')
-                break
+                    yf.write('      apiKey: "' + api_key + '"\n')
+                display_name = str(p.get('displayName') or pid)
+                if display_name:
+                    yf.write('      displayName: ' + display_name + '\n')
+                models_list = p.get('models') or []
+                if models_list:
+                    yf.write('      models:\n')
+                    for m in models_list:
+                        if isinstance(m, dict):
+                            mid = m.get('id') or m.get('modelId') or ''
+                            if mid:
+                                yf.write('        - { id: "' + mid + '", modelId: "' + mid + '" }\n')
         gw_port = str((cfg.get('gateway') or {}).get('port') or 58790)
         yf.write('gateway:\n  port: ' + gw_port + '\n')
 except Exception:
@@ -761,6 +772,44 @@ try:
                 out = (r.stdout or b'').decode('utf-8', errors='ignore')
                 if out:
                     mf.write(out[-4000:])
+        except Exception:
+            pass
+        # After model sync, re-read cfg and rewrite config.yaml with updated providers/models
+        try:
+            post_sync_cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
+            post_sync_providers = (post_sync_cfg.get('providers') or {})
+            if post_sync_providers:
+                with open(cfg_yaml_path, 'w', encoding='utf-8') as yf:
+                    yf.write("# Auto-generated from hermes.json for Dashboard API compat (post-sync)\n")
+                    gw_auth = (post_sync_cfg.get('gateway') or {}).get('auth') or {}
+                    token = str(gw_auth.get('token') or '')
+                    if token:
+                        yf.write('auth:\n  token: "' + token + '"\n\n')
+                    yf.write('models:\n  mode: merge\n  providers:\n')
+                    for pid, p in post_sync_providers.items():
+                        if not isinstance(p, dict):
+                            continue
+                        yf.write('    ' + pid + ':\n')
+                        yf.write('      api: ' + str(p.get('api') or 'openai-completions') + '\n')
+                        base_url = str(p.get('baseUrl') or '')
+                        if base_url:
+                            yf.write('      baseUrl: ' + base_url + '\n')
+                        ak = str(p.get('apiKey') or '')
+                        if ak:
+                            yf.write('      apiKey: "' + ak + '"\n')
+                        dn = str(p.get('displayName') or pid)
+                        if dn:
+                            yf.write('      displayName: ' + dn + '\n')
+                        models_list = p.get('models') or []
+                        if models_list:
+                            yf.write('      models:\n')
+                            for m in models_list:
+                                if isinstance(m, dict):
+                                    mid = m.get('id') or m.get('modelId') or ''
+                                    if mid:
+                                        yf.write('        - { id: "' + mid + '", modelId: "' + mid + '" }\n')
+                    gw_port = str((cfg.get('gateway') or {}).get('port') or 58790)
+                    yf.write('gateway:\n  port: ' + gw_port + '\n')
         except Exception:
             pass
 except Exception:
