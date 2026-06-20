@@ -693,7 +693,7 @@ start_dashboard_if_needed() {
     fi
 
     echo "[prestart] Starting Hermes Dashboard on port ${dash_port}..."
-    nohup "${HERMES_CLI_BIN}" dashboard --port ${dash_port} --insecure --skip-build \
+    nohup "${SYNOPKG_PKGDEST}/bin/hermes" dashboard --port ${dash_port} --host 0.0.0.0 --insecure --skip-build \
         >>"${dash_log}" 2>&1 &
     local dash_pid=$!
     echo "${dash_pid}" >"${dash_pid_file}"
@@ -732,7 +732,7 @@ start_gateway_if_needed() {
     local bundled_plugin_allowlist
     bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "GATEWAY_ALLOW_ALL_USERS=true HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' HERMES_CONFIG_PATH='${HERMES_CONFIG_FILE}' HERMES_STATE_DIR='${HERMES_STATE_DIR}' HERMES_WORKSPACE_DIR='${HERMES_WORKSPACE}' HOME='${HERMES_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${HERMES_STATE_DIR}/.cache/jiti' TMPDIR='${HERMES_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --replace --accept-hooks >>'${spawn_log}' 2>&1 & echo \\$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "GATEWAY_ALLOW_ALL_USERS=true HERMES_HOME='${HERMES_STATE_DIR}' HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' HERMES_CONFIG_PATH='${HERMES_CONFIG_FILE}' HERMES_STATE_DIR='${HERMES_STATE_DIR}' HERMES_WORKSPACE_DIR='${HERMES_WORKSPACE}' HOME='${HERMES_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${HERMES_STATE_DIR}/.cache/jiti' TMPDIR='${HERMES_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --replace --accept-hooks >>'${spawn_log}' 2>&1 & echo \\$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
         GATEWAY_ALLOW_ALL_USERS=true HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${HERMES_STATE_DIR}/.cache/jiti" TMPDIR="${HERMES_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --replace --accept-hooks >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
@@ -2537,6 +2537,21 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # Clear stale pid marker before a fresh start.
     [ -n "${PID_FILE}" ] && rm -f "${PID_FILE}" 2>/dev/null || true
 
+gateway_status() {
+    local pid_file="${GATEWAY_PID_FILE:-${SYNOPKG_PKGVAR}/hermes-gateway.runtime.pid}"
+    if [ -s "${pid_file}" ]; then
+        local pid="$(cat "${pid_file}" 2>/dev/null)"
+        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    # Fallback: check for any live gateway process
+    if ps -eo pid=,cmd= | grep -q "[g]ateway.*run"; then
+        return 0
+    fi
+    return 1
+}
+
     # Auto-start only after channel/plugin config has been repaired, otherwise
     # bundledDiscovery=allowlist can launch with browser-only discovery.
     if [ -d "${HERMES_WORKSPACE}" ] && [ -w "${HERMES_WORKSPACE}" ] && [ -w "${HERMES_STATE_DIR}" ]; then
@@ -2693,9 +2708,10 @@ service_postuninst() {
 }
 
 # Default exports before prestart recalculates runtime paths.
+export HERMES_HOME="${HERMES_STATE_DIR_BASE}"
 export HERMES_STATE_DIR="${HERMES_STATE_DIR_BASE}"
 export HERMES_CONFIG_PATH="${HERMES_CONFIG_FILE_BASE}"
-export HERMES_WORKSPACE_DIR="${HERMES_STATE_DIR_BASE}"
+export HERMES_WORKSPACE_DIR="${HERMES_WORKSPACE_DEFAULT}"
 export HOME="${HERMES_STATE_DIR_BASE}"
 export NPM_CONFIG_CACHE="${HERMES_STATE_DIR_BASE}/.npm"
 export XDG_CACHE_HOME="${HERMES_STATE_DIR_BASE}/.cache"
