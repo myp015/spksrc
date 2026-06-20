@@ -110,7 +110,7 @@ native_api=$(urldecode "$(get_param native_api "$QUERY")")
 launch_app=$(urldecode "$(get_param launchApp "$QUERY")")
 from_app=$(urldecode "$(get_param fromApp "$QUERY")")
 
-# 仅允许 DSM 登录会话访问（避免未登录直接打开）
+# 仅允许 DSM 登录会话访问(避免未登录直接打开)
 REQ_COOKIE="${HTTP_COOKIE:-}"
 if ! printf '%s' "$REQ_COOKIE" | grep -Eq '(^|;[[:space:]]*)id='; then
     printf "Status: 403 Forbidden
@@ -124,7 +124,7 @@ if ! printf '%s' "$REQ_COOKIE" | grep -Eq '(^|;[[:space:]]*)id='; then
 fi
 
 # native_api=1 接口请求不受此限制。
-# launchApp=1 仅允许套件内带 fromApp=1 的入口；普通直链（无标记）直接拦截。
+# launchApp=1 仅允许套件内带 fromApp=1 的入口;普通直链(无标记)直接拦截。
 if [ "$native_api" != "1" ] && [ "$launch_app" = "1" ]; then
     if [ "$from_app" != "1" ]; then
         printf "Status: 403 Forbidden
@@ -148,7 +148,7 @@ port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 running = False
 service_running = False
-# 避免单次探测抖动导致“已停止 -> 运行中”闪烁：做短重试（端口探测）。
+# 避免单次探测抖动导致"已停止 -> 运行中"闪烁:做短重试(端口探测)。
 for _ in range(3):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(0.6)
@@ -165,8 +165,8 @@ for _ in range(3):
             pass
         time.sleep(0.15)
 
-# gateway 进程探测兜底：按钮语义是“停止 gateway”，不是“停止套件”。
-# 不能用 pgrep -f 正则（会误匹配当前检查命令自身 argv），改为精确 comm 匹配。
+# gateway 进程探测兜底:按钮语义是"停止 gateway",不是"停止套件"。
+# 不能用 pgrep -f 正则(会误匹配当前检查命令自身 argv),改为精确 comm 匹配。
 if not running:
     try:
         r = subprocess.run([
@@ -176,8 +176,8 @@ if not running:
     except Exception:
         pass
 
-# 套件运行态（独立于 gateway 端口探活）：用于按钮可用性判断。
-# 目标：即便 gateway 进程异常，仍允许“停止 Hermes Agent”按钮可点击。
+# 套件运行态(独立于 gateway 端口探活):用于按钮可用性判断。
+# 目标:即便 gateway 进程异常,仍允许"停止 Hermes Agent"按钮可点击。
 try:
     r = subprocess.run([
         '/usr/syno/bin/synopkg', 'status', 'hermes'
@@ -195,7 +195,7 @@ try:
 except Exception:
     service_running = False
 
-# Fallback: 读取守护占位 pid（由 start-stop-status 维护）
+# Fallback: 读取守护占位 pid(由 start-stop-status 维护)
 if not service_running:
     try:
         pid_file = '/var/packages/hermes/var/hermes.pid'
@@ -215,8 +215,8 @@ try:
 except Exception:
     cfg = {}
 
-# 计算 gateway 运行时长（秒）
-# 关键：优先按“当前监听配置端口的真实进程 PID”来算，避免误命中 supervisor / 旧 pgrep 结果，
+# 计算 gateway 运行时长(秒)
+# 关键:优先按"当前监听配置端口的真实进程 PID"来算,避免误命中 supervisor / 旧 pgrep 结果,
 # 否则重启后概览页运行时间可能不归零。
 def _first_int(text):
     for token in str(text or '').replace(',', ' ').split():
@@ -289,7 +289,7 @@ started_ts = None
 uptime_seconds = 0
 if running:
     try:
-        # 优先以 runtime pid 文件的 mtime 作为“本次启动时间”，这样从停止到再次运行一定从 0 开始计时。
+        # 优先以 runtime pid 文件的 mtime 作为"本次启动时间",这样从停止到再次运行一定从 0 开始计时。
         pidfile_started_ts = None
         for pidfile in ('/var/packages/hermes/var/hermes-gateway.runtime.pid', '/volume1/@appdata/hermes/hermes-gateway.runtime.pid'):
             if os.path.exists(pidfile):
@@ -321,7 +321,7 @@ if running:
 workspace = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/hermes')
 if isinstance(workspace, str) and workspace.endswith('/.hermes'):
     workspace = workspace[:-8]
-# 版本实时读取：优先展示当前安装包 INFO 的 version（编译版本），回退到 app package.json。
+# 版本实时读取:优先展示当前安装包 INFO 的 version(编译版本),回退到 app package.json。
 spk_ver = ''
 for p in ('/var/packages/hermes/INFO', '/var/packages/hermes/INFO'):
     try:
@@ -432,12 +432,12 @@ workspace_input = (payload.get('workspaceDir') or '').strip()
 workspace_explicit = bool(workspace_input)
 workspace = workspace_input
 if workspace:
-    # 用户目录保护：不允许将用户目录命名为 .hermes（该名称保留给内部工作目录）
+    # 用户目录保护:不允许将用户目录命名为 .hermes(该名称保留给内部工作目录)
     norm_ws = '/' + workspace.strip('/')
     if norm_ws.endswith('/.hermes') or '/.hermes/' in norm_ws + '/':
         print(json.dumps({
             'ok': False,
-            'error': '用户目录不能包含 .hermes（该名称为内部工作目录保留）',
+            'error': '用户目录不能包含 .hermes(该名称为内部工作目录保留)',
             'workspaceDir': workspace
         }, ensure_ascii=False))
         raise SystemExit
@@ -445,7 +445,7 @@ if workspace:
     if workspace.endswith('/.hermes'):
         workspace = workspace[:-8]
 else:
-    # 优先从当前 cfg_path 反推工作目录，避免被配置内容里的旧 workspace 值污染。
+    # 优先从当前 cfg_path 反推工作目录,避免被配置内容里的旧 workspace 值污染。
     workspace = ''
     if cfg_path:
         cp = cfg_path.strip()
@@ -475,7 +475,7 @@ elif isinstance(paths[0], dict):
 # after workspace change, always write into target workspace config path
 cfg_path = os.path.join(workspace or '/volume1/hermes', '.hermes', 'hermes.json')
 
-# 规则：仅允许在 gateway 停止后修改用户目录。
+# 规则:仅允许在 gateway 停止后修改用户目录。
 workspace_changed = bool(workspace and workspace != prev_workspace)
 try:
     import socket
@@ -503,14 +503,14 @@ except Exception:
 if workspace_explicit and workspace_changed and gateway_running:
     print(json.dumps({
         'ok': False,
-        'error': '请先停止 gateway，再修改用户目录。',
+        'error': '请先停止 gateway,再修改用户目录。',
         'workspaceDir': workspace,
         'configPath': cfg_path,
         'gatewayRunning': True
     }, ensure_ascii=False))
     raise SystemExit
 
-# 用户目录变更时：将旧工作目录下 .hermes 全量迁移到新目录，保证文件统一落在 用户目录/.hermes。
+# 用户目录变更时:将旧工作目录下 .hermes 全量迁移到新目录,保证文件统一落在 用户目录/.hermes。
 if workspace_explicit and workspace_changed:
     try:
         import shutil
@@ -522,7 +522,7 @@ if workspace_explicit and workspace_changed:
                 src = os.path.join(old_state, name)
                 dst = os.path.join(new_state, name)
                 try:
-                    # 强制以新目录为准：目录做合并覆盖，文件直接覆盖复制。
+                    # 强制以新目录为准:目录做合并覆盖,文件直接覆盖复制。
                     if os.path.isdir(src):
                         os.makedirs(dst, exist_ok=True)
                         for item in os.listdir(src):
@@ -546,7 +546,7 @@ if workspace_explicit and workspace_changed:
                 except Exception:
                     pass
 
-            # 旧目录清理：切目录后不再保留核心运行位，避免“看起来还在默认目录”。
+            # 旧目录清理:切目录后不再保留核心运行位,避免"看起来还在默认目录"。
             for stale in ['hermes.json', 'skills', 'extensions']:
                 p = os.path.join(old_state, stale)
                 try:
@@ -565,7 +565,7 @@ try:
     ptr = '/var/packages/hermes/var/workspace.path'
     home_ptr = '/var/packages/hermes/var/workspace.home.path'
     os.makedirs(os.path.dirname(ptr), exist_ok=True)
-    # 仅在显式改目录（或指针缺失）时写 pointer，避免“保存模型”误把目录改回默认。
+    # 仅在显式改目录(或指针缺失)时写 pointer,避免"保存模型"误把目录改回默认。
     if workspace_explicit or (not os.path.exists(ptr)) or (not os.path.exists(home_ptr)):
         with open(ptr, 'w', encoding='utf-8') as pf:
             pf.write('$HOME')
@@ -574,7 +574,7 @@ try:
 except Exception as e:
     pointer_write_err = str(e)
 
-# 目录显式修改时，pointer 写失败必须直接报错，避免“保存成功但实际不生效”。
+# 目录显式修改时,pointer 写失败必须直接报错,避免"保存成功但实际不生效"。
 if workspace_explicit and pointer_write_err:
     print(json.dumps({
         'ok': False,
@@ -867,14 +867,14 @@ for pkg_name in ['feishu', 'feishu-hermes-plugin', 'dingtalk', 'wecom', 'qqbot',
 
 workspace_changed = bool(workspace and workspace != prev_workspace)
 
-# 用户目录切换后的自动初始化：从套件系统文件同步 skills / 插件资源到新目录。
+# 用户目录切换后的自动初始化:从套件系统文件同步 skills / 插件资源到新目录。
 workspace_init_sync_ok = False
 workspace_init_sync_err = ''
 workspace_init_deps_ok = True
 workspace_init_deps_err = 'skipped: workspace change does not run doctor --fix'
 if workspace_explicit and workspace_changed:
     try:
-        # 与 SPK 安装初始化路径一致：复用 service-setup 的同步函数，不调用 doctor。
+        # 与 SPK 安装初始化路径一致:复用 service-setup 的同步函数,不调用 doctor。
         init_cmd = (
             'bash -lc "set -e; '
             'export SYNOPKG_PKGNAME=hermes; '
@@ -926,7 +926,7 @@ out = {
     'workspaceInitDepsOk': workspace_init_deps_ok,
     'workspaceInitDepsErr': workspace_init_deps_err
 }
-# applyNow=true 时自动启用 gateway；false 时仅落配置。
+# applyNow=true 时自动启用 gateway;false 时仅落配置。
 if apply_now:
     try:
         import subprocess, time, socket
@@ -1004,8 +1004,8 @@ if apply_now:
             return not is_running(gw_port), attempts
 
         currently_running = is_running(gw_port)
-        # 如果已运行且目录未变化，避免重复拉起导致 EADDRINUSE。
-        # 若目录变化则必须重启，确保 gateway 切到新 workspace。
+        # 如果已运行且目录未变化,避免重复拉起导致 EADDRINUSE。
+        # 若目录变化则必须重启,确保 gateway 切到新 workspace。
         if currently_running and not workspace_changed:
             out['gatewayAutoStartTriggered'] = False
             out['gatewayRunning'] = True
@@ -1022,7 +1022,7 @@ if apply_now:
                     out['gatewayAutoStartErr'] = 'port still listening after stop; skip duplicate gateway start'
                     print(json.dumps(out, ensure_ascii=False))
                     raise SystemExit
-            # 轻量启动：若 gateway 已停，直接用 run 拉起，不再强制先 stop 再重启。
+            # 轻量启动:若 gateway 已停,直接用 run 拉起,不再强制先 stop 再重启。
             # 这更接近 /root/trim.hermes_v0.0.10.fpk 的本地直启方式。
             os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
             try:
@@ -1090,7 +1090,7 @@ if apply_now:
         out['gatewayAutoStartErr'] = str(e)
 else:
     out['gatewayAutoStartTriggered'] = False
-    out['message'] = '配置已保存（未自动启用）'
+    out['message'] = '配置已保存(未自动启用)'
 print(json.dumps(out, ensure_ascii=False))
 PY
             exit 0
@@ -1294,7 +1294,7 @@ except Exception:
     cfg = {}
 ch = cfg.setdefault('channels', {})
 
-# 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
+# 保存渠道时,自动补齐插件 allow/entries(完整权限),避免插件未加载导致渠道不可用。
 plugins = cfg.setdefault('plugins', {})
 plugins['enabled'] = True
 plugins['bundledDiscovery'] = 'allowlist'
@@ -1338,7 +1338,7 @@ if isinstance(payload.get('wecom'), dict):
         dm = w.get('dm') if isinstance(w.get('dm'), dict) else {}
         dm['createAgentOnFirstMessage'] = False
         w['dm'] = dm
-        # 保存企业微信后默认启用 wecom 插件，避免 doctor 报 channels.wecom 已配置但插件 disabled。
+        # 保存企业微信后默认启用 wecom 插件,避免 doctor 报 channels.wecom 已配置但插件 disabled。
         if 'wecom' not in allow:
             allow.append('wecom')
         we = entries.get('wecom')
@@ -1417,8 +1417,8 @@ for cid, cv in (ch or {}).items():
         if not isinstance(e, dict):
             e = {}
         e['enabled'] = True
-        # 渠道保存时仅触发渠道级热更新，不要把 provider/plugin 细项写入，
-        # 否则 gateway 会判定为“需要整网关重启”。
+        # 渠道保存时仅触发渠道级热更新,不要把 provider/plugin 细项写入,
+        # 否则 gateway 会判定为"需要整网关重启"。
         if isinstance(e.get('config'), dict):
             e.pop('config', None)
         entries[pid] = e
@@ -1445,7 +1445,7 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 
-# 保存渠道后：若 gateway 正在运行则热重载；若 gateway 已停止则直接启动。
+# 保存渠道后:若 gateway 正在运行则热重载;若 gateway 已停止则直接启动。
 reload_ok = False
 reload_out = ''
 if not skip_reload:
@@ -1497,14 +1497,14 @@ if not skip_reload:
             reload_ok = (p.returncode == 0)
             reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-800:]
         else:
-            # gateway 不在运行时，不做热重载，优先走套件启动链路拉起 gateway。
+            # gateway 不在运行时,不做热重载,优先走套件启动链路拉起 gateway。
             cmd = ['/var/packages/hermes/scripts/start-stop-status', 'start']
             p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
             reload_ok = (p.returncode == 0)
             reload_out = (p.stdout or b'').decode('utf-8', 'ignore')[-800:]
 
-            # 启动链路返回后，先给 package/service 侧留出完成 gateway 启动的时间。
-            # 直接补起第二个 gateway 容易和 service-setup 的首次启动并发，导致 EADDRINUSE。
+            # 启动链路返回后,先给 package/service 侧留出完成 gateway 启动的时间。
+            # 直接补起第二个 gateway 容易和 service-setup 的首次启动并发,导致 EADDRINUSE。
             for _ in range(30):
                 if is_gateway_running():
                     break
@@ -1551,17 +1551,17 @@ except Exception:
     cfg = {}
 ch = cfg.setdefault('channels', {})
 if cid:
-    # 删除语义：从配置中彻底移除该渠道，避免残留账号信息。
+    # 删除语义:从配置中彻底移除该渠道,避免残留账号信息。
     if cid in ch:
         ch.pop(cid, None)
 
-    # 微信别名联动：两个 key 都清理。
+    # 微信别名联动:两个 key 都清理。
     if cid in ('hermes-weixin', 'weixin'):
         ch.pop('hermes-weixin', None)
         ch.pop('weixin', None)
 
-    # 删除渠道只改 channels 配置，不做插件 allow/entries 热删。
-    # 这样可避免运行中出现短暂“停止->运行”的抖动；插件层按重启后策略生效。
+    # 删除渠道只改 channels 配置,不做插件 allow/entries 热删。
+    # 这样可避免运行中出现短暂"停止->运行"的抖动;插件层按重启后策略生效。
 
 
 def enabled_ids(channels):
@@ -1640,7 +1640,7 @@ env['XDG_CACHE_HOME'] = state_dir + '/.cache'
 env['XDG_CONFIG_HOME'] = state_dir + '/.config'
 env['XDG_DATA_HOME'] = state_dir + '/.local/share'
 log(f'weixin_login_start begin round={round_id} force={1 if force_new else 0}')
-# 清理历史遗留登录 worker，避免旧流程仍在后台运行干扰当前登录。
+# 清理历史遗留登录 worker,避免旧流程仍在后台运行干扰当前登录。
 try:
     if os.path.exists(worker_pid_file):
         pid_txt = (open(worker_pid_file, 'r', encoding='utf-8').read() or '').strip()
@@ -1657,8 +1657,8 @@ try:
 except Exception:
     pass
 
-# 关键：hermes 内部有并发流程会覆写 hermes.json，导致 weixin 插件配置丢失。
-# 每次开始登录前都做一次强制修正，确保 allowlist/entries/channels 包含 hermes-weixin。
+# 关键:hermes 内部有并发流程会覆写 hermes.json,导致 weixin 插件配置丢失。
+# 每次开始登录前都做一次强制修正,确保 allowlist/entries/channels 包含 hermes-weixin。
 try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
 except Exception:
@@ -1680,18 +1680,18 @@ if not isinstance(entry, dict):
 entry['enabled'] = True
 entries['hermes-weixin'] = entry
 plugins['entries'] = entries
-# 注意：扫码“开始”阶段不自动创建 channels.hermes-weixin，
+# 注意:扫码"开始"阶段不自动创建 channels.hermes-weixin,
 # 避免用户取消后配置里残留微信通道。
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
 log('hermes_weixin_config_repaired=1')
-# 提速：不再每次执行 plugins enable（该操作经常阻塞 15s+），仅在配置层保证可用。
+# 提速:不再每次执行 plugins enable(该操作经常阻塞 15s+),仅在配置层保证可用。
 bootstrap_log = 'hermes-weixin config repaired (fast path)'
 log('hermes_weixin_ensure_enabled=1 fast_path=1')
 
-# 直接调用微信二维码接口（对齐 sc-hermes_v0.0.10 的“秒出码”路径），避免走 CLI login 阻塞。
+# 直接调用微信二维码接口(对齐 sc-hermes_v0.0.10 的"秒出码"路径),避免走 CLI login 阻塞。
 import urllib.request, urllib.error
 base_url = 'https://ilinkai.weixin.qq.com'
 bot_type = '3'
@@ -1736,7 +1736,7 @@ if url and qrcode:
 else:
     snippet = (bootstrap_log + '\n' + err_text)[-600:].replace('\n', ' | ')
     log(f'return_ms={int((time.time()-start_ts)*1000)} round={round_id} success=0 output_snippet={snippet}')
-    print(json.dumps({'supported': False, 'message': '未获取到二维码，请重试', 'raw': snippet, 'debugLog': debug_log}, ensure_ascii=False))
+    print(json.dumps({'supported': False, 'message': '未获取到二维码,请重试', 'raw': snippet, 'debugLog': debug_log}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -1809,13 +1809,13 @@ env['NPM_CONFIG_CACHE'] = state_dir + '/.npm'
 env['XDG_CACHE_HOME'] = state_dir + '/.cache'
 env['XDG_CONFIG_HOME'] = state_dir + '/.config'
 env['XDG_DATA_HOME'] = state_dir + '/.local/share'
-# 性能优化：轮询接口不再调用 channels status（该命令可阻塞数秒），
+# 性能优化:轮询接口不再调用 channels status(该命令可阻塞数秒),
 # 直接走二维码状态 API 判断连接结果。
 raw = ''
 connected = False
 message = ''
 
-# 新实现：直接轮询二维码状态接口（对齐 sc-hermes_v0.0.10），不再依赖日志关键字判定连接。
+# 新实现:直接轮询二维码状态接口(对齐 sc-hermes_v0.0.10),不再依赖日志关键字判定连接。
 import urllib.request, urllib.error
 state_file = '/tmp/hermes-weixin-login-state.json'
 state = {}
@@ -1836,7 +1836,7 @@ qrcode = str(state.get('qrcode') or '')
 base_url = str(state.get('baseUrl') or 'https://ilinkai.weixin.qq.com')
 qr_url = str(state.get('qrUrl') or '')
 if not qrcode:
-    print(json.dumps({'supported': True, 'connected': False, 'status': 'idle', 'message': '请先点击“开始微信登录”生成二维码', 'qrUrl': qr_url, 'raw': raw[-300:]}, ensure_ascii=False))
+    print(json.dumps({'supported': True, 'connected': False, 'status': 'idle', 'message': '请先点击"开始微信登录"生成二维码', 'qrUrl': qr_url, 'raw': raw[-300:]}, ensure_ascii=False))
     raise SystemExit
 
 connected = False
@@ -1852,7 +1852,7 @@ try:
         connected = True
         status = 'connected'
         message = '已连接'
-        # 落盘账号，供渠道实际收发使用
+        # 落盘账号,供渠道实际收发使用
         try:
             import re
             aid_raw = str(st.get('ilink_bot_id') or '').strip()
@@ -1873,7 +1873,7 @@ try:
                 json.dump(acc, af, ensure_ascii=False, indent=2)
                 af.write('\n')
             ids_path = os.path.join(state_dir, 'hermes-weixin', 'accounts.json')
-            # 关键：仅保留当前新账号，避免网关继续用旧账号（旧账号常被 session-guard 暂停）
+            # 关键:仅保留当前新账号,避免网关继续用旧账号(旧账号常被 session-guard 暂停)
             with open(ids_path, 'w', encoding='utf-8') as idf:
                 json.dump([aid], idf, ensure_ascii=False, indent=2)
                 idf.write('\n')
@@ -1890,7 +1890,7 @@ try:
                         pass
             except Exception:
                 pass
-            # 同步重写 hermes.json 的渠道账号配置，强制只启用当前账号
+            # 同步重写 hermes.json 的渠道账号配置,强制只启用当前账号
             try:
                 ocfg_path = cfg_path
                 ocfg = json.load(open(ocfg_path, 'r', encoding='utf-8')) if os.path.exists(ocfg_path) else {}
@@ -1904,7 +1904,7 @@ try:
                 wx['accounts'] = {aid: {'enabled': True}, 'default': aid}
                 chs['hermes-weixin'] = wx
 
-                # 同步强制插件 allow/entries，避免网关重启后只剩 browser。
+                # 同步强制插件 allow/entries,避免网关重启后只剩 browser。
                 plugs = ocfg.setdefault('plugins', {})
                 plugs['enabled'] = True
                 allow = plugs.get('allow')
@@ -1943,7 +1943,7 @@ try:
             except Exception as e3:
                 log(f'weixin_state_permission_fix_err={e3}')
 
-            # 不在扫码确认后重启包：避免 UI 额外等待 10~45 秒。
+            # 不在扫码确认后重启包:避免 UI 额外等待 10~45 秒。
             # 后续由前端即时保存 channels 配置并让网关按热重载策略生效。
             log(f'weixin_account_saved aid={aid} round={state_round or round_id} single_account=1')
         except Exception as e:
@@ -1951,11 +1951,11 @@ try:
     elif s == 'scaned':
         connected = False
         status = 'scaned'
-        message = '已扫码，请在微信里确认授权'
+        message = '已扫码,请在微信里确认授权'
     elif s == 'expired':
         connected = False
         status = 'expired'
-        message = '二维码已过期，请点“重新生成”'
+        message = '二维码已过期,请点"重新生成"'
     else:
         connected = False
         status = 'pending'
@@ -1993,7 +1993,7 @@ cmd = ['/var/packages/hermes/target/bin/hermes', 'channels', 'logout', '--channe
 try:
     p = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
     text = (p.stdout or b'').decode('utf-8', 'ignore')
-    # 同步禁用配置中的 weixin 渠道（若存在）
+    # 同步禁用配置中的 weixin 渠道(若存在)
     try:
         cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
     except Exception:
@@ -2091,8 +2091,8 @@ def run_admin_password_flow(user, password):
         logs.append('admin password flow error: ' + str(e))
         return 125
 
-# 针对 root cause：修复 terminal alias 并重载 nginx
-# 注意：不要在 CGI 请求里重启本套件，否则会中断当前请求导致前端拿不到返回。
+# 针对 root cause:修复 terminal alias 并重载 nginx
+# 注意:不要在 CGI 请求里重启本套件,否则会中断当前请求导致前端拿不到返回。
 alias_content = textwrap.dedent('''\
 location ~ ^/hermes-terminal(.*)$ {
     if ($http_cookie !~* "(^|;\\s*)id=") {
@@ -2134,7 +2134,7 @@ try:
 except Exception as e:
     logs.append(f'write alias failed: {e}')
 
-# 软链落地 + nginx reload：默认走 sudo -n；可由前端显式选择“强制密码修复”路径。
+# 软链落地 + nginx reload:默认走 sudo -n;可由前端显式选择"强制密码修复"路径。
 ln_rc = 1
 nginx_test_rc = 1
 nginx_reload_rc = 1
@@ -2249,7 +2249,7 @@ env['NPM_CONFIG_CACHE'] = env['HERMES_STATE_DIR'] + '/.npm'
 env['XDG_CACHE_HOME'] = env['HERMES_STATE_DIR'] + '/.cache'
 env['XDG_CONFIG_HOME'] = env['HERMES_STATE_DIR'] + '/.config'
 env['XDG_DATA_HOME'] = env['HERMES_STATE_DIR'] + '/.local/share'
-# 提示符直接显示当前目录（由 shell 原生渲染）。
+# 提示符直接显示当前目录(由 shell 原生渲染)。
 env['PS1'] = '\\w$ '
 # 确保 hermes 原生命令任意目录可用
 env['PATH'] = '/var/packages/hermes/target/bin:/var/packages/hermes/target/bin:/usr/local/bin:' + env.get('PATH', '')
@@ -2275,11 +2275,11 @@ cmd_fifo = os.path.join(sdir, 'cmd.fifo')
 os.mkfifo(cmd_fifo)
 
 master_fd, slave_fd = pty.openpty()
-# 真 PTY 交互 shell（退格/Tab/行编辑由终端驱动处理）
+# 真 PTY 交互 shell(退格/Tab/行编辑由终端驱动处理)
 shell = subprocess.Popen(['/bin/bash','--noprofile','--norc','-i'], stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, cwd=workspace_dir, env=env, start_new_session=True)
 os.close(slave_fd)
 
-# 初始化到目标目录并固定提示符样式（SSH 风格）
+# 初始化到目标目录并固定提示符样式(SSH 风格)
 try:
     os.write(master_fd, (f"cd '{workspace_dir}'\nexport PS1='\\u@\\h:\\w$ '\n").encode('utf-8', 'ignore'))
 except Exception:
@@ -2287,8 +2287,8 @@ except Exception:
 
 relay_pid = os.fork()
 if relay_pid == 0:
-    # 中继进程：cmd_fifo -> pty，pty -> out.log
-    # 关闭 CGI stdout/stderr，避免请求被子进程持续占用导致前端卡在“终端连接中...”。
+    # 中继进程:cmd_fifo -> pty,pty -> out.log
+    # 关闭 CGI stdout/stderr,避免请求被子进程持续占用导致前端卡在"终端连接中..."。
     try:
         devnull = os.open('/dev/null', os.O_RDWR)
         os.dup2(devnull, 0)
@@ -2388,7 +2388,7 @@ try:
 except Exception:
     print(json.dumps({'ok': False, 'error': 'session not alive'}, ensure_ascii=False)); raise SystemExit
 
-# 优先直写 shell 的控制终端（更接近 syno-terminal/真实 TTY 行为）
+# 优先直写 shell 的控制终端(更接近 syno-terminal/真实 TTY 行为)
 wrote = False
 try:
     tty_path = os.readlink(f'/proc/{pid}/fd/0')
@@ -2401,7 +2401,7 @@ try:
 except Exception:
     wrote = False
 
-# 回退：写 cmd fifo（兼容旧会话）
+# 回退:写 cmd fifo(兼容旧会话)
 if (not wrote) and os.path.exists(cmd_fifo):
     try:
         fd = os.open(cmd_fifo, os.O_WRONLY | os.O_NONBLOCK)
@@ -2616,9 +2616,9 @@ if req_workspace.endswith('/.hermes'):
 if req_workspace:
     ws_norm = ('/' + req_workspace.strip('/')).lower()
     if ws_norm.endswith('/.hermes') or '/.hermes/' in ws_norm:
-        print(json.dumps({'ok': False, 'error': '用户目录不能包含 .hermes（该名称为内部工作目录保留）'}, ensure_ascii=False)); raise SystemExit
+        print(json.dumps({'ok': False, 'error': '用户目录不能包含 .hermes(该名称为内部工作目录保留)'}, ensure_ascii=False)); raise SystemExit
 
-# 安装向导：start/restart 支持一次性指定用户目录与端口。
+# 安装向导:start/restart 支持一次性指定用户目录与端口。
 if action in ('start', 'restart') and req_workspace:
     cfg = os.path.join(req_workspace, '.hermes', 'hermes.json')
     try:
@@ -2627,7 +2627,7 @@ if action in ('start', 'restart') and req_workspace:
             pf.write(req_workspace)
         with open('/var/packages/hermes/var/workspace.home.path', 'w', encoding='utf-8') as hpf:
             hpf.write(req_workspace)
-        # 非默认目录时，清理默认目录残留配置，避免被误判为当前配置。
+        # 非默认目录时,清理默认目录残留配置,避免被误判为当前配置。
         if req_workspace != '/volume1/hermes':
             try:
                 os.remove('/volume1/hermes/.hermes/hermes.json')
@@ -2663,11 +2663,11 @@ env['HERMES_TOOLS_PROFILE']='full'
 env['HERMES_TOOLS_ELEVATED_ENABLED']='1'
 env['HERMES_ELEVATED_DEFAULT']='full'
 env['HERMES_EXEC_SECURITY_DEFAULT']='full'
-# 避免 gateway run 以自愈/重生模式拉起，导致“停止 gateway”按钮失效。
+# 避免 gateway run 以自愈/重生模式拉起,导致"停止 gateway"按钮失效。
 env['HERMES_NO_RESPAWN']='1'
 
 initialized = False
-# 默认端口：stop 分支也会用于 post-stop 检查，必须先定义。
+# 默认端口:stop 分支也会用于 post-stop 检查,必须先定义。
 try:
     c_port = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
 except Exception:
@@ -2774,7 +2774,7 @@ if action in ('start','restart'):
         pass
 
 if action in ('start','restart'):
-    # 强制保持 LAN 可访问（44539）
+    # 强制保持 LAN 可访问(44539)
     try:
         c = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
     except Exception:
@@ -2796,12 +2796,12 @@ if action in ('start','restart'):
     cu['allowInsecureAuth'] = True
     cu['dangerouslyDisableDeviceAuth'] = True
     cu['allowedOrigins'] = ['*']
-    # 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
+    # 兼容清理:移除当前版本不支持的键,避免启动时报 Invalid config
     defs = c.setdefault('agents', {}).setdefault('defaults', {})
     defs['workspace'] = os.path.dirname(cfg) if cfg else '/volume1/hermes/.hermes'
     if isinstance(defs, dict) and 'fallbackModels' in defs:
         defs.pop('fallbackModels', None)
-    # 外部命令权限：默认开启 full + elevated（用户要求“完整权限”）
+    # 外部命令权限:默认开启 full + elevated(用户要求"完整权限")
     if isinstance(defs, dict):
         defs['elevatedDefault'] = 'full'
 
@@ -2828,7 +2828,7 @@ if action in ('start','restart'):
     with open(cfg,'w',encoding='utf-8') as f:
         json.dump(c,f,ensure_ascii=False,indent=2); f.write('\n')
 
-    # 安装后自动补齐插件策略：保留已有 allowlist，并与“已启用渠道”做最小对齐。
+    # 安装后自动补齐插件策略:保留已有 allowlist,并与"已启用渠道"做最小对齐。
     # 避免把用户已配置渠道在重启后错误降级成仅 browser。
     try:
         plugins = c.setdefault('plugins', {})
@@ -2860,7 +2860,7 @@ if action in ('start','restart'):
         b['enabled'] = True
         entries['browser'] = b
 
-        # 仅对“当前已启用渠道”做放行与启用，未启用渠道不强行开启
+        # 仅对"当前已启用渠道"做放行与启用,未启用渠道不强行开启
         for cid, cv in channels.items():
             enabled = True
             if isinstance(cv, dict):
@@ -2941,8 +2941,8 @@ def force_stop():
     except Exception as e:
         out.append((['hermes','gateway','stop','--json'], 999, str(e)))
     # 2) fallback precise kill patterns
-    # 注意：不要使用 `pkill -f hermes.*gateway`，否则会误杀当前 CGI python 进程
-    # （其 argv 包含 hermes-gateway.spawn.log 路径），导致接口空响应。
+    # 注意:不要使用 `pkill -f hermes.*gateway`,否则会误杀当前 CGI python 进程
+    # (其 argv 包含 hermes-gateway.spawn.log 路径),导致接口空响应。
     for cmd in [
         ['pkill','-f','/var/packages/hermes/target/bin/hermes gateway run'],
         ['pkill','-f','hermes-gateway'],
@@ -2965,17 +2965,17 @@ def force_stop():
 logs=[]
 ok=True
 if action in ('stop','restart'):
-    # restart 语义由后续 start 分支完成（stop + start）。
+    # restart 语义由后续 start 分支完成(stop + start)。
     force = force_stop()
     logs.append({'cmd':('force-stop' if action == 'stop' else 'force-stop-restart'), 'out':str(force)[:1200]})
     time.sleep(1.0 if action == 'stop' else 1.2)
 
 if action in ('start','restart'):
-    # 热修：跳过启动前外部模型同步脚本，避免阻塞导致 Web 页面“启动/重启卡顿”。
-    # 模型同步可在“模型配置”页按需手动触发，不影响核心功能。
+    # 热修:跳过启动前外部模型同步脚本,避免阻塞导致 Web 页面"启动/重启卡顿"。
+    # 模型同步可在"模型配置"页按需手动触发,不影响核心功能。
     logs.append({'cmd':'skip startup model-sync','reason':'hotfix-web-lag'})
 
-    # 启动前强制清理 agents.defaults.models，只保留当前 providers.models 存在的引用
+    # 启动前强制清理 agents.defaults.models,只保留当前 providers.models 存在的引用
     try:
         c2 = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
         defs2 = c2.setdefault('agents', {}).setdefault('defaults', {})
@@ -3104,7 +3104,7 @@ if action == 'stop' and running:
     ok = False
     logs.append({'cmd':'post-stop-check','error':'gateway still running after stop sequence'})
 
-# 同步 DSM 套件详情端口，确保 adminport/adminurl 与概览端口一致。
+# 同步 DSM 套件详情端口,确保 adminport/adminurl 与概览端口一致。
 if action in ('start','restart') and running:
     try:
         rcp, o = run(['bash','-lc', 'source /var/packages/hermes/scripts/service-setup >/dev/null 2>&1; sync_dsm_package_info_port "' + str(gw_port) + '"'], timeout=12)
@@ -3436,7 +3436,7 @@ cat <<'HTML'
         if (console && console.error) console.error('[hermes-ui-error]', text);
         const merged = (rec.payload && (rec.payload.message || '')) + '\n' + (rec.payload && (rec.payload.stack || ''));
         if (/flexcroll|document\.write|asynchronously-loaded external script/i.test(merged)) {
-          setMsg('检测到 DSM 内置 flexcroll 脚本兼容报错（document.write 异步限制）。已记录错误详情，可继续使用当前页面功能。', 'err');
+          setMsg('检测到 DSM 内置 flexcroll 脚本兼容报错(document.write 异步限制)。已记录错误详情,可继续使用当前页面功能。', 'err');
         }
       } catch (_) {}
     }
@@ -3493,7 +3493,7 @@ cat <<'HTML'
       btn.classList.toggle('disabled', !!disabled);
       btn.dataset.disabled = disabled ? '1' : '0';
       if (disabled) {
-        btn.title = '外置 ttyd 不可用；输入补丁命令后可解锁终端';
+        btn.title = '外置 ttyd 不可用;输入补丁命令后可解锁终端';
       } else {
         btn.title = '';
       }
@@ -3536,7 +3536,7 @@ cat <<'HTML'
       const p = String(passEl.value || '');
       const halfFilled = (!!u && !p) || (!u && !!p);
       btn.disabled = halfFilled;
-      btn.title = halfFilled ? '管理员账号和密码需同时填写，或都留空' : '';
+      btn.title = halfFilled ? '管理员账号和密码需同时填写,或都留空' : '';
     }
     async function unlockTerminalTab() {
       const adminUserEl = document.getElementById('terminal_admin_user');
@@ -3546,19 +3546,19 @@ cat <<'HTML'
       const adminPassword = String((adminPassEl && adminPassEl.value) || '');
       const halfFilled = (!!adminUser && !adminPassword) || (!adminUser && !!adminPassword);
       if (halfFilled) {
-        setMsg('请同时填写管理员账号和密码，或两项都留空后使用 sudo -n 路径。', 'err');
+        setMsg('请同时填写管理员账号和密码,或两项都留空后使用 sudo -n 路径。', 'err');
         return;
       }
       const forcePasswordFlow = !!(adminUser && adminPassword);
       const patchCmd = "sudo -n ln -sfn /var/packages/hermes/var/alias.hermes-terminal.conf /etc/nginx/conf.d/alias.hermes-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'";
       const adminFixCmd = patchCmd;
       if (repairBtn) { repairBtn.disabled = true; repairBtn.textContent = '修复中...'; }
-      setMsg('正在修复安装…');
+      setMsg('正在修复安装...');
       let ret = null;
       try {
         ret = await api('terminal_unlock', 'POST', { command: patchCmd, adminUser, adminPassword, forcePasswordFlow });
       } catch (e) {
-        setMsg('修复安装失败：' + (e && e.message ? e.message : String(e)), 'err');
+        setMsg('修复安装失败:' + (e && e.message ? e.message : String(e)), 'err');
         if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
         updateTerminalRepairBtnState();
         return;
@@ -3566,16 +3566,16 @@ cat <<'HTML'
       if (adminPassEl) adminPassEl.value = '';
       if (!ret || !ret.ok) {
         const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
-        const detail = (ret && ret.logs) ? ('；日志：' + ret.logs) : '';
-        setMsg('修复安装失败：' + ((ret && (ret.error || ret.message)) || 'unknown') + detail + '；若当前账号无 sudo 权限，请用管理员账号执行：' + cmd, 'err');
+        const detail = (ret && ret.logs) ? (';日志:' + ret.logs) : '';
+        setMsg('修复安装失败:' + ((ret && (ret.error || ret.message)) || 'unknown') + detail + ';若当前账号无 sudo 权限,请用管理员账号执行:' + cmd, 'err');
         if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
         updateTerminalRepairBtnState();
         return;
       }
       if (ret && (ret.available === false || ret.portAvailable === false || ret.aliasAvailable === false)) {
         const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
-        const detail = (ret && ret.logs) ? ('；日志：' + ret.logs) : '';
-        setMsg('修复执行完成，但检测仍未通过（port=' + String(!!ret.portAvailable) + ', alias=' + String(!!ret.aliasAvailable) + ', http=' + String(ret.aliasStatusCode || '-') + ')' + detail + '；请在 DSM SSH 执行：' + cmd, 'err');
+        const detail = (ret && ret.logs) ? (';日志:' + ret.logs) : '';
+        setMsg('修复执行完成,但检测仍未通过(port=' + String(!!ret.portAvailable) + ', alias=' + String(!!ret.aliasAvailable) + ', http=' + String(ret.aliasStatusCode || '-') + ')' + detail + ';请在 DSM SSH 执行:' + cmd, 'err');
         if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
         updateTerminalRepairBtnState();
         return;
@@ -3583,13 +3583,13 @@ cat <<'HTML'
       await refreshTerminalHealth();
       if (terminalLocked) {
         const cmd = (ret && ret.adminFixCommand) || adminFixCmd;
-        const detail = (ret && ret.logs) ? ('；日志：' + ret.logs) : '';
-        setMsg('修复安装完成，但终端仍不可用。请稍后重试；若仍失败，请用管理员账号执行：' + cmd + detail, 'err');
+        const detail = (ret && ret.logs) ? (';日志:' + ret.logs) : '';
+        setMsg('修复安装完成,但终端仍不可用。请稍后重试;若仍失败,请用管理员账号执行:' + cmd + detail, 'err');
         if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
         updateTerminalRepairBtnState();
         return;
       }
-      setMsg('修复安装成功，终端已恢复。', 'ok');
+      setMsg('修复安装成功,终端已恢复。', 'ok');
       if (repairBtn) { repairBtn.disabled = false; repairBtn.textContent = '修复安装'; }
       updateTerminalRepairBtnState();
       await load('terminal');
@@ -3597,7 +3597,7 @@ cat <<'HTML'
     async function load(tab) {
       setTabs(tab);
       if (tab === 'status') setMsg('');
-      else setMsg('加载中…');
+      else setMsg('加载中...');
       const content = document.getElementById('content');
       content.innerHTML = '';
       try {
@@ -3632,7 +3632,7 @@ cat <<'HTML'
                 const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
                 return '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(vv)+'</div>';
               }).join('') + '</div>';
-          setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          setMsg('运行状态:' + runningText, data.running ? 'ok' : 'err');
           window.__statusRunning = !!data.running;
           if (installBusy) {
             setInstallButtonsBusy(installBusyAction, true);
@@ -3650,7 +3650,7 @@ cat <<'HTML'
               const msgEl = document.getElementById('msg');
               if (msgEl) {
                 msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
-                msgEl.textContent = '运行状态：' + nextText;
+                msgEl.textContent = '运行状态:' + nextText;
               }
               window.__statusRunning = nextRunning;
               if (!installBusy) {
@@ -3673,7 +3673,7 @@ cat <<'HTML'
           content.innerHTML = ''
             + '<div style="height:100%;display:flex;flex-direction:column;gap:8px;">'
             + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">'
-            + '    <div style="font-size:13px;color:#667085;">实时显示网关与套件日志（自动刷新）。</div>'
+            + '    <div style="font-size:13px;color:#667085;">实时显示网关与套件日志(自动刷新)。</div>'
             + '    <div style="display:flex;gap:8px;">'
             + '      <button class="btn" onclick="refreshLogsNow(true)">刷新一次</button>'
             + '      <button class="btn" id="btn_logs_toggle" onclick="toggleLogsAutoRefresh()">停止刷新</button>'
@@ -3694,13 +3694,13 @@ cat <<'HTML'
           if (terminalLocked) {
             content.innerHTML = ''
               + '<div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">'
-              + '  <div style="font-size:14px;color:#667085;">终端需要root权限才可使用，请执行以下命令修复。</div>'
+              + '  <div style="font-size:14px;color:#667085;">终端需要root权限才可使用,请执行以下命令修复。</div>'
               + '  <div style="display:flex;gap:8px;align-items:center;">'
-              + '    <input id="terminal_admin_user" oninput="updateTerminalRepairBtnState()" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
-              + '    <input id="terminal_admin_pass" oninput="updateTerminalRepairBtnState()" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员密码">'
+              + '    <input id="terminal_admin_user" oninput="updateTerminalRepairBtnState()" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选:管理员账号(无 sudo 时用于强制密码修复)">'
+              + '    <input id="terminal_admin_pass" oninput="updateTerminalRepairBtnState()" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选:管理员密码">'
               + '    <button id="terminal_repair_btn" class="btn primary" style="height:34px;line-height:16px;" onclick="unlockTerminalTab()">修复安装</button>'
               + '  </div>'
-              + '  <div style="font-size:12px;color:#667085;">修复命令（系统内置执行）：<code>sudo -n ln -sfn /var/packages/hermes/var/alias.hermes-terminal.conf /etc/nginx/conf.d/alias.hermes-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
+              + '  <div style="font-size:12px;color:#667085;">修复命令(系统内置执行):<code>sudo -n ln -sfn /var/packages/hermes/var/alias.hermes-terminal.conf /etc/nginx/conf.d/alias.hermes-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>';
             setTimeout(updateTerminalRepairBtnState, 0);
             return;
@@ -3712,15 +3712,15 @@ cat <<'HTML'
             setTerminalTabDisabled(true);
             content.innerHTML = ''
               + '<div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">'
-              + '  <div style="font-size:14px;color:#667085;">终端需要root权限才可使用，请执行以下命令修复。</div>'
+              + '  <div style="font-size:14px;color:#667085;">终端需要root权限才可使用,请执行以下命令修复。</div>'
               + '  <div style="display:flex;gap:8px;align-items:center;">'
-              + '    <input id="terminal_admin_user" oninput="updateTerminalRepairBtnState()" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员账号（无 sudo 时用于强制密码修复）">'
-              + '    <input id="terminal_admin_pass" oninput="updateTerminalRepairBtnState()" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选：管理员密码">'
+              + '    <input id="terminal_admin_user" oninput="updateTerminalRepairBtnState()" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选:管理员账号(无 sudo 时用于强制密码修复)">'
+              + '    <input id="terminal_admin_pass" oninput="updateTerminalRepairBtnState()" type="password" style="flex:1;height:34px;box-sizing:border-box;" placeholder="可选:管理员密码">'
               + '    <button id="terminal_repair_btn" class="btn primary" style="height:34px;line-height:16px;" onclick="unlockTerminalTab()">修复安装</button>'
               + '  </div>'
-              + '  <div style="font-size:12px;color:#667085;">修复命令（系统内置执行）：<code>sudo -n ln -sfn /var/packages/hermes/var/alias.hermes-terminal.conf /etc/nginx/conf.d/alias.hermes-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
+              + '  <div style="font-size:12px;color:#667085;">修复命令(系统内置执行):<code>sudo -n ln -sfn /var/packages/hermes/var/alias.hermes-terminal.conf /etc/nginx/conf.d/alias.hermes-terminal.conf && sudo -n sh -lc \'nginx -t && systemctl reload nginx\'</code></div>'
               + '</div>';
-            setMsg('终端连通性检测失败，请填写管理员账号和密码后点击“修复安装”，或执行下方命令手动修复。', 'err');
+            setMsg('终端连通性检测失败,请填写管理员账号和密码后点击"修复安装",或执行下方命令手动修复。', 'err');
             setTimeout(updateTerminalRepairBtnState, 0);
             return;
           }
@@ -3769,18 +3769,18 @@ cat <<'HTML'
             + '    </div>'
             + '    <div id="dlg_model_hint" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;font-size:13px;"></div>'
             + '    <div class="field"><label>服务商</label><select id="dlg_provider_preset" onchange="applyProviderPresetDialog()">' + options + '</select></div>'
-            + '    <div class="field"><label>Provider ID（显示名与此一致）</label><input id="dlg_provider_id"></div>'
+            + '    <div class="field"><label>Provider ID(显示名与此一致)</label><input id="dlg_provider_id"></div>'
             + '    <div class="field"><label>API 类型</label><select id="dlg_api" onchange="invalidateModelDiscoverCache()"><option value="openai-completions">openai-completions</option><option value="openai-responses">openai-responses</option><option value="anthropic-messages">anthropic-messages</option><option value="ollama">ollama</option></select></div>'
             + '    <div class="field"><label>Base URL</label><input id="dlg_base_url" oninput="invalidateModelDiscoverCache()"></div>'
-            + '    <div class="field"><label>API Key（留空表示不改）</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
+            + '    <div class="field"><label>API Key(留空表示不改)</label><input id="dlg_api_key" type="password" oninput="invalidateModelDiscoverCache()"></div>'
             + '    <div class="field"><label>模型列表</label>'
-            + '      <div style="font-size:13px;color:#667085;margin-bottom:6px;">选择可用模型，或手动输入模型名称。</div>'
+            + '      <div style="font-size:13px;color:#667085;margin-bottom:6px;">选择可用模型,或手动输入模型名称。</div>'
             + '      <div id="dlg_model_selected_line" onclick="openModelDropdown(event)" style="min-height:36px;border:1px solid #e4e7ec;border-radius:8px;padding:6px 8px;display:flex;align-items:center;gap:6px;overflow:auto;cursor:pointer;"></div>'
             + '      <div id="dlg_model_dropdown" style="display:none;max-height:260px;overflow-y:auto;overflow-x:hidden;border:1px solid #e4e7ec;border-radius:8px;padding:8px;margin-top:6px;text-align:left;line-height:1.4;"></div>'
             + '      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">'
             + '        <button class="btn" style="white-space:nowrap;flex:0 0 auto;" onclick="selectAllModelSelections()">全选</button>'
             + '        <button class="btn" style="white-space:nowrap;flex:0 0 auto;" onclick="clearAllModelSelections()">取消全选</button>'
-            + '        <input id="dlg_model_manual_input" style="flex:1;min-width:0;" placeholder="手动输入模型名称（如 gpt-5.4-mini）" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
+            + '        <input id="dlg_model_manual_input" style="flex:1;min-width:0;" placeholder="手动输入模型名称(如 gpt-5.4-mini)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManualModelFromInput();}">'
             + '        <button class="btn" style="white-space:nowrap;flex:0 0 auto;" onclick="addManualModelFromInput()">添加</button>'
             + '      </div>'
             + '      <input id="dlg_model_ids" type="hidden">'
@@ -3792,7 +3792,7 @@ cat <<'HTML'
             + '    </div>'
             + '  </div>'
             + '</div>';
-          setMsg('模型配置已加载；可添加模型服务器，或编辑当前已配置的服务', 'ok');
+          setMsg('模型配置已加载;可添加模型服务器,或编辑当前已配置的服务', 'ok');
           return;
         }
         if (tab === 'channels') {
@@ -3804,9 +3804,9 @@ cat <<'HTML'
             dingtalk: '钉钉',
             qqbot: 'QQ Bot',
             'hermes-weixin': '微信',
-            weixin: '微信（weixin）'
+            weixin: '微信(weixin)'
           };
-          const ordered = configured.slice(); // 保持配置内插入顺序（即添加顺序）
+          const ordered = configured.slice(); // 保持配置内插入顺序(即添加顺序)
           const rows = ordered.map(id => '<div class="item" style="margin-bottom:8px;">'
             + '<div class="item-title">' + esc(descMap[id] || id) + '</div>'
             + '<div class="item-meta">channelId=' + esc(id) + '</div>'
@@ -3849,7 +3849,7 @@ cat <<'HTML'
         content.innerHTML = '<textarea id="editor">' + esc(JSON.stringify(data, null, 2)) + '</textarea>';
         setMsg('JSON 已加载', 'ok');
       } catch (e) {
-        setMsg('加载失败：' + (e.message || e), 'err');
+        setMsg('加载失败:' + (e.message || e), 'err');
       }
     }
     function setInstallButtonsBusy(actionName, busy) {
@@ -3896,14 +3896,17 @@ cat <<'HTML'
       setInstallButtonsBusy(actionName, true);
       try {
         let act;
-        act = await api('install_run', 'POST', { method: 'bun', action: actionName });
+        act = await api('install_run', 'POST', { action: actionName });
         if (!act || typeof act !== 'object') {
           throw new Error('install_run 返回空结果');
+        }
+        if (act.ok === false || act.error) {
+          throw new Error(act.error || 'install_run 执行失败');
         }
         if (actionName === 'start' && act && act.initialized) {
           setMsg('运行状态：正在初始化', 'ok');
         }
-        // 仅保留“运行状态”提示，不显示其它文案。
+        // 仅保留"运行状态"提示，不显示其它文案。
         if (actionName === 'start' || actionName === 'stop') {
           const wantRunning = (actionName !== 'stop');
           const maxTries = 40; // 最多约 36s，覆盖重启后端口恢复慢的场景
@@ -3911,7 +3914,6 @@ cat <<'HTML'
             await new Promise(r => setTimeout(r, 900));
             try {
               const s = await api('status');
-              const serviceRunning = !!(s && s.serviceRunning);
               const gatewayRunning = !!(s && s.running);
               if (wantRunning) {
                 if (gatewayRunning) {
@@ -3919,8 +3921,9 @@ cat <<'HTML'
                   return;
                 }
               } else {
-                if (!gatewayRunning && !serviceRunning) {
-                  setMsg('运行状态：已停止', 'ok');
+                if (!gatewayRunning) {
+                  const serviceRunning = !!(s && s.serviceRunning);
+                  setMsg(serviceRunning ? '运行状态：Agent 已停止，套件仍在运行' : '运行状态：已停止', 'ok');
                   return;
                 }
               }
@@ -3929,7 +3932,7 @@ cat <<'HTML'
           return;
         }
       } catch (e) {
-        // 保持当前页，不触发整页重绘。
+        setMsg('操作失败：' + (e && e.message ? e.message : String(e)), 'err');
       } finally {
         setInstallButtonsBusy('', false);
       }
@@ -3939,7 +3942,7 @@ cat <<'HTML'
     async function applyInstallWizard() {}
     function applyProviderPresetDialog() {
       const presetId = document.getElementById('dlg_provider_preset').value;
-      // 用户要求：切换服务商时，先清空当前已选模型，再切到该服务商模型集。
+      // 用户要求:切换服务商时,先清空当前已选模型,再切到该服务商模型集。
       window.__modelOptionPool = [];
       setSelectedModelIdsToHidden([]);
       if (presetId === 'custom-openai') {
@@ -3950,7 +3953,7 @@ cat <<'HTML'
         if (keyEl && !keyEl.value) keyEl.value = 'sk-5XeLS0KyXOc9Tkq4y';
         setModelSelectOptions([], []);
         document.getElementById('dlg_model_ids').value = '';
-        setMsg('已切换到 custom-openai 默认模板（已清空已选模型）', 'ok');
+        setMsg('已切换到 custom-openai 默认模板(已清空已选模型)', 'ok');
         return;
       }
       const preset = PROVIDER_PRESETS[presetId];
@@ -3993,7 +3996,7 @@ cat <<'HTML'
       if (!box) return;
       const arr = ids || [];
       if (!arr.length) {
-        box.innerHTML = '<span style="font-size:13px;color:#98a2b3;">点击选择模型（可多选）</span>';
+        box.innerHTML = '<span style="font-size:13px;color:#98a2b3;">点击选择模型(可多选)</span>';
         return;
       }
       box.innerHTML = arr.map(id => {
@@ -4026,7 +4029,7 @@ cat <<'HTML'
     }
     function openModelDropdown(ev) {
       const line = document.getElementById('dlg_model_selected_line');
-      // 点击滚动条区域时不展开下拉（避免拖动滚动条误触）。
+      // 点击滚动条区域时不展开下拉(避免拖动滚动条误触)。
       if (line && ev) {
         const hScroll = line.scrollWidth > line.clientWidth;
         const vScroll = line.scrollHeight > line.clientHeight;
@@ -4084,7 +4087,7 @@ cat <<'HTML'
       const existing = getSelectedModelIdsFromHidden();
       const pool = Array.isArray(window.__modelOptionPool) ? window.__modelOptionPool : [];
       const merged = Array.from(new Set(pool.concat(ids).concat(existing)));
-      // 保持用户当前勾选状态：即使全部取消，也不要在下次打开时自动重新选中。
+      // 保持用户当前勾选状态:即使全部取消,也不要在下次打开时自动重新选中。
       setModelSelectOptions(merged, existing);
     }
     function setModelDialogHint(msg, type) {
@@ -4160,7 +4163,7 @@ cat <<'HTML'
     async function discoverModelsForDialog() {
       await triggerDiscoverModelsForDialog();
       const count = getSelectedModelIdsFromHidden().length;
-      setMsg('已加载内置模型列表，共 ' + count + ' 个', 'ok');
+      setMsg('已加载内置模型列表,共 ' + count + ' 个', 'ok');
     }
     async function syncProviderModelsToCache() {
       try {
@@ -4175,16 +4178,16 @@ cat <<'HTML'
         const data = await api('models_sync_provider', 'POST', payload);
         const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
         if (!ids.length) {
-          const msg = data.error ? ('同步失败：' + data.error) : '未同步到模型';
+          const msg = data.error ? ('同步失败:' + data.error) : '未同步到模型';
           setModelDialogHint(msg, data.error ? 'err' : 'ok');
           setMsg(msg, data.error ? 'err' : '');
           return;
         }
-        // 按原逻辑：同步后全部选中
+        // 按原逻辑:同步后全部选中
         setModelSelectOptions(ids, ids);
-        setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
-        setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
-      } catch (e) { setModelDialogHint('同步失败：' + (e.message || e), 'err'); setMsg('同步失败：' + (e.message || e), 'err'); }
+        setModelDialogHint('已同步并写入本地缓存,共 ' + ids.length + ' 个', 'ok');
+        setMsg('已同步并写入本地缓存,共 ' + ids.length + ' 个', 'ok');
+      } catch (e) { setModelDialogHint('同步失败:' + (e.message || e), 'err'); setMsg('同步失败:' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
       const btns = Array.from(document.querySelectorAll('#modelModalMask .modal-actions .btn.primary'));
@@ -4202,10 +4205,10 @@ cat <<'HTML'
         const baseUrl = (document.getElementById('dlg_base_url').value || '').trim();
         const selectedModelIds = getSelectedModelIdsFromHidden();
 
-        // 模型列表不能为空：禁止添加/保存，并在弹窗内提示。
+        // 模型列表不能为空:禁止添加/保存,并在弹窗内提示。
         if (!selectedModelIds.length) {
-          setModelDialogHint('添加失败：模型列表不能为空，请至少选择或手动添加一个模型', 'err');
-          setMsg('添加失败：模型列表不能为空，请至少选择或手动添加一个模型', 'err');
+          setModelDialogHint('添加失败:模型列表不能为空,请至少选择或手动添加一个模型', 'err');
+          setMsg('添加失败:模型列表不能为空,请至少选择或手动添加一个模型', 'err');
           if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
           return;
         }
@@ -4220,8 +4223,8 @@ cat <<'HTML'
         if (duplicatedId || duplicatedBase) {
           const reason = duplicatedId ? 'Provider ID 已存在' : 'Base URL 已存在';
           const prefix = idx < 0 ? '添加失败' : '保存失败';
-          setModelDialogHint(prefix + '：' + reason + '，请修改后重试', 'err');
-          setMsg(prefix + '：' + reason + '，请修改后重试', 'err');
+          setModelDialogHint(prefix + ':' + reason + ',请修改后重试', 'err');
+          setMsg(prefix + ':' + reason + ',请修改后重试', 'err');
           if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
           return;
         }
@@ -4237,13 +4240,13 @@ cat <<'HTML'
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: false };
         const ret = await api('models_save', 'POST', payload);
-        setModelDialogHint((ret && ret.message) ? ret.message : '保存成功，重启 gateway 后生效', 'ok');
+        setModelDialogHint((ret && ret.message) ? ret.message : '保存成功,重启 gateway 后生效', 'ok');
         closeModelDialog();
         await load('models');
-        setMsg('模型服务器保存成功（未自动重启 gateway）', 'ok');
+        setMsg('模型服务器保存成功(未自动重启 gateway)', 'ok');
       } catch (e) {
-        setModelDialogHint('保存失败：' + (e.message || e), 'err');
-        setMsg('模型服务器保存失败：' + (e.message || e), 'err');
+        setModelDialogHint('保存失败:' + (e.message || e), 'err');
+        setMsg('模型服务器保存失败:' + (e.message || e), 'err');
       } finally {
         if (hotReloadTriggered) {
           await waitHotReloadSettled(30000);
@@ -4259,11 +4262,11 @@ cat <<'HTML'
         providers.splice(index, 1);
         await api('models_save', 'POST', { providers, applyNow: false });
         await load('models');
-        setMsg('模型服务器已删除，重启后生效', 'ok');
-      } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
+        setMsg('模型服务器已删除,重启后生效', 'ok');
+      } catch (e) { setMsg('删除失败:' + (e.message || e), 'err'); }
     }
     async function saveWorkspaceQuick() {
-      setMsg('用户目录设置入口已移除，请使用安装向导。', 'ok');
+      setMsg('用户目录设置入口已移除,请使用安装向导。', 'ok');
     }
     async function saveQQBotQuick() {}
     function openChannelDialog(editId) {
@@ -4277,7 +4280,7 @@ cat <<'HTML'
         ['hermes-weixin','微信']
       ];
       const options = allOptions.filter(([id]) => editId ? (id === editId) : !configured.has(id));
-      if (!options.length) { setMsg('可添加渠道为空（已全部配置）', 'ok'); return; }
+      if (!options.length) { setMsg('可添加渠道为空(已全部配置)', 'ok'); return; }
       const select = document.getElementById('dlg_channel_type');
       select.innerHTML = options.map(([id,label]) => '<option value="'+id+'">'+label+'</option>').join('');
       if (editId) select.value = editId;
@@ -4290,7 +4293,7 @@ cat <<'HTML'
       document.getElementById('channelModalMask').style.display = 'none';
       document.getElementById('channelModalMask').dataset.editId = '';
       document.body.classList.remove('modal-open');
-      // 用户主动取消微信扫码时，立即撤销自动保存触发器。
+      // 用户主动取消微信扫码时,立即撤销自动保存触发器。
       const wasActive = !!window.__weixinLoginActive;
       const wasConnected = !!window.__weixinConnected;
       const hadBefore = !!window.__weixinHadChannelBefore;
@@ -4300,7 +4303,7 @@ cat <<'HTML'
         clearInterval(__weixinPollTimer);
         __weixinPollTimer = null;
       }
-      // 若本次是新建微信通道流程且未连接就取消，清掉临时残留配置。
+      // 若本次是新建微信通道流程且未连接就取消,清掉临时残留配置。
       if (wasActive && !wasConnected && !hadBefore) {
         api('channels_delete', 'POST', { id: 'hermes-weixin' }).catch(() => {});
       }
@@ -4310,7 +4313,7 @@ cat <<'HTML'
       const btn = document.getElementById('btn_channel_save');
       if (!btn) return;
       if (t === 'hermes-weixin') {
-        // 微信扫码流程改为“仅自动保存”，不显示手动保存按钮。
+        // 微信扫码流程改为"仅自动保存",不显示手动保存按钮。
         btn.style.display = 'none';
         btn.disabled = true;
         btn.title = '微信扫码后自动保存';
@@ -4385,12 +4388,12 @@ cat <<'HTML'
         const ret = await api('channels_save', 'POST', payload);
         closeChannelDialog();
         await load('channels');
-        if (ret && ret.reloaded) setMsg('运行状态：配置已更新', 'ok');
+        if (ret && ret.reloaded) setMsg('运行状态:配置已更新', 'ok');
       } catch (e) {
-        setMsg('渠道保存失败：' + (e.message || e), 'err');
+        setMsg('渠道保存失败:' + (e.message || e), 'err');
       } finally {
         if (hotReloadTriggered) {
-          // 微信扫码自动保存走快速模式：不阻塞等待重启完成，减少“已连接后还要等10秒”。
+          // 微信扫码自动保存走快速模式:不阻塞等待重启完成,减少"已连接后还要等10秒"。
           if (fastAutoSave) {
             setTimeout(async () => {
               await waitHotReloadSettled(30000);
@@ -4488,7 +4491,7 @@ cat <<'HTML'
           });
           const data = await resp.json();
           if (!resp.ok || !data || !data.ok || !data.dataUrl) {
-            throw new Error((data && data.error) || ('二维码服务回退失败：HTTP ' + resp.status));
+            throw new Error((data && data.error) || ('二维码服务回退失败:HTTP ' + resp.status));
           }
           dataUrl = data.dataUrl;
           console.info('[channels:weixin:inline-qr:server-fallback]', { qrUrl: qrUrl, hasDataUrl: !!dataUrl });
@@ -4497,7 +4500,7 @@ cat <<'HTML'
         renderWeixinQrInline(dataUrl, qrUrl, qrEl, '请使用微信扫码完成登录');
       } catch (e) {
         console.error('[channels:weixin:inline-qr:error]', e);
-        qrEl.innerHTML = '<div style="font-size:13px;color:#b42318;margin-bottom:8px;">二维码重绘失败：' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
+        qrEl.innerHTML = '<div style="font-size:13px;color:#b42318;margin-bottom:8px;">二维码重绘失败:' + esc(e.message || e) + '</div><a class="btn" target="_blank" rel="noopener" href="' + esc(qrUrl) + '">新窗口打开二维码</a>';
         throw e;
       }
     }
@@ -4509,7 +4512,7 @@ cat <<'HTML'
     }
     async function startWeixinLogin(force) {
       const startTs = Date.now();
-      // 新一轮登录开始：重置连接态，避免旧轮询导致“未刷新二维码就自动保存”。
+      // 新一轮登录开始:重置连接态,避免旧轮询导致"未刷新二维码就自动保存"。
       window.__weixinConnected = false;
       window.__weixinAutoSaveArmed = false;
       window.__weixinLoginActive = true;
@@ -4523,7 +4526,7 @@ cat <<'HTML'
       try {
         const { statusEl, qrEl } = getWeixinUiEls();
         if (!statusEl || !qrEl) {
-          // 微信面板未展开时静默忽略，避免弹错误提示打断流程。
+          // 微信面板未展开时静默忽略,避免弹错误提示打断流程。
           return;
         }
         statusEl.textContent = '';
@@ -4538,14 +4541,14 @@ cat <<'HTML'
           window.__weixinSessionKey = data.sessionKey || '';
           window.__weixinRoundId = data.roundId || '';
           window.__weixinAutoSaveArmed = true;
-          setMsg('二维码已生成，请扫码登录。', 'ok');
+          setMsg('二维码已生成,请扫码登录。', 'ok');
           __weixinPollTimer = setInterval(() => { pollWeixinLogin({ silent: true }); }, 1000);
         } else {
           statusEl.textContent = data.message || data.error || '当前版本不支持微信扫码登录';
-          const extra = data && data.debugLog ? ('（调试日志：' + data.debugLog + '）') : '';
+          const extra = data && data.debugLog ? ('(调试日志:' + data.debugLog + ')') : '';
           setMsg((data.message || data.error || '当前版本不支持微信扫码登录') + extra, data.supported === false ? '' : 'err');
         }
-      } catch (e) { setMsg('微信登录启动失败：' + (e.message || e), 'err'); }
+      } catch (e) { setMsg('微信登录启动失败:' + (e.message || e), 'err'); }
       finally { setWeixinBusy('start', false); }
     }
     async function pollWeixinLogin(opts) {
@@ -4556,7 +4559,7 @@ cat <<'HTML'
         const roundId = window.__weixinRoundId || '';
         const { statusEl, qrEl } = getWeixinUiEls();
         if (!statusEl) {
-          // 面板未展开时静默轮询，不弹错误。
+          // 面板未展开时静默轮询,不弹错误。
           return;
         }
         if (!silent) statusEl.textContent = '正在查询登录状态...';
@@ -4583,28 +4586,28 @@ cat <<'HTML'
             clearInterval(__weixinPollTimer);
             __weixinPollTimer = null;
           }
-          setMsg('微信已连接，正在立即保存...', 'ok');
-          if (statusEl) statusEl.textContent = '已连接，正在立即保存...';
-          // 先立刻关闭弹窗并立即刷新渠道页，保存与热加载在后台串行执行，避免用户感知等待。
+          setMsg('微信已连接,正在立即保存...', 'ok');
+          if (statusEl) statusEl.textContent = '已连接,正在立即保存...';
+          // 先立刻关闭弹窗并立即刷新渠道页,保存与热加载在后台串行执行,避免用户感知等待。
           closeChannelDialog();
           if (currentTab === 'channels') {
             load('channels').catch(() => {});
           }
           (async () => {
             try {
-              // 第一步：立即落配置（不重载）
+              // 第一步:立即落配置(不重载)
               const sv = await api('channels_save', 'POST', { 'hermes-weixin': { enabled: true }, noReload: true });
               if (sv && sv.error) throw new Error(sv.error);
-              setMsg('微信已连接（已立即保存）', 'ok');
-              // 第二步：后台再做热加载（不阻塞 UI）
+              setMsg('微信已连接(已立即保存)', 'ok');
+              // 第二步:后台再做热加载(不阻塞 UI)
               api('channels_save', 'POST', { 'hermes-weixin': { enabled: true } }).catch(() => {});
             } catch (e) {
-              setMsg('微信已连接，但自动保存失败：' + (e.message || e), 'err');
+              setMsg('微信已连接,但自动保存失败:' + (e.message || e), 'err');
             }
           })();
         }
       } catch (e) {
-        if (!silent) setMsg('查询微信状态失败：' + (e.message || e), 'err');
+        if (!silent) setMsg('查询微信状态失败:' + (e.message || e), 'err');
       } finally {
         if (!silent) setWeixinBusy('poll', false);
       }
@@ -4622,7 +4625,7 @@ cat <<'HTML'
         window.__weixinQrDataUrl = '';
         window.__weixinQrUrl = '';
         setMsg('微信已断开', 'ok');
-      } catch (e) { setMsg('断开微信失败：' + (e.message || e), 'err'); }
+      } catch (e) { setMsg('断开微信失败:' + (e.message || e), 'err'); }
     }
     async function deleteChannel(id) {
       const btns = Array.from(document.querySelectorAll('button'));
@@ -4630,7 +4633,7 @@ cat <<'HTML'
       const old = targetBtn ? targetBtn.textContent : '';
       try {
         if (targetBtn) { targetBtn.disabled = true; targetBtn.textContent = '正在删除...'; }
-        setMsg('正在删除渠道：' + id + ' ...');
+        setMsg('正在删除渠道:' + id + ' ...');
         await api('channels_delete', 'POST', { id });
         await load('channels');
         const descMap = {
@@ -4642,9 +4645,9 @@ cat <<'HTML'
           weixin: '微信'
         };
         const label = descMap[id] || id;
-        setMsg('已删除' + label + '消息渠道，重启后生效', 'ok');
+        setMsg('已删除' + label + '消息渠道,重启后生效', 'ok');
       } catch (e) {
-        setMsg('删除渠道失败：' + (e.message || e), 'err');
+        setMsg('删除渠道失败:' + (e.message || e), 'err');
       } finally {
         if (targetBtn) { targetBtn.disabled = false; targetBtn.textContent = old || '删除'; }
       }
@@ -4663,7 +4666,7 @@ cat <<'HTML'
       logsAutoRefresh = !logsAutoRefresh;
       const btn = document.getElementById('btn_logs_toggle');
       if (btn) btn.textContent = logsAutoRefresh ? '停止刷新' : '开始刷新';
-      setMsg(logsAutoRefresh ? '日志自动刷新：已开启' : '日志自动刷新：已停止', 'ok');
+      setMsg(logsAutoRefresh ? '日志自动刷新:已开启' : '日志自动刷新:已停止', 'ok');
     }
     async function copyLogsText() {
       try {
@@ -4671,7 +4674,7 @@ cat <<'HTML'
         const allText = (pre && pre.textContent) ? pre.textContent : '';
         if (!allText) { setMsg('暂无可复制日志', 'err'); return; }
 
-        // 优先复制用户当前选中文本；未选中时复制全部日志
+        // 优先复制用户当前选中文本;未选中时复制全部日志
         let text = '';
         try {
           const sel = window.getSelection ? window.getSelection() : null;
@@ -4681,7 +4684,7 @@ cat <<'HTML'
         }
         if (!text) text = allText;
 
-        // 优先 Clipboard API；失败则回退 execCommand，兼容 DSM iframe/旧浏览器权限模型
+        // 优先 Clipboard API;失败则回退 execCommand,兼容 DSM iframe/旧浏览器权限模型
         let copied = false;
         if (navigator.clipboard && window.isSecureContext) {
           try {
@@ -4708,20 +4711,20 @@ cat <<'HTML'
         if (copied) {
           setMsg('日志已复制到剪贴板', 'ok');
         } else {
-          setMsg('复制失败，请手动选择日志复制', 'err');
+          setMsg('复制失败,请手动选择日志复制', 'err');
         }
       } catch (e) {
-        setMsg('复制失败，请手动选择日志复制', 'err');
+        setMsg('复制失败,请手动选择日志复制', 'err');
       }
     }
     function sanitizeTerminalText(text) {
       let s = String(text || '');
       s = s.replace(/\x1B\[[0-9;?]*[ -\/]*[@-~]/g, '');
       s = s.replace(/\[[0-9;]{1,20}m/g, '');
-      // 非 TTY 交互 shell 常见噪声，直接过滤
+      // 非 TTY 交互 shell 常见噪声,直接过滤
       s = s.replace(/^bash: cannot set terminal process group.*\n?/gm, '');
       s = s.replace(/^bash: no job control in this shell\n?/gm, '');
-      // 将退格控制符按“删除前一字符”语义应用，避免显示特殊符号。
+      // 将退格控制符按"删除前一字符"语义应用,避免显示特殊符号。
       const out = [];
       for (const ch of s) {
         if (ch === '\b' || ch === '\x7f') {
@@ -4742,7 +4745,7 @@ cat <<'HTML'
       }
     }
     function resolveTerminalUrl() {
-      // 统一走 DSM nginx alias，避免 HTTPS 页面直连 HTTP:17682 触发混合内容拦截。
+      // 统一走 DSM nginx alias,避免 HTTPS 页面直连 HTTP:17682 触发混合内容拦截。
       return '/hermes-terminal/';
     }
     function buildOpenclawWebUrl() {
@@ -4769,7 +4772,7 @@ cat <<'HTML'
       try {
         const u = url || resolveTerminalUrl();
         const target = new URL(u, window.location.href);
-        // 跨域 URL（如 DSM 面板下直连 17682）fetch 探测会受 CORS/混合内容影响，不作为可用性判断。
+        // 跨域 URL(如 DSM 面板下直连 17682)fetch 探测会受 CORS/混合内容影响,不作为可用性判断。
         if (target.origin !== window.location.origin) return true;
         const r = await fetch(target.toString(), { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
         return !!(r && r.ok);
