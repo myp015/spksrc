@@ -647,7 +647,7 @@ sync_dsm_package_info_port() {
 
     local info_file="${SYNOPKG_PKGVAR}/../../INFO"
     local resource_file="${SYNOPKG_PKGVAR}/../../conf/resource"
-    local dash_port=3000
+    local dash_port=58790
 
     if [ -f "${info_file}" ]; then
         if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
@@ -674,7 +674,7 @@ sync_dsm_package_info_port() {
 start_dashboard_if_needed() {
     local dash_pid_file="${SYNOPKG_PKGVAR}/hermes-dashboard.pid"
     local dash_log="${SYNOPKG_PKGVAR}/hermes-dashboard.log"
-    local dash_port=3000
+    local dash_port=58790
 
     # Check if dashboard pid is alive
     if [ -f "${dash_pid_file}" ]; then
@@ -693,7 +693,7 @@ start_dashboard_if_needed() {
     fi
 
     echo "[prestart] Starting Hermes Dashboard on port ${dash_port}..."
-    nohup "${SYNOPKG_PKGDEST}/bin/hermes" dashboard --port ${dash_port} --host 0.0.0.0 --insecure --skip-build \
+    nohup "${SYNOPKG_PKGDEST}/bin/hermes" dashboard --port ${dash_port} --host 127.0.0.1 --insecure --skip-build \
         >>"${dash_log}" 2>&1 &
     local dash_pid=$!
     echo "${dash_pid}" >"${dash_pid_file}"
