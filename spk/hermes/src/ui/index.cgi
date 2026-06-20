@@ -380,7 +380,7 @@ try:
 except Exception as e:
     cfg = {}
     read_error = f"{type(e).__name__}: {e}"
-providers_map = ((cfg.get('models') or {}).get('providers') or {})
+providers_map = (cfg.get('providers') or {})
 providers = []
 for pid, p in providers_map.items():
     if not isinstance(p, dict):
@@ -587,7 +587,7 @@ if workspace_explicit and pointer_write_err:
 
 providers_payload = payload.get('providers') or []
 apply_now = bool(payload.get('applyNow', True))
-existing_providers = ((cfg.get('models') or {}).get('providers') or {})
+existing_providers = (cfg.get('providers') or {})
 providers_map = {}
 for p in providers_payload:
     if not isinstance(p, dict):
@@ -622,7 +622,7 @@ for p in providers_payload:
         if mid:
             provider['models'].append({'id': mid, 'name': f"{pid} / {mid}"})
     providers_map[pid] = provider
-cfg.setdefault('models', {})['providers'] = providers_map
+cfg['providers'] = providers_map
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
 # user requirement: changing workspace should initialize by defaults only (no migration)
@@ -647,10 +647,10 @@ if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/hermes/targe
                     defaults['imageModel'].pop('primary', None)
                 models_obj = cfg.get('models') or {}
                 if isinstance(models_obj, dict):
-                    models_obj['providers'] = {}
+                    cfg['providers'] = {}
         except Exception:
             pass
-        cfg.setdefault('models', {})['providers'] = providers_map
+        cfg['providers'] = providers_map
     except Exception:
         pass
 
@@ -2904,7 +2904,7 @@ if action in ('start','restart'):
     try:
         c2 = json.load(open(cfg,'r',encoding='utf-8')) if cfg and os.path.exists(cfg) else {}
         defs2 = c2.setdefault('agents', {}).setdefault('defaults', {})
-        providers2 = ((c2.get('models') or {}).get('providers') or {})
+        providers2 = (c2.get('providers') or {})
         active_refs = set()
         for pid, pv in providers2.items():
             if not isinstance(pv, dict):
@@ -4672,15 +4672,13 @@ cat <<'HTML'
     }
     function buildOpenclawWebUrl() {
       try {
-        const protocol = 'http:';
-        const host = window.location.hostname || '127.0.0.1';
-        const port = Number(window.__ainasGatewayPort || 58790) || 58790;
         const token = String(window.__ainasGatewayToken || '').trim();
-        const url = new URL(protocol + '//' + host + ':' + port + '/default/chat');
+        const base = window.location.origin + '/hermes-dashboard/default/chat';
+        const url = new URL(base);
         if (token) url.searchParams.set('token', token);
         return url.toString();
       } catch (_) {
-        return '/default/chat';
+        return '/hermes-dashboard/default/chat';
       }
     }
     function openHermesWeb() {
