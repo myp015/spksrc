@@ -60,6 +60,23 @@ hermes_prepare_bundle:
 		/usr/local/bin/python3.12 -m pip install --no-cache-dir hermes-agent==$(SPK_VERS) python-multipart jiter -t $(WORK_DIR)/hermes-bundle --quiet
 	@# Patch web_server.py for DSM reverse proxy (insecure mode)
 	@python3 src/patch_web_server.py "$(WORK_DIR)/hermes-bundle/hermes_cli/web_server.py"
+	@# Download and bundle built-in skills from Hermes Agent repo
+	@$(MSG) "Downloading Hermes Agent skills v$(SPK_VERS)..."
+	@SKILLS_URL="https://github.com/NousResearch/hermes-agent/archive/refs/tags/v$(SPK_VERS).tar.gz"; \
+	SKILLS_TGZ="$(WORK_DIR)/hermes-skills.tar.gz"; \
+	SKILLS_DIR="$(WORK_DIR)/hermes-skills-extract"; \
+	curl -fsSL --max-time 120 "$$SKILLS_URL" -o "$$SKILLS_TGZ" 2>/dev/null || \
+	curl -fsSL --max-time 120 "https://codeload.github.com/NousResearch/hermes-agent/tar.gz/refs/tags/v$(SPK_VERS)" -o "$$SKILLS_TGZ" 2>/dev/null; \
+	if [ -s "$$SKILLS_TGZ" ]; then \
+		mkdir -p "$$SKILLS_DIR" && tar -xzf "$$SKILLS_TGZ" -C "$$SKILLS_DIR" --strip-components=1 2>/dev/null; \
+		if [ -d "$$SKILLS_DIR/skills" ]; then \
+			cp -r "$$SKILLS_DIR/skills/." "$(WORK_DIR)/hermes-bundle/skills/"; \
+			$(MSG) "Copied bundled skills ($(shell ls $$SKILLS_DIR/skills/ 2>/dev/null | wc -l) categories)"; \
+		fi; \
+		rm -rf "$$SKILLS_TGZ" "$$SKILLS_DIR"; \
+	else \
+		$(MSG) "WARNING: Could not download skills — continuing without bundled skills"; \
+	fi
 	@# Verify the bundle
 	@if [ ! -f "$(WORK_DIR)/hermes-bundle/hermes_cli/main.py" ]; then \
 		echo "Hermes Agent bundle verification failed"; exit 1; \
