@@ -1,5 +1,5 @@
 SPK_NAME = hermes
-SPK_VERS := 0.16.0
+SPK_VERS := 0.17.0
 SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
 SPK_ICON = src/hermes.png
 
@@ -62,11 +62,11 @@ hermes_prepare_bundle:
 	@python3 src/patch_web_server.py "$(WORK_DIR)/hermes-bundle/hermes_cli/web_server.py"
 	@# Download and bundle built-in skills from Hermes Agent repo
 	@$(MSG) "Downloading Hermes Agent skills v$(SPK_VERS)..."
-	@SKILLS_URL="https://github.com/NousResearch/hermes-agent/archive/refs/tags/v$(SPK_VERS).tar.gz"; \
+	@SKILLS_URL="https://github.com/NousResearch/hermes-agent/archive/refs/heads/main.tar.gz"; \
 	SKILLS_TGZ="$(WORK_DIR)/hermes-skills.tar.gz"; \
 	SKILLS_DIR="$(WORK_DIR)/hermes-skills-extract"; \
 	curl -fsSL --max-time 120 "$$SKILLS_URL" -o "$$SKILLS_TGZ" 2>/dev/null || \
-	curl -fsSL --max-time 120 "https://codeload.github.com/NousResearch/hermes-agent/tar.gz/refs/tags/v$(SPK_VERS)" -o "$$SKILLS_TGZ" 2>/dev/null; \
+	curl -fsSL --max-time 120 "https://codeload.github.com/NousResearch/hermes-agent/tar.gz/refs/heads/main" -o "$$SKILLS_TGZ" 2>/dev/null; \
 	if [ -s "$$SKILLS_TGZ" ]; then \
 		mkdir -p "$$SKILLS_DIR" && tar -xzf "$$SKILLS_TGZ" -C "$$SKILLS_DIR" --strip-components=1 2>/dev/null; \
 		if [ -d "$$SKILLS_DIR/skills" ]; then \
