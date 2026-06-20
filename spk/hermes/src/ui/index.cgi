@@ -704,6 +704,32 @@ except Exception:
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
+# Also write config.yaml for Dashboard API compatibility
+cfg_yaml_path = os.path.join(os.path.dirname(cfg_path), 'config.yaml')
+try:
+    with open(cfg_yaml_path, 'w', encoding='utf-8') as yf:
+        yf.write("# Auto-generated from hermes.json for Dashboard API compat\n")
+        gw_auth = (cfg.get('gateway') or {}).get('auth') or {}
+        token = str(gw_auth.get('token') or '')
+        if token:
+            yf.write('auth:\n  token: "' + token + '"\n\n')
+        if providers_map:
+            yf.write('model:\n')
+            for pid, p in providers_map.items():
+                if not isinstance(p, dict):
+                    continue
+                yf.write('  provider: ' + pid + '\n')
+                base_url = str(p.get('baseUrl') or '')
+                if base_url:
+                    yf.write('  base_url: ' + base_url + '\n')
+                api_key = str(p.get('apiKey') or '')
+                if api_key:
+                    yf.write('  api_key: ' + api_key + '\n')
+                break
+        gw_port = str((cfg.get('gateway') or {}).get('port') or 58790)
+        yf.write('gateway:\n  port: ' + gw_port + '\n')
+except Exception:
+    pass
 
 # user requirement: after adding/updating model providers, trigger provider-model sync script automatically
 model_sync_triggered = False
