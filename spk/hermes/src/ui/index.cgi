@@ -704,43 +704,110 @@ except Exception:
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
-# Also write config.yaml for Dashboard API compatibility
+# Also write config.yaml for Dashboard API compatibility.
+# Dashboard /api/model/options reads root-level `model:` + `providers:`
+# (Hermes v12 schema), not OpenClaw-style `models.providers`.
 cfg_yaml_path = os.path.join(os.path.dirname(cfg_path), 'config.yaml')
-try:
-    with open(cfg_yaml_path, 'w', encoding='utf-8') as yf:
-        yf.write("# Auto-generated from hermes.json for Dashboard API compat\n")
-        gw_auth = (cfg.get('gateway') or {}).get('auth') or {}
-        token = str(gw_auth.get('token') or '')
-        if token:
-            yf.write('auth:\n  token: "' + token + '"\n\n')
-        if providers_map:
-            yf.write('models:\n  mode: merge\n  providers:\n')
-            for pid, p in providers_map.items():
-                if not isinstance(p, dict):
-                    continue
-                yf.write('    ' + pid + ':\n')
-                yf.write('      api: ' + str(p.get('api') or 'openai-completions') + '\n')
-                base_url = str(p.get('baseUrl') or '')
-                if base_url:
-                    yf.write('      baseUrl: ' + base_url + '\n')
-                api_key = str(p.get('apiKey') or '')
-                if api_key:
-                    yf.write('      apiKey: "' + api_key + '"\n')
-                display_name = str(p.get('displayName') or pid)
-                if display_name:
-                    yf.write('      displayName: ' + display_name + '\n')
-                models_list = p.get('models') or []
-                if models_list:
-                    yf.write('      models:\n')
-                    for m in models_list:
-                        if isinstance(m, dict):
-                            mid = m.get('id') or m.get('modelId') or ''
-                            if mid:
-                                yf.write('        - { id: "' + mid + '", modelId: "' + mid + '" }\n')
-        gw_port = str((cfg.get('gateway') or {}).get('port') or 58790)
-        yf.write('gateway:\n  port: ' + gw_port + '\n')
-except Exception:
-    pass
+
+def _yaml_scalar(v):
+    s = str(v if v is not None else '')
+    return '"' + s.replace('\\', '\\\\').replace('\"', '\\\"') + '"'
+
+def _provider_transport(api_name):
+    a = str(api_name or '').strip().lower().replace('-', '_')
+    if a in ('anthropic_messages', 'anthropic'):
+        return 'anthropic_messages'
+    if a in ('ollama',):
+        return 'ollama'
+    return 'chat_completions'
+
+def _model_ids_from_provider(provider):
+    ids = []
+    for m in (provider.get('models') or []):
+        mid = ''
+        if isinstance(m, dict):
+            mid = str(m.get('id') or m.get('modelId') or '').strip()
+        elif isinstance(m, str):
+            mid = m.strip()
+        if mid and mid not in ids:
+            ids.append(mid)
+    return ids
+
+def _choose_primary_model_ref(cfg_obj, providers_obj):
+    try:
+        defs = (cfg_obj.get('agents') or {}).get('defaults') or {}
+        mobj = defs.get('model')
+        primary = ''
+        if isinstance(mobj, dict):
+            primary = str(mobj.get('primary') or '').strip()
+        elif isinstance(mobj, str):
+            primary = mobj.strip()
+        if '/' in primary:
+            pid, mid = primary.split('/', 1)
+            if pid in providers_obj and mid:
+                return pid, mid
+    except Exception:
+        pass
+    for pid, pv in (providers_obj or {}).items():
+        if not isinstance(pv, dict):
+            continue
+        ids = _model_ids_from_provider(pv)
+        if ids:
+            return str(pid), ids[0]
+    return '', ''
+
+def _write_dashboard_config_yaml(path, cfg_obj, providers_obj, marker=''):
+    try:
+        providers_obj = providers_obj if isinstance(providers_obj, dict) else {}
+        primary_provider, primary_model = _choose_primary_model_ref(cfg_obj, providers_obj)
+        with open(path, 'w', encoding='utf-8') as yf:
+            suffix = (' ' + marker) if marker else ''
+            yf.write('# Auto-generated from hermes.json for Dashboard API compat' + suffix + '\n')
+            gw_auth = (cfg_obj.get('gateway') or {}).get('auth') or {}
+            token = str(gw_auth.get('token') or '')
+            if token:
+                yf.write('auth:\n  token: ' + _yaml_scalar(token) + '\n\n')
+            if primary_provider or primary_model:
+                yf.write('model:\n')
+                if primary_provider:
+                    yf.write('  provider: ' + _yaml_scalar(primary_provider) + '\n')
+                if primary_model:
+                    yf.write('  default: ' + _yaml_scalar(primary_model) + '\n')
+                    yf.write('  name: ' + _yaml_scalar(primary_model) + '\n')
+                yf.write('\n')
+            if providers_obj:
+                yf.write('providers:\n')
+                for pid, prov in providers_obj.items():
+                    if not isinstance(prov, dict):
+                        continue
+                    pid_s = str(pid).strip()
+                    if not pid_s:
+                        continue
+                    yf.write('  ' + _yaml_scalar(pid_s) + ':\n')
+                    display_name = str(prov.get('displayName') or prov.get('name') or pid_s).strip()
+                    if display_name:
+                        yf.write('    name: ' + _yaml_scalar(display_name) + '\n')
+                    base_url = str(prov.get('baseUrl') or prov.get('base_url') or prov.get('api') or '').strip()
+                    if base_url:
+                        yf.write('    api: ' + _yaml_scalar(base_url) + '\n')
+                    api_key = str(prov.get('apiKey') or prov.get('api_key') or '').strip()
+                    if api_key:
+                        yf.write('    api_key: ' + _yaml_scalar(api_key) + '\n')
+                    yf.write('    transport: ' + _yaml_scalar(_provider_transport(prov.get('api'))) + '\n')
+                    ids = _model_ids_from_provider(prov)
+                    if ids:
+                        default_model = primary_model if primary_provider == pid_s and primary_model in ids else ids[0]
+                        yf.write('    default_model: ' + _yaml_scalar(default_model) + '\n')
+                        yf.write('    models:\n')
+                        for mid in ids:
+                            yf.write('      ' + _yaml_scalar(mid) + ': {}\n')
+                yf.write('\n')
+            gw_port = str((cfg_obj.get('gateway') or {}).get('port') or 58790)
+            yf.write('gateway:\n  port: ' + gw_port + '\n')
+    except Exception:
+        pass
+
+_write_dashboard_config_yaml(cfg_yaml_path, cfg, providers_map)
 
 # user requirement: after adding/updating model providers, trigger provider-model sync script automatically
 model_sync_triggered = False
@@ -779,37 +846,7 @@ try:
             post_sync_cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
             post_sync_providers = (post_sync_cfg.get('providers') or {})
             if post_sync_providers:
-                with open(cfg_yaml_path, 'w', encoding='utf-8') as yf:
-                    yf.write("# Auto-generated from hermes.json for Dashboard API compat (post-sync)\n")
-                    gw_auth = (post_sync_cfg.get('gateway') or {}).get('auth') or {}
-                    token = str(gw_auth.get('token') or '')
-                    if token:
-                        yf.write('auth:\n  token: "' + token + '"\n\n')
-                    yf.write('models:\n  mode: merge\n  providers:\n')
-                    for pid, p in post_sync_providers.items():
-                        if not isinstance(p, dict):
-                            continue
-                        yf.write('    ' + pid + ':\n')
-                        yf.write('      api: ' + str(p.get('api') or 'openai-completions') + '\n')
-                        base_url = str(p.get('baseUrl') or '')
-                        if base_url:
-                            yf.write('      baseUrl: ' + base_url + '\n')
-                        ak = str(p.get('apiKey') or '')
-                        if ak:
-                            yf.write('      apiKey: "' + ak + '"\n')
-                        dn = str(p.get('displayName') or pid)
-                        if dn:
-                            yf.write('      displayName: ' + dn + '\n')
-                        models_list = p.get('models') or []
-                        if models_list:
-                            yf.write('      models:\n')
-                            for m in models_list:
-                                if isinstance(m, dict):
-                                    mid = m.get('id') or m.get('modelId') or ''
-                                    if mid:
-                                        yf.write('        - { id: "' + mid + '", modelId: "' + mid + '" }\n')
-                    gw_port = str((cfg.get('gateway') or {}).get('port') or 58790)
-                    yf.write('gateway:\n  port: ' + gw_port + '\n')
+                _write_dashboard_config_yaml(cfg_yaml_path, post_sync_cfg, post_sync_providers, '(post-sync)')
         except Exception:
             pass
 except Exception:
@@ -2748,6 +2785,23 @@ def wait_port_free(port, seconds=6):
         time.sleep(0.5)
     return not port_listening(port)
 
+def dashboard_gateway_status():
+    # gw_port is the Dashboard port. The actual Hermes Gateway is managed by
+    # Dashboard and reported by /api/status; do not infer gateway state from
+    # the Dashboard listening socket itself.
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f'http://127.0.0.1:{gw_port}/api/status', timeout=3) as resp:
+            data = json.loads(resp.read().decode('utf-8', 'ignore') or '{}')
+        return {
+            'ok': True,
+            'running': bool(data.get('gateway_running') or data.get('gateway_state') == 'running'),
+            'pid': data.get('gateway_pid'),
+            'state': data.get('gateway_state') or '',
+        }
+    except Exception as e:
+        return {'ok': False, 'running': False, 'pid': None, 'state': '', 'error': str(e)}
+
 # On start/restart only, create runtime config if missing.
 if action in ('start','restart'):
     try:
@@ -2936,30 +2990,60 @@ def force_stop():
 
     # 1) prefer graceful gateway stop first (short timeout)
     try:
-        rc, o = run(['/var/packages/hermes/target/bin/hermes','gateway','stop','--json'], timeout=12)
-        out.append((['hermes','gateway','stop','--json'], rc, o[-800:]))
+        rc, o = run(['/var/packages/hermes/target/bin/hermes','gateway','stop'], timeout=12)
+        out.append((['hermes','gateway','stop'], rc, o[-800:]))
     except Exception as e:
-        out.append((['hermes','gateway','stop','--json'], 999, str(e)))
-    # 2) fallback precise kill patterns
-    # 注意:不要使用 `pkill -f hermes.*gateway`,否则会误杀当前 CGI python 进程
-    # (其 argv 包含 hermes-gateway.spawn.log 路径),导致接口空响应。
-    for cmd in [
-        ['pkill','-f','/var/packages/hermes/target/bin/hermes gateway run'],
-        ['pkill','-f','hermes-gateway'],
-        ['pkill','-f','hermes gateway run'],
-        ['pkill','-f','gateway run'],
-        ['pkill','-x','hermes-gateway'],
-
-    ]:
-        try:
-            p=subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
-            out.append((cmd,p.returncode,(p.stdout or b'').decode('utf-8','ignore')))
-        except Exception as e:
-            out.append((cmd,999,str(e)))
-    killed = kill_port_listeners(gw_port)
-    if killed:
-        out.append((['kill-port-listeners', str(gw_port)], 0, 'pids=' + ','.join(map(str, killed))))
-    wait_port_free(gw_port, 6)
+        out.append((['hermes','gateway','stop'], 999, str(e)))
+    # 2) fallback: enumerate /proc and kill only real gateway processes.
+    # Never use broad `pkill -f gateway run` here: the CGI heredoc itself
+    # contains that text, so pkill can terminate this Python handler before it
+    # returns JSON to the UI.
+    killed = []
+    try:
+        self_pid = os.getpid()
+        parent_pid = os.getppid()
+        for name in os.listdir('/proc'):
+            if not name.isdigit():
+                continue
+            pid = int(name)
+            if pid <= 1 or pid in (self_pid, parent_pid):
+                continue
+            cmdline_path = f'/proc/{pid}/cmdline'
+            try:
+                raw = open(cmdline_path, 'rb').read().replace(b'\x00', b' ').decode('utf-8', 'ignore')
+            except Exception:
+                continue
+            norm = ' '.join(raw.split())
+            if not norm:
+                continue
+            is_gateway = False
+            if '/var/packages/hermes/target/bin/hermes gateway run' in norm:
+                is_gateway = True
+            elif 'python3.12 -m hermes_cli.main gateway run' in norm:
+                is_gateway = True
+            elif norm.endswith('hermes-gateway') or ' hermes-gateway ' in (' ' + norm + ' '):
+                is_gateway = True
+            if not is_gateway:
+                continue
+            try:
+                os.kill(pid, 15)
+                killed.append(pid)
+            except Exception:
+                pass
+        if killed:
+            time.sleep(1)
+            for pid in killed:
+                try:
+                    if os.path.exists(f'/proc/{pid}'):
+                        os.kill(pid, 9)
+                except Exception:
+                    pass
+        out.append((['safe-kill-gateway-processes'], 0, 'pids=' + ','.join(map(str, killed))))
+    except Exception as e:
+        out.append((['safe-kill-gateway-processes'], 999, str(e)))
+    # Do NOT kill listeners on gw_port here: that port belongs to the
+    # Dashboard UI, not the background Gateway process. Killing it makes the
+    # DSM panel/webchat disappear and still does not prove Gateway stopped.
     return out
 
 logs=[]
@@ -3027,15 +3111,16 @@ if action in ('start','restart'):
     except Exception as e:
         logs.append({'cmd':'sanitize defaults.models','error':str(e)})
 
-    if port_listening(gw_port):
-        listener_pids = find_port_listener_pids(gw_port)
-        if listener_pids:
+    ds = dashboard_gateway_status()
+    if ds.get('running'):
+        gpid = ds.get('pid')
+        if gpid:
             try:
                 with open(gateway_pid_file, 'w', encoding='utf-8') as pf:
-                    pf.write(str(listener_pids[0]))
+                    pf.write(str(gpid))
             except Exception:
                 pass
-        logs.append({'cmd':'gateway(spawn-detached)', 'skipped':'port already listening', 'port':gw_port})
+        logs.append({'cmd':'gateway(spawn-detached)', 'skipped':'gateway already running', 'status':ds})
     else:
         try:
             os.makedirs(os.path.dirname(spawn_log), exist_ok=True)
@@ -3056,6 +3141,16 @@ if action in ('start','restart'):
                     pw = pwd.getpwnam(svc_user)
                     uid = int(pw.pw_uid)
                     gid = int(pw.pw_gid)
+                    # Runtime files may have been created by previous root CGI
+                    # hotfixes. Ensure the service user can take the gateway
+                    # lock before demoting the detached process.
+                    try:
+                        subprocess.run(['chown','-R',f'{svc_user}:synocommunity', workspace_root, state_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+                    except Exception:
+                        try:
+                            subprocess.run(['chown','-R',f'{svc_user}:{svc_user}', workspace_root, state_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+                        except Exception:
+                            pass
                     def _demote():
                         os.setgid(gid)
                         os.setuid(uid)
@@ -3090,19 +3185,19 @@ if action in ('start','restart'):
             ok = False
             logs.append({'cmd':'gateway(spawn-detached)','error':str(e)})
 
-def is_running(port=None):
-    return port_listening(port)
+def is_gateway_running():
+    return bool(dashboard_gateway_status().get('running'))
 
-running = is_running(gw_port)
+running = is_gateway_running()
 if action in ('start','restart') and not running:
     for _ in range(12):
         time.sleep(1)
-        running = is_running(gw_port)
+        running = is_gateway_running()
         if running:
             break
 if action == 'stop' and running:
     ok = False
-    logs.append({'cmd':'post-stop-check','error':'gateway still running after stop sequence'})
+    logs.append({'cmd':'post-stop-check','error':'gateway still running after stop sequence', 'status': dashboard_gateway_status()})
 
 # 同步 DSM 套件详情端口,确保 adminport/adminurl 与概览端口一致。
 if action in ('start','restart') and running:
