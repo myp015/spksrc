@@ -849,7 +849,7 @@ async function fetchRemoteModels(baseUrl, apiKey, retries = 3) {
   const raw = fs.readFileSync(configPath, "utf8");
   const cfg = JSON.parse(raw);
 
-  const providers = cfg?.models?.providers;
+  const providers = cfg?.providers;
   if (!providers || typeof providers !== "object") return;
 
   cfg.agents = cfg.agents || {};
@@ -1295,18 +1295,19 @@ const baseUrlInput = trim(process.env.WIZARD_BASE_URL);
 const apiKeyInput = trim(process.env.WIZARD_API_KEY);
 const workspace = workspaceInput ? (workspaceInput.endsWith("/.hermes") ? workspaceInput.slice(0, -10) : workspaceInput) : "";
 
-cfg.models = cfg.models || {};
-cfg.models.providers = cfg.models.providers || {};
+cfg.providers = cfg.providers && typeof cfg.providers === "object" && !Array.isArray(cfg.providers) ? cfg.providers : {};
 if (modelIdInput || baseUrlInput || apiKeyInput) {
-  cfg.models.providers.default = cfg.models.providers.default || {};
-  cfg.models.providers.default.models = cfg.models.providers.default.models || [];
-  if (!cfg.models.providers.default.models.length) cfg.models.providers.default.models.push({});
+  cfg.providers.default = cfg.providers.default || {};
+  cfg.providers.default.api = cfg.providers.default.api || "openai-completions";
+  cfg.providers.default.models = Array.isArray(cfg.providers.default.models) ? cfg.providers.default.models : [];
+  if (!cfg.providers.default.models.length) cfg.providers.default.models.push({});
   if (modelIdInput) {
-    cfg.models.providers.default.models[0].id = modelIdInput;
-    cfg.models.providers.default.models[0].name = modelIdInput;
+    cfg.providers.default.models[0].id = modelIdInput;
+    cfg.providers.default.models[0].modelId = modelIdInput;
+    cfg.providers.default.models[0].name = modelIdInput;
   }
-  if (baseUrlInput) cfg.models.providers.default.baseUrl = baseUrlInput;
-  if (apiKeyInput) cfg.models.providers.default.apiKey = apiKeyInput;
+  if (baseUrlInput) cfg.providers.default.baseUrl = baseUrlInput;
+  if (apiKeyInput) cfg.providers.default.apiKey = apiKeyInput;
 }
 
 cfg.agents = cfg.agents || {};
@@ -1897,7 +1898,7 @@ try {
   c.agents.defaults.workspace = statePath;
   const explicitDefaultModelRef = typeof c.agents.defaults.model === "string" ? c.agents.defaults.model : c.agents.defaults.model && typeof c.agents.defaults.model === "object" ? c.agents.defaults.model.primary : "";
   const inferFirstConfiguredModelRef = () => {
-    const providers = c.models && typeof c.models === "object" && c.models.providers && typeof c.models.providers === "object" ? c.models.providers : {};
+    const providers = c.providers && typeof c.providers === "object" ? c.providers : {};
     for (const [providerId, provider] of Object.entries(providers)) {
       const models = provider && typeof provider === "object" && Array.isArray(provider.models) ? provider.models : [];
       for (const model of models) {

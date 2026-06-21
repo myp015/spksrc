@@ -2988,12 +2988,23 @@ def force_stop():
     except Exception:
         pass
 
-    # 1) prefer graceful gateway stop first (short timeout)
+    # 1) Kill the Dashboard-reported gateway pid first. `hermes gateway stop`
+    # may use a different CLI profile on DSM and misleadingly report "No
+    # gateway running" while /api/status still has a live Gateway pid.
     try:
-        rc, o = run(['/var/packages/hermes/target/bin/hermes','gateway','stop'], timeout=12)
-        out.append((['hermes','gateway','stop'], rc, o[-800:]))
+        ds = dashboard_gateway_status()
+        gpid = ds.get('pid')
+        if gpid:
+            try:
+                os.kill(int(gpid), 15)
+                time.sleep(1)
+                if os.path.exists(f'/proc/{int(gpid)}'):
+                    os.kill(int(gpid), 9)
+                out.append((['dashboard-status-pid-stop'], 0, 'pid=' + str(gpid)))
+            except Exception as e:
+                out.append((['dashboard-status-pid-stop'], 999, str(e)))
     except Exception as e:
-        out.append((['hermes','gateway','stop'], 999, str(e)))
+        out.append((['dashboard-status-pid-stop'], 999, str(e)))
     # 2) fallback: enumerate /proc and kill only real gateway processes.
     # Never use broad `pkill -f gateway run` here: the CGI heredoc itself
     # contains that text, so pkill can terminate this Python handler before it
@@ -3202,8 +3213,9 @@ if action == 'stop' and running:
 # 同步 DSM 套件详情端口,确保 adminport/adminurl 与概览端口一致。
 if action in ('start','restart') and running:
     try:
-        rcp, o = run(['bash','-lc', 'source /var/packages/hermes/scripts/service-setup >/dev/null 2>&1; sync_dsm_package_info_port "' + str(gw_port) + '"'], timeout=12)
-        logs.append({'cmd':'sync_dsm_package_info_port', 'rc': rcp, 'out': (o or '')[-600:]})
+        rcp, o = run(['bash','-lc', 'source /var/packages/hermes/scripts/service-setup >/dev/null 2>&1; sync_dsm_package_info_port "' + str(gw_port) + '" >/dev/null 2>&1 || true'], timeout=12)
+        if rcp == 0 and (o or '').strip():
+            logs.append({'cmd':'sync_dsm_package_info_port', 'rc': rcp, 'out': (o or '')[-600:]})
     except Exception as e:
         logs.append({'cmd':'sync_dsm_package_info_port', 'error': str(e)})
 
