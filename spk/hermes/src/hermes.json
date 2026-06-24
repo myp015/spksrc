@@ -209,7 +209,7 @@
     },
     "auth": {
       "mode": "token",
-      "token": "123456"
+      "token": ""
     }
   }
 }

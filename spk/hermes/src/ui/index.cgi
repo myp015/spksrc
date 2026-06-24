@@ -347,7 +347,6 @@ for p in ('/var/packages/hermes/target/app/hermes/package.json', '/var/packages/
         pass
 version = spk_ver or app_ver or 'unknown'
 binary_path = '/var/packages/hermes/target/bin/hermes' if os.path.exists('/var/packages/hermes/target/bin/hermes') else ''
-gateway_token = str((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '')
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -361,8 +360,7 @@ out = {
   'configPath': cfg_path,
   'binaryPath': binary_path,
   'uptimeSeconds': uptime_seconds,
-  'startedAt': started_ts,
-  'gatewayToken': gateway_token
+  'startedAt': started_ts
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -706,7 +704,7 @@ with open(cfg_path, 'w', encoding='utf-8') as f:
     f.write('\n')
 # Also write config.yaml for Dashboard API compatibility.
 # Dashboard /api/model/options reads root-level `model:` + `providers:`
-# (Hermes v12 schema), not OpenClaw-style `models.providers`.
+# Hermes v12 schema uses `models`; keep this path aligned with the current config shape.
 cfg_yaml_path = os.path.join(os.path.dirname(cfg_path), 'config.yaml')
 
 def _yaml_scalar(v):
@@ -3710,8 +3708,6 @@ cat <<'HTML'
       try {
         const data = await api(tab);
         if (tab === 'status') {
-          window.__ainasGatewayPort = data.port || 58790;
-          window.__ainasGatewayToken = data.gatewayToken || '';
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
           window.__statusWorkspaceDir = data.workspaceDir || '/volume1/hermes';
@@ -3769,8 +3765,6 @@ cat <<'HTML'
                 gridVals[4].textContent = nextUptime;
                 gridVals[6].textContent = String(nextPort);
               }
-              window.__ainasGatewayPort = (s && s.port) || window.__ainasGatewayPort || 58790;
-              window.__ainasGatewayToken = (s && s.gatewayToken) || window.__ainasGatewayToken || '';
             } catch (_) {}
           }, 1500);
           return;
@@ -4855,19 +4849,8 @@ cat <<'HTML'
       // 统一走 DSM nginx alias,避免 HTTPS 页面直连 HTTP:17682 触发混合内容拦截。
       return '/hermes-terminal/';
     }
-    function buildOpenclawWebUrl() {
-      try {
-        const token = String(window.__ainasGatewayToken || '').trim();
-        const base = window.location.origin + '/hermes-dashboard/default/chat';
-        const url = new URL(base);
-        if (token) url.searchParams.set('token', token);
-        return url.toString();
-      } catch (_) {
-        return '/hermes-dashboard/default/chat';
-      }
-    }
     function openHermesWeb() {
-      const u = buildOpenclawWebUrl();
+      const u = '/hermes-dashboard/default/chat';
       try {
         window.open(u, '_blank', 'noopener');
         setMsg('已在新窗口打开 Hermes Agent Web', 'ok');

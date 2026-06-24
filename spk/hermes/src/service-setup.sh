@@ -495,7 +495,7 @@ cfg.skills.entries = cfg.skills.entries && typeof cfg.skills.entries === "object
 const entries=cfg.skills.entries;
 const enable=["browser-automation","brave-search","weather","news-summary","taskflow"];
 const disable=[
-  "1password","apple-notes","apple-reminders","bear-notes","blogwatcher","blucli","camsnap","clawhub",
+  "1password","apple-notes","apple-reminders","bear-notes","blogwatcher","blucli","camsnap",
   "coding-agent","discord","eightctl","gemini","gh-issues","gifgrep","github","gog","goplaces",
   "himalaya","imsg","mcporter","model-usage","nano-pdf","notion","obsidian","openai-whisper",
   "openai-whisper-api","openhue","oracle","ordercli","peekaboo","sag","session-logs",
@@ -1785,8 +1785,11 @@ EOF
             cp -f "${HERMES_TEMPLATE_CONFIG}" "${HERMES_CONFIG_FILE}"
         else
             local fallback_token
-            fallback_token="$(tr -dc 'a-f0-9' </dev/urandom | head -c 32)"
-            [ -n "${fallback_token}" ] || fallback_token="123456"
+            fallback_token="$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(16))
+PY
+)"
             cat > "${HERMES_CONFIG_FILE}" <<EOF
 {
   "gateway": {
@@ -1800,7 +1803,7 @@ EOF
     },
     "auth": {
       "mode": "token",
-      "token": "123456"
+      "token": "${fallback_token}"
     }
   },
   "agents": {
@@ -1829,8 +1832,11 @@ EOF
             cp -f "${HERMES_TEMPLATE_CONFIG}" "${HERMES_CONFIG_FILE}"
         else
             local fallback_token2
-            fallback_token2="$(tr -dc 'a-f0-9' </dev/urandom | head -c 32)"
-            [ -n "${fallback_token2}" ] || fallback_token2="123456"
+            fallback_token2="$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(16))
+PY
+)"
             cat > "${HERMES_CONFIG_FILE}" <<EOF
 {
   "gateway": {
@@ -1844,7 +1850,7 @@ EOF
     },
     "auth": {
       "mode": "token",
-      "token": "123456"
+      "token": "${fallback_token2}"
     }
   },
   "agents": {

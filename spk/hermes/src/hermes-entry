@@ -254,7 +254,7 @@ Helper commands:
   hermes token    # print gateway auth token from current config
 
 Note:
-- SPK default token is 123456 unless changed in hermes.json.
+- The initial token is generated randomly during install and stored in hermes.json.
 HELP_EOF
 }
 

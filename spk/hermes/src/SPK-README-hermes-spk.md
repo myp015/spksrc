@@ -22,7 +22,7 @@
 - 默认用户目录（HOME）：`/volume1/hermes`
 - 默认状态目录：`/volume1/hermes/.hermes`
 - 默认配置文件：`/volume1/hermes/.hermes/hermes.json`
-- 模板默认 Token：`123456`（可在 `hermes.json` 中修改）
+- 安装时会生成随机 Token，并写入 `hermes.json`
 
 查看当前 token：
 
