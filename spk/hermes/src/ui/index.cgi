@@ -146,35 +146,52 @@ if [ "$native_api" = "1" ]; then
 import json, os, socket, subprocess, sys, time
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
-running = False
 service_running = False
-# 避免单次探测抖动导致"已停止 -> 运行中"闪烁:做短重试(端口探测)。
-for _ in range(3):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.6)
-    try:
-        s.connect(('127.0.0.1', port))
-        running = True
-        s.close()
-        break
-    except Exception:
-        running = False
-        try:
-            s.close()
-        except Exception:
-            pass
-        time.sleep(0.15)
 
-# gateway 进程探测兜底:按钮语义是"停止 gateway",不是"停止套件"。
-# 不能用 pgrep -f 正则(会误匹配当前检查命令自身 argv),改为精确 comm 匹配。
-if not running:
+
+def _cmdline_contains_gateway(pid):
     try:
-        r = subprocess.run([
-            'pgrep', '-x', 'hermes-gatewa'
-        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=1.5)
-        running = (r.returncode == 0)
+        pid = int(pid)
     except Exception:
-        pass
+        return False
+    if pid <= 1 or not os.path.exists(f'/proc/{pid}'):
+        return False
+    try:
+        raw = open(f'/proc/{pid}/cmdline', 'rb').read().replace(b'\x00', b' ').decode('utf-8', 'ignore')
+        norm = ' '.join(raw.split())
+    except Exception:
+        return True
+    if not norm:
+        return True
+    patterns = (
+        '/var/packages/hermes/target/bin/hermes gateway run',
+        'python3.12 -m hermes_cli.main gateway run',
+        'hermes-gateway',
+    )
+    return any(p in norm for p in patterns)
+
+
+def _find_live_gateway_pid():
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/status', timeout=3) as resp:
+            payload = (resp.read() or b'').decode('utf-8', 'ignore') or '{}'
+        data = json.loads(payload)
+    except Exception:
+        data = {}
+    pid = data.get('gateway_pid')
+    try:
+        pid = int(pid)
+    except Exception:
+        pid = None
+    if pid and _cmdline_contains_gateway(pid):
+        return {'ok': True, 'running': True, 'pid': pid, 'state': data.get('gateway_state') or ''}
+    return {'ok': bool(data), 'running': False, 'pid': pid, 'state': data.get('gateway_state') or ''}
+
+
+gateway_status = _find_live_gateway_pid()
+running = bool(gateway_status.get('running'))
+gateway_pid = gateway_status.get('pid')
 
 # 套件运行态(独立于 gateway 端口探活):用于按钮可用性判断。
 # 目标:即便 gateway 进程异常,仍允许"停止 Hermes Agent"按钮可点击。
@@ -2783,18 +2800,51 @@ def wait_port_free(port, seconds=6):
         time.sleep(0.5)
     return not port_listening(port)
 
+def _cmdline_contains_gateway(pid):
+    try:
+        pid = int(pid)
+    except Exception:
+        return False
+    if pid <= 1 or not os.path.exists(f'/proc/{pid}'):
+        return False
+    try:
+        raw = open(f'/proc/{pid}/cmdline', 'rb').read().replace(b'\x00', b' ').decode('utf-8', 'ignore')
+        norm = ' '.join(raw.split())
+    except Exception:
+        return True
+    if not norm:
+        return True
+    patterns = (
+        '/var/packages/hermes/target/bin/hermes gateway run',
+        'python3.12 -m hermes_cli.main gateway run',
+        'hermes-gateway',
+    )
+    return any(p in norm for p in patterns)
+
+
 def dashboard_gateway_status():
-    # gw_port is the Dashboard port. The actual Hermes Gateway is managed by
-    # Dashboard and reported by /api/status; do not infer gateway state from
-    # the Dashboard listening socket itself.
+    # gw_port is the Dashboard port. The actual Hermes Gateway is reported by
+    # /api/status; only treat it as running when the reported pid is real.
     try:
         import urllib.request
         with urllib.request.urlopen(f'http://127.0.0.1:{gw_port}/api/status', timeout=3) as resp:
             data = json.loads(resp.read().decode('utf-8', 'ignore') or '{}')
+        pid = data.get('gateway_pid')
+        try:
+            pid = int(pid)
+        except Exception:
+            pid = None
+        if pid and _cmdline_contains_gateway(pid):
+            return {
+                'ok': True,
+                'running': True,
+                'pid': pid,
+                'state': data.get('gateway_state') or '',
+            }
         return {
             'ok': True,
-            'running': bool(data.get('gateway_running') or data.get('gateway_state') == 'running'),
-            'pid': data.get('gateway_pid'),
+            'running': False,
+            'pid': pid,
             'state': data.get('gateway_state') or '',
         }
     except Exception as e:

@@ -711,9 +711,8 @@ start_dashboard_if_needed() {
 }
 
 start_gateway_if_needed() {
-    local gw_port="$(get_gateway_port_from_config)"
     # Best-effort auto-start for install/init flows only.
-    if [ "$(gateway_port_up "${gw_port}")" = "1" ]; then
+    if gateway_process_alive; then
         return 0
     fi
 
@@ -737,12 +736,20 @@ start_gateway_if_needed() {
         GATEWAY_ALLOW_ALL_USERS=true HERMES_NO_RESPAWN=0 HERMES_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${HERMES_STATE_DIR}/.cache/jiti" TMPDIR="${HERMES_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --replace --accept-hooks >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
-    # If the detached pid file is missing or stale, fall back to the newest live hermes gateway pid.
-    if ! [ -s "${GATEWAY_PID_FILE}" ] || ! kill -0 "$(cat "${GATEWAY_PID_FILE}" 2>/dev/null || echo 0)" >/dev/null 2>&1; then
-        local live_pid
-        live_pid="$(ps -eo pid=,cmd= | awk '/python3\.12 -m hermes_cli\.main gateway run --accept-hooks/ {print $1; exit}' || true)"
-        if [ -n "${live_pid}" ]; then
-            printf '%s\n' "${live_pid}" > "${GATEWAY_PID_FILE}" 2>/dev/null || true
+    # If the detached pid file is missing or stale, do not invent a live pid.
+    # The UI/status path must only trust a real process that matches the gateway command.
+    if [ -s "${GATEWAY_PID_FILE}" ]; then
+        local stored_pid
+        stored_pid="$(cat "${GATEWAY_PID_FILE}" 2>/dev/null | tr -d '[:space:]')"
+        if [ -n "${stored_pid}" ] && [ -r "/proc/${stored_pid}/cmdline" ]; then
+            local stored_cmdline
+            stored_cmdline="$(tr '\0' ' ' < "/proc/${stored_pid}/cmdline" 2>/dev/null || true)"
+            case "${stored_cmdline}" in
+                *"/var/packages/hermes/target/bin/hermes gateway run"*|*"python3.12 -m hermes_cli.main gateway run"*|*"hermes-gateway"*) : ;;
+                *) rm -f "${GATEWAY_PID_FILE}" 2>/dev/null || true ;;
+            esac
+        else
+            rm -f "${GATEWAY_PID_FILE}" 2>/dev/null || true
         fi
     fi
     sleep 1
@@ -2568,19 +2575,39 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # Clear stale pid marker before a fresh start.
     [ -n "${PID_FILE}" ] && rm -f "${PID_FILE}" 2>/dev/null || true
 
-gateway_status() {
+gateway_process_alive() {
     local pid_file="${GATEWAY_PID_FILE:-${SYNOPKG_PKGVAR}/hermes-gateway.runtime.pid}"
     if [ -s "${pid_file}" ]; then
-        local pid="$(cat "${pid_file}" 2>/dev/null)"
-        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
-            return 0
+        local pid
+        pid="$(cat "${pid_file}" 2>/dev/null | tr -d '[:space:]')"
+        if [ -n "${pid}" ] && [ -d "/proc/${pid}" ] && [ -r "/proc/${pid}/cmdline" ]; then
+            local cmdline
+            cmdline="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+            case "${cmdline}" in
+                *"/var/packages/hermes/target/bin/hermes gateway run"*|*"python3.12 -m hermes_cli.main gateway run"*|*"hermes-gateway"*)
+                    return 0
+                    ;;
+            esac
         fi
     fi
-    # Fallback: check for any live gateway process
-    if ps -eo pid=,cmd= | grep -q "[g]ateway.*run"; then
-        return 0
-    fi
+
+    local pid
+    for pid in $(ps -eo pid=,cmd= 2>/dev/null | awk '/hermes gateway run|python3\.12 -m hermes_cli\.main gateway run|hermes-gateway/ {print $1}' | grep -E '^[0-9]+$' || true); do
+        if [ -r "/proc/${pid}/cmdline" ]; then
+            local cmdline
+            cmdline="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+            case "${cmdline}" in
+                *"/var/packages/hermes/target/bin/hermes gateway run"*|*"python3.12 -m hermes_cli.main gateway run"*|*"hermes-gateway"*)
+                    return 0
+                    ;;
+            esac
+        fi
+    done
     return 1
+}
+
+gateway_status() {
+    gateway_process_alive
 }
 
     # Auto-start only after channel/plugin config has been repaired, otherwise
