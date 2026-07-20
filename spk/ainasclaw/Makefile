@@ -7,8 +7,9 @@ $(error Failed to resolve latest stable openclaw version from upstream tags)
 endif
 # Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
 # Put custom build identity into numeric SPK_REV only.
-# Pin the npm-published latest release for reproducible SPK builds.
-OPENCLAW_NPM_VERS := 2026.7.1-2
+# Pin the latest stable npm release. DSM package INFO versions do not accept
+# npm prerelease suffixes such as `-2`.
+OPENCLAW_NPM_VERS := 2026.7.1
 MIN_NODEJS_RUNTIME_VERS := 24.11.1
 NODEJS_RUNTIME_VERS := $(shell sh -c 'set -e; \
 	v=""; \
