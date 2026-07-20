@@ -1912,7 +1912,7 @@ EOF
   },
   "agents": {
     "defaults": {
-      "workspace": "${OPENCLAW_WORKSPACE}/.openclaw"
+      "workspace": "${OPENCLAW_WORKSPACE}"
     }
   },
   "plugins": {
@@ -1956,7 +1956,7 @@ EOF
   },
   "agents": {
     "defaults": {
-      "workspace": "${OPENCLAW_WORKSPACE}/.openclaw"
+      "workspace": "${OPENCLAW_WORKSPACE}"
     }
   },
   "plugins": {
@@ -2002,7 +2002,7 @@ try {
   const c = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
   c.agents = c.agents || {};
   c.agents.defaults = c.agents.defaults || {};
-  c.agents.defaults.workspace = statePath;
+  c.agents.defaults.workspace = ws;
   const explicitDefaultModelRef = typeof c.agents.defaults.model === "string" ? c.agents.defaults.model : c.agents.defaults.model && typeof c.agents.defaults.model === "object" ? c.agents.defaults.model.primary : "";
   const inferFirstConfiguredModelRef = () => {
     const providers = c.models && typeof c.models === "object" && c.models.providers && typeof c.models.providers === "object" ? c.models.providers : {};
