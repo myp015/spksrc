@@ -29,7 +29,10 @@
       "subagents": {
         "maxConcurrent": 8
       },
-      "workspace": "/volume1/openclaw"
+      "workspace": "/volume1/openclaw",
+      "memorySearch": {
+        "enabled": false
+      }
     }
   },
   "messages": {
@@ -43,13 +46,13 @@
       "provider": "microsoft",
       "providers": {
         "microsoft": {
-          "voice": "zh-CN-XiaoxiaoNeural",
           "lang": "zh-CN",
           "outputFormat": "ogg-24khz-16bit-mono-opus",
           "pitch": "+0Hz",
           "rate": "+0%",
           "volume": "+0%",
-          "timeoutMs": 30000
+          "timeoutMs": 30000,
+          "speakerVoice": "zh-CN-XiaoxiaoNeural"
         }
       }
     }
@@ -60,20 +63,45 @@
   },
   "skills": {
     "entries": {
-      "browser-automation": { "enabled": true },
-      "brave-search": { "enabled": true },
-      "weather": { "enabled": true },
-      "news-summary": { "enabled": true },
-      "taskflow": { "enabled": true },
-
-      "session-logs": { "enabled": false },
-      "tmux": { "enabled": false },
-      "slack": { "enabled": false },
-      "discord": { "enabled": false },
-      "notion": { "enabled": false },
-      "sag": { "enabled": false },
-      "openai-whisper": { "enabled": false },
-      "openai-whisper-api": { "enabled": false }
+      "browser-automation": {
+        "enabled": true
+      },
+      "brave-search": {
+        "enabled": true
+      },
+      "weather": {
+        "enabled": true
+      },
+      "news-summary": {
+        "enabled": true
+      },
+      "taskflow": {
+        "enabled": true
+      },
+      "session-logs": {
+        "enabled": false
+      },
+      "tmux": {
+        "enabled": false
+      },
+      "slack": {
+        "enabled": false
+      },
+      "discord": {
+        "enabled": false
+      },
+      "notion": {
+        "enabled": false
+      },
+      "sag": {
+        "enabled": false
+      },
+      "openai-whisper": {
+        "enabled": false
+      },
+      "openai-whisper-api": {
+        "enabled": false
+      }
     }
   },
   "tools": {
@@ -81,10 +109,18 @@
     "elevated": {
       "enabled": true,
       "allowFrom": {
-        "webchat": ["*"],
-        "feishu": ["*"],
-        "dingtalk": ["*"],
-        "qqbot": ["*"]
+        "webchat": [
+          "*"
+        ],
+        "feishu": [
+          "*"
+        ],
+        "dingtalk": [
+          "*"
+        ],
+        "qqbot": [
+          "*"
+        ]
       }
     },
     "sessions": {
@@ -160,12 +196,17 @@
       },
       "openclaw-weixin": {
         "enabled": false
+      },
+      "codex": {
+        "enabled": true
       }
     },
     "enabled": true,
     "bundledDiscovery": "allowlist",
     "allow": [
-      "browser"
+      "browser",
+      "memory-core",
+      "codex"
     ]
   },
   "memory": {

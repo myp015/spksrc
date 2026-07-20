@@ -770,7 +770,7 @@ start_gateway_if_needed() {
     local bundled_plugin_allowlist
     bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
         OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
@@ -1459,7 +1459,43 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
   // Preserve existing channel/plugin config when wizard credentials are absent.
 }
 
-fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+cfg.agents.defaults.memorySearch = cfg.agents.defaults.memorySearch || {};
+if (typeof cfg.agents.defaults.memorySearch.enabled !== "boolean") cfg.agents.defaults.memorySearch.enabled = false;
+cfg.plugins.entries.codex = { enabled: true };
+for (const pluginId of ["memory-core", "codex"]) if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
+
+// Fresh installs must not leave the generated gateway/model/channel credentials
+// in openclaw.json. Move the known SecretRef-capable values into a private
+// package-local file before the service account starts.
+const secretsPath = path.join(path.dirname(p), "secrets.json");
+const secretValues = {};
+const putSecret = (pointer, value) => {
+  if (typeof value !== "string" || !value.trim()) return false;
+  let target = secretValues;
+  const parts = pointer.split("/").filter(Boolean);
+  for (const part of parts.slice(0, -1)) target = target[part] = target[part] || {};
+  target[parts[parts.length - 1]] = value;
+  return true;
+};
+const ref = (pointer) => ({ source: "file", provider: "ainasclaw", id: pointer });
+if (putSecret("/gateway/auth/token", cfg.gateway.auth.token)) cfg.gateway.auth.token = ref("/gateway/auth/token");
+for (const [providerId, provider] of Object.entries(cfg.models.providers || {})) {
+  const pointer = `/models/providers/${providerId.replace(/~/g, "~0").replace(/\//g, "~1")}/apiKey`;
+  if (putSecret(pointer, provider?.apiKey)) provider.apiKey = ref(pointer);
+}
+for (const [accountId, account] of Object.entries(cfg.channels.feishu?.accounts || {})) {
+  const pointer = `/channels/feishu/accounts/${accountId.replace(/~/g, "~0").replace(/\//g, "~1")}/appSecret`;
+  if (putSecret(pointer, account?.appSecret)) account.appSecret = ref(pointer);
+}
+if (Object.keys(secretValues).length) {
+  cfg.secrets = cfg.secrets || {};
+  cfg.secrets.providers = cfg.secrets.providers || {};
+  cfg.secrets.providers.ainasclaw = { source: "file", path: secretsPath, mode: "json" };
+  fs.writeFileSync(secretsPath, JSON.stringify(secretValues, null, 2) + "\n", { mode: 0o600 });
+  fs.chmodSync(secretsPath, 0o600);
+}
+fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
+fs.chmodSync(p, 0o600);
 ' "${bootstrap_config_file}" "${OPENCLAW_APP_DIR}"
 
         # Wizard values are applied by the node block above. Sync DSM package
@@ -1674,7 +1710,7 @@ case "$ws" in
 esac
 state="${ws}/.openclaw"
 mkdir -p "$ws" "$state" "$state/agents/main/sessions" 2>/dev/null || true
-export HOME="$state"
+export HOME="$ws"
 export OPENCLAW_WORKSPACE_DIR="$ws"
 export OPENCLAW_STATE_DIR="$state"
 export OPENCLAW_CONFIG_PATH="$state/openclaw.json"
@@ -1940,7 +1976,14 @@ try {
   if (!c.gateway.auth.mode) c.gateway.auth.mode = "token";
   if (!c.gateway.auth.token) c.gateway.auth.token = crypto.randomBytes(16).toString("hex");
 
+  c.agents.defaults.memorySearch = c.agents.defaults.memorySearch || {};
+  if (typeof c.agents.defaults.memorySearch.enabled !== "boolean") c.agents.defaults.memorySearch.enabled = false;
+
   c.plugins = c.plugins || {};
+  c.plugins.entries = c.plugins.entries || {};
+  c.plugins.entries.codex = { enabled: true };
+  c.plugins.allow = Array.isArray(c.plugins.allow) ? c.plugins.allow : [];
+  for (const pluginId of ["memory-core", "codex"]) if (!c.plugins.allow.includes(pluginId)) c.plugins.allow.push(pluginId);
   c.plugins.bundledDiscovery = "allowlist";
   if (Object.prototype.hasOwnProperty.call(c.plugins, "installs")) delete c.plugins.installs;
 
@@ -1975,7 +2018,7 @@ try {
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
     export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE}"
-    export HOME="${OPENCLAW_STATE_DIR}"
+    export HOME="${OPENCLAW_WORKSPACE}"
     export NPM_CONFIG_CACHE="${runtime_home_dir}/.npm"
     export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
     export XDG_CONFIG_HOME="${runtime_home_dir}/.config"
@@ -2732,8 +2775,8 @@ service_postuninst() {
 # Default exports before prestart recalculates runtime paths.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
-export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR_BASE}"
-export HOME="${OPENCLAW_STATE_DIR_BASE}"
+export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DEFAULT}"
+export HOME="${OPENCLAW_WORKSPACE_DEFAULT}"
 export NPM_CONFIG_CACHE="${OPENCLAW_STATE_DIR_BASE}/.npm"
 export XDG_CACHE_HOME="${OPENCLAW_STATE_DIR_BASE}/.cache"
 export XDG_CONFIG_HOME="${OPENCLAW_STATE_DIR_BASE}/.config"
