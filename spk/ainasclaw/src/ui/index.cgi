@@ -4076,7 +4076,9 @@ cat <<'HTML'
       document.getElementById('dlg_base_url').value = p.baseUrl || '';
       document.getElementById('dlg_api_key').value = p.apiKeyMasked || '';
       document.getElementById('dlg_api_key').dataset.raw = rawApiKey;
-      document.getElementById('modelModalMask').dataset.originalProviderId = originalId;
+      const modalMask = document.getElementById('modelModalMask');
+      modalMask.dataset.originalProviderId = originalId;
+      modalMask.dataset.rawModels = JSON.stringify(Array.isArray(p.rawModels) ? p.rawModels : []);
       setModelSelectOptions(currentIds, currentIds);
       if (!editing) {
         applyProviderPresetDialog();
@@ -4108,6 +4110,7 @@ cat <<'HTML'
       document.body.classList.remove('modal-open');
       document.getElementById('modelModalMask').dataset.editIndex = '';
       document.getElementById('modelModalMask').dataset.originalProviderId = '';
+      document.getElementById('modelModalMask').dataset.rawModels = '';
     }
     async function discoverModelsForDialog() {
       await triggerDiscoverModelsForDialog();
@@ -4149,7 +4152,13 @@ cat <<'HTML'
         const providers = (data.configuredProviders || []).slice();
         const idxRaw = document.getElementById('modelModalMask').dataset.editIndex;
         const idx = idxRaw === '' ? -1 : parseInt(idxRaw, 10);
-        const originalProviderId = (document.getElementById('modelModalMask').dataset.originalProviderId || '').trim();
+        const modelModalMask = document.getElementById('modelModalMask');
+        const originalProviderId = (modelModalMask.dataset.originalProviderId || '').trim();
+        let rawModels = [];
+        try {
+          const parsed = JSON.parse(modelModalMask.dataset.rawModels || '[]');
+          rawModels = Array.isArray(parsed) ? parsed : [];
+        } catch (_) {}
         const providerId = (document.getElementById('dlg_provider_id').value || 'custom-openai').trim();
         const baseUrl = (document.getElementById('dlg_base_url').value || '').trim();
         const selectedModelIds = getSelectedModelIdsFromHidden();
@@ -4187,7 +4196,7 @@ cat <<'HTML'
           // Keep metadata obtained through "同步到本地缓存" when the user
           // subsequently edits this provider; manually entered IDs are
           // completed by the server-side save path.
-          rawModels: Array.isArray(p.rawModels) ? p.rawModels : [],
+          rawModels: rawModels,
           models: selectedModelIds.map(id => ({ modelId: id, id: id }))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
