@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-BASE_DEFAULT="/volume1/openclaw"
+# Runtime state belongs under the DSM service account home: $HOME/.openclaw.
+BASE_DEFAULT="/var/packages/ainasclaw/home"
 WORKSPACE_PTR_FILE="/var/packages/ainasclaw/var/workspace.path"
 WORKSPACE_HOME_PTR_FILE="/var/packages/ainasclaw/var/workspace.home.path"
 WORKSPACE_HOME_DEFAULT="$BASE_DEFAULT"
@@ -123,7 +124,7 @@ if [ "$WORKSPACE_FROM_PTR" = "1" ] && [ -z "${CLI_CONFIG_PATH:-}" ] && [ -z "${O
 elif [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
   CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
-HOME="$WORKDIR"
+HOME="$WORKSPACE_DIR"
 
 # No implicit config migration from default workspace when switching user workspace.
 # New/empty workspace should be initialized explicitly by start/setup flow.
@@ -184,16 +185,16 @@ PY
 OPENCLAW_SERVICE_USER="$(resolve_service_user)"
 USER="$OPENCLAW_SERVICE_USER"
 LOGNAME="$OPENCLAW_SERVICE_USER"
-# Keep runtime state and user-install locations under .openclaw.
-HOME_DEFAULT="$WORKSPACE_DIR/.openclaw"
+# HOME is the workspace; OpenClaw state remains at $HOME/.openclaw.
+HOME_DEFAULT="$WORKSPACE_DIR"
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
-# Ensure doctor/session-store checks always pass regardless of HOME interpretation.
-mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" "$HOME/agents/main/sessions" 2>/dev/null || true
+# Keep all OpenClaw state beneath $HOME/.openclaw, without a nested state dir.
+mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" 2>/dev/null || true
 chmod 700 "$OPENCLAW_STATE_DIR" "$HOME" 2>/dev/null || true
-NPM_CONFIG_CACHE="$HOME/.npm"
-XDG_CACHE_HOME="$HOME/.cache"
-XDG_CONFIG_HOME="$HOME/.config"
-XDG_DATA_HOME="$HOME/.local/share"
+NPM_CONFIG_CACHE="$OPENCLAW_STATE_DIR/.npm"
+XDG_CACHE_HOME="$OPENCLAW_STATE_DIR/.cache"
+XDG_CONFIG_HOME="$OPENCLAW_STATE_DIR/.config"
+XDG_DATA_HOME="$OPENCLAW_STATE_DIR/.local/share"
 JITI_FS_CACHE="$OPENCLAW_STATE_DIR/.cache/jiti"
 TMPDIR="$OPENCLAW_STATE_DIR/.tmp"
 mkdir -p "$JITI_FS_CACHE" "$TMPDIR" 2>/dev/null || true

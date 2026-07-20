@@ -1,7 +1,8 @@
 OPENCLAW_NODE="${SYNOPKG_PKGDEST}/bin/node"
 OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
-OPENCLAW_WORKSPACE_DEFAULT="/volume1/openclaw"
+# Keep all mutable workspace/state under the DSM service account home.
+OPENCLAW_WORKSPACE_DEFAULT="/var/packages/ainasclaw/home"
 OPENCLAW_STATE_DIR_BASE="${OPENCLAW_WORKSPACE_DEFAULT}/.openclaw"
 OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
@@ -1030,6 +1031,64 @@ SUDOERS_EOF
     chmod 440 "${sudoers_file}" 2>/dev/null || true
 }
 
+write_openclaw_web_proxy() {
+    # DSM nginx is the access boundary for this same-origin Control UI route.
+    # The gateway token remains server-side and is injected only on proxy hops.
+    local cfg="${OPENCLAW_CONFIG_FILE:-${OPENCLAW_CONFIG_FILE_BASE}}"
+    [ -f "${cfg}" ] || return 0
+    local token port
+    token="$("${OPENCLAW_NODE}" - "${cfg}" <<'NODE'
+const fs = require("fs");
+const cfgPath = process.argv[2];
+try {
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  let token = cfg?.gateway?.auth?.token;
+  if (token && typeof token === "object" && token.source === "file") {
+    const provider = cfg?.secrets?.providers?.[token.provider];
+    if (provider?.source === "file" && typeof provider.path === "string") {
+      let value = JSON.parse(fs.readFileSync(provider.path, "utf8"));
+      for (const part of String(token.id || "").split("/").filter(Boolean)) value = value?.[part];
+      token = value;
+    }
+  }
+  if (typeof token === "string" && /^[A-Za-z0-9._~-]+$/.test(token)) process.stdout.write(token);
+} catch {}
+NODE
+)"
+    port="$(get_gateway_port_from_config "${cfg}")"
+    [ -n "${port}" ] || port="58789"
+    [ -n "${token}" ] || return 0
+
+    cat > "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" <<EOF
+location = /openclaw-web { return 302 /openclaw-web/; }
+location ^~ /openclaw-web/ {
+    # This route requires an authenticated DSM session; the gateway token never
+    # reaches the browser URL, local storage, or page source.
+    if (\$http_cookie !~* "(^|;\\\\s*)id=") { return 403; }
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header Cookie \$http_cookie;
+    proxy_set_header Authorization "Bearer ${token}";
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 60s;
+    proxy_pass http://127.0.0.1:${port}/default/;
+    proxy_buffering off;
+}
+EOF
+    chmod 600 "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" 2>/dev/null || true
+    ln -sfn "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" /etc/nginx/conf.d/alias.openclaw-web.conf 2>/dev/null || true
+    if nginx -t >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+}
+
 service_postinst() {
     ensure_openclaw_in_path
     ensure_terminal_alias_sudoers
@@ -1501,6 +1560,7 @@ fs.chmodSync(p, 0o600);
         # Wizard values are applied by the node block above. Sync DSM package
         # adminport after that write so a custom gateway port is reflected too.
         sync_dsm_package_info_port "$(get_gateway_port_from_config "${bootstrap_config_file}")"
+        write_openclaw_web_proxy
 
         OPENCLAW_WORKSPACE="$(${OPENCLAW_NODE} -e 'const fs=require("fs"); const p=process.argv[1]; const c=JSON.parse(fs.readFileSync(p,"utf8")); const w=(c&&c.agents&&c.agents.defaults&&typeof c.agents.defaults.workspace==="string")?c.agents.defaults.workspace.trim():""; process.stdout.write(w);' "${bootstrap_config_file}")"
         if [ -z "${OPENCLAW_WORKSPACE}" ]; then
@@ -1670,6 +1730,7 @@ NGINX_EOF
             fi
         }
     fi
+    write_openclaw_web_proxy
 
     # AiNasClaw bundled terminal (ttyd) integration (no dependency on external terminal package).
     # nginx alias is prepared in service_postinst (root context); here we only ensure ttyd process.
@@ -2759,7 +2820,8 @@ service_poststop() {
 service_preuninst() {
     # uninstall hook: ensure detached gateway and terminal are cleaned first
     service_poststop
-    rm -f /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null 2>&1 || true
+    rm -f /etc/nginx/conf.d/alias.openclaw-terminal.conf >/dev/null || true
+    rm -f /etc/nginx/conf.d/alias.openclaw-web.conf >/dev/null || true
     rm -f /etc/sudoers.d/ainasclaw-terminal >/dev/null 2>&1 || true
     rm -f /etc/nginx/conf.d/alias.openclaw2-terminal.conf >/dev/null 2>&1 || true
     if nginx -t >/dev/null 2>&1; then

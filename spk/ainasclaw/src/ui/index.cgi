@@ -4711,17 +4711,10 @@ cat <<'HTML'
       return '/openclaw-terminal/';
     }
     function buildOpenclawWebUrl() {
-      try {
-        const protocol = 'http:';
-        const host = window.location.hostname || '127.0.0.1';
-        const port = Number(window.__ainasGatewayPort || 58789) || 58789;
-        const token = String(window.__ainasGatewayToken || '').trim();
-        const url = new URL(protocol + '//' + host + ':' + port + '/default/chat');
-        if (token) url.searchParams.set('token', token);
-        return url.toString();
-      } catch (_) {
-        return '/default/chat';
-      }
+      // Same-origin DSM nginx reverse proxy. It follows the DSM management
+      // port automatically (HTTPS 5001 by default, or a user-customized port)
+      // and keeps the gateway token server-side.
+      return '/openclaw-web/chat';
     }
     function openOpenclawWeb() {
       const u = buildOpenclawWebUrl();
