@@ -7,30 +7,8 @@ $(error Failed to resolve latest stable openclaw version from upstream tags)
 endif
 # Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
 # Put custom build identity into numeric SPK_REV only.
-# Prefer npm-published latest; gracefully fall back to upstream git tag if registry/network tooling is unavailable in CI.
-OPENCLAW_NPM_VERS := $(shell sh -c 'set -e; \
-	v=""; \
-	if command -v curl >/dev/null 2>&1; then \
-		v=$$(curl -fsSL --retry 3 --retry-delay 1 https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p"); \
-	fi; \
-	if [ -z "$$v" ] && command -v wget >/dev/null 2>&1; then \
-		v=$$(wget -qO- https://registry.npmjs.org/openclaw/latest 2>/dev/null | tr -d "\\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p"); \
-	fi; \
-	echo "$$v"')
-MIN_OPENCLAW_NPM_VERS := 2026.5.12
-ifeq ($(strip $(OPENCLAW_NPM_VERS)),)
-OPENCLAW_NPM_VERS := $(LATEST_OPENCLAW_VERS)
-$(warning Failed to resolve npm latest from registry; fallback to upstream git tag v$(LATEST_OPENCLAW_VERS))
-endif
-ifneq ($(shell printf '%s\n%s\n' $(MIN_OPENCLAW_NPM_VERS) $(OPENCLAW_NPM_VERS) | sort -V | head -n1),$(MIN_OPENCLAW_NPM_VERS))
-$(warning Resolved OpenClaw npm version $(OPENCLAW_NPM_VERS) is below minimum $(MIN_OPENCLAW_NPM_VERS); force minimum)
-OPENCLAW_NPM_VERS := $(MIN_OPENCLAW_NPM_VERS)
-endif
-ifneq ($(strip $(LATEST_OPENCLAW_VERS)),)
-ifneq ($(OPENCLAW_NPM_VERS),$(LATEST_OPENCLAW_VERS))
-$(warning Upstream git latest is v$(LATEST_OPENCLAW_VERS), npm latest is $(OPENCLAW_NPM_VERS); build pins npm latest)
-endif
-endif
+# Pin the npm-published latest release for reproducible SPK builds.
+OPENCLAW_NPM_VERS := 2026.7.1-2
 MIN_NODEJS_RUNTIME_VERS := 24.11.1
 NODEJS_RUNTIME_VERS := $(shell sh -c 'set -e; \
 	v=""; \
@@ -130,11 +108,11 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(OPENCLAW_NPM_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
-		@openclaw/feishu@latest \
-		@soimy/dingtalk@latest \
-		@sunnoy/wecom@latest \
-		@tencent-connect/openclaw-qqbot@latest \
-		@tencent-weixin/openclaw-weixin@latest \
+		@openclaw/feishu@2026.7.1 \
+		@soimy/dingtalk@3.6.6 \
+		@sunnoy/wecom@3.4.0 \
+		@tencent-connect/openclaw-qqbot@2.0.0 \
+		@tencent-weixin/openclaw-weixin@2.4.6 \
 		acpx@0.5.3 \
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
