@@ -390,7 +390,9 @@ for pid, p in providers_map.items():
         'displayName': p.get('displayName') or pid,
         'api': p.get('api') or 'openai-completions',
         'baseUrl': p.get('baseUrl') or '',
-        'models': []
+        'models': [],
+        # Preserve configured metadata so manual models remain resolver-ready.
+        'rawModels': p.get('models') if isinstance(p.get('models'), list) else []
     }
     if isinstance(p.get('apiKey'), str) and p.get('apiKey'):
         item['apiKeyMasked'] = '*' * min(16, max(8, len(p.get('apiKey'))))
@@ -615,12 +617,29 @@ for p in providers_payload:
             provider['apiKey'] = old_key
     elif old_key:
         provider['apiKey'] = old_key
+    raw_models = p.get('rawModels') if isinstance(p.get('rawModels'), list) else []
+    raw_by_id = {}
+    for raw_model in raw_models:
+        if not isinstance(raw_model, dict):
+            continue
+        raw_id = (raw_model.get('id') or raw_model.get('modelId') or '').strip()
+        if raw_id:
+            raw_by_id[raw_id] = raw_model
     for m in (p.get('models') or []):
         if not isinstance(m, dict):
             continue
         mid = (m.get('modelId') or m.get('id') or '').strip()
-        if mid:
-            provider['models'].append({'id': mid, 'name': f"{pid} / {mid}"})
+        if not mid:
+            continue
+        # Catalog-selected models retain their richer metadata. A manually
+        # entered model gets the fields OpenClaw's resolver requires instead
+        # of the old incomplete `{id,name}` entry.
+        saved = dict(raw_by_id.get(mid) or {})
+        saved['id'] = mid
+        saved['name'] = str(saved.get('name') or (f"{pid} / {mid}"))
+        saved.setdefault('contextWindow', 128000)
+        saved.setdefault('maxTokens', 16384)
+        provider['models'].append(saved)
     providers_map[pid] = provider
 cfg.setdefault('models', {})['providers'] = providers_map
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
@@ -4165,6 +4184,10 @@ cat <<'HTML'
           api: document.getElementById('dlg_api').value,
           baseUrl: baseUrl,
           apiKey: apiKey,
+          // Keep metadata obtained through "同步到本地缓存" when the user
+          // subsequently edits this provider; manually entered IDs are
+          // completed by the server-side save path.
+          rawModels: Array.isArray(p.rawModels) ? p.rawModels : [],
           models: selectedModelIds.map(id => ({ modelId: id, id: id }))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
