@@ -1077,7 +1077,7 @@ location ^~ /openclaw-web/ {
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
     proxy_connect_timeout 60s;
-    proxy_pass http://127.0.0.1:${port}/default/;
+    proxy_pass http://127.0.0.1:${port}/openclaw-web/;
     proxy_buffering off;
 }
 EOF
@@ -1387,6 +1387,8 @@ if (workspace) cfg.agents.defaults.workspace = workspace;
 cfg.gateway = cfg.gateway || {};
 if (!cfg.gateway.mode) cfg.gateway.mode = "local";
 if (!cfg.gateway.bind) cfg.gateway.bind = "lan";
+cfg.gateway.controlUi = cfg.gateway.controlUi || {};
+cfg.gateway.controlUi.basePath = "/openclaw-web";
 if (Number.isInteger(wizardGatewayPort) && wizardGatewayPort >= 1024 && wizardGatewayPort <= 65535) {
   cfg.gateway.port = wizardGatewayPort;
 }
@@ -2031,6 +2033,8 @@ try {
   c.gateway = c.gateway || {};
   if (!c.gateway.mode) c.gateway.mode = "local";
   if (!c.gateway.bind) c.gateway.bind = "lan";
+  c.gateway.controlUi = c.gateway.controlUi && typeof c.gateway.controlUi === "object" ? c.gateway.controlUi : {};
+  c.gateway.controlUi.basePath = "/openclaw-web";
   if (!c.gateway.port) c.gateway.port = 58789;
   c.gateway.auth = c.gateway.auth || {};
   if (!c.gateway.auth.mode) c.gateway.auth.mode = "token";
