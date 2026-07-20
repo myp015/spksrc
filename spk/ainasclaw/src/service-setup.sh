@@ -1060,7 +1060,25 @@ NODE
     [ -n "${token}" ] || return 0
 
     cat > "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" <<EOF
-location = /openclaw-web { return 302 /openclaw-web/; }
+# Control UI upgrades its WebSocket on the exact base path (without a trailing
+# slash). WebSocket clients cannot follow an HTTP 302, so proxy it directly.
+location = /openclaw-web {
+    if ($http_cookie !~* "(^|;\\s*)id=") { return 403; }
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header Cookie $http_cookie;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 60s;
+    proxy_pass http://127.0.0.1:${port}/openclaw-web;
+    proxy_buffering off;
+}
 location ^~ /openclaw-web/ {
     # This route requires an authenticated DSM session; the gateway token never
     # reaches the browser URL, local storage, or page source.
