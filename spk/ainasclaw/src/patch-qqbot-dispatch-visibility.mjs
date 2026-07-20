@@ -78,7 +78,12 @@ for (const file of candidates) {
 }
 
 if (patchedFiles === 0 && alreadyPatched === 0) {
-  fail(`no qqbot gateway files patched (missing=${missingFiles})`);
+  // QQBot 2.x owns dispatching inside its single dist/index.cjs bundle and no
+  // longer exposes the legacy gateway.js targets. Its own dispatch pipeline
+  // already handles final delivery, so the legacy observability patch is not
+  // applicable. Keep older layouts patched while allowing the modern plugin.
+  console.log(`[patch-qqbot-dispatch-visibility] legacy gateway targets absent; skip (missing=${missingFiles})`);
+  process.exit(0);
 }
 
 console.log(`[patch-qqbot-dispatch-visibility] done, patched=${patchedFiles}, already=${alreadyPatched}, missing=${missingFiles}`);
