@@ -1,10 +1,4 @@
 SPK_NAME = ainasclaw
-# Always resolve latest stable upstream tag (vX.Y.Z...) at build time.
-# If resolution fails, stop immediately (workflow should fail fast).
-LATEST_OPENCLAW_VERS := $(shell git ls-remote --tags --refs https://github.com/openclaw/openclaw.git 'v*' | awk -F/ '{print $$3}' | grep -E '^v[0-9]+(\.[0-9]+)*$$' | sed 's/^v//' | sort -V | tail -1)
-ifeq ($(strip $(LATEST_OPENCLAW_VERS)),)
-$(error Failed to resolve latest stable openclaw version from upstream tags)
-endif
 # Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
 # Put custom build identity into numeric SPK_REV only.
 # Pin the latest stable npm release. DSM package INFO versions do not accept
