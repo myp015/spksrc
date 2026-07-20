@@ -27,8 +27,10 @@ if (!files.length) {
   fail(`No control-ui index assets found under: ${assetsDir}`);
 }
 
+// OpenClaw 2026.7.x renders the banner from a local `t` alias. The older
+// bundle used `e.updateAvailable` directly. Support only the current layout.
 const markerRegex =
-  /e\.updateAvailable&&e\.updateAvailable\.latestVersion!==e\.updateAvailable\.currentVersion&&!([A-Za-z_$][A-Za-z0-9_$]*)\(e\.updateAvailable\)/g;
+  /t&&t\.latestVersion!==t\.currentVersion&&!([A-Za-z_$][A-Za-z0-9_$]*)\(t\)/g;
 
 let patched = 0;
 for (const file of files) {
@@ -36,7 +38,7 @@ for (const file of files) {
   let replacedCount = 0;
   const updated = original.replace(markerRegex, (_m, fnName) => {
     replacedCount += 1;
-    return `false&&e.updateAvailable&&e.updateAvailable.latestVersion!==e.updateAvailable.currentVersion&&!${fnName}(e.updateAvailable)`;
+    return `false&&t&&t.latestVersion!==t.currentVersion&&!${fnName}(t)`;
   });
   if (replacedCount > 0 && updated !== original) {
     fs.writeFileSync(file, updated, "utf8");
