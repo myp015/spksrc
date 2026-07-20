@@ -347,7 +347,19 @@ for p in ('/var/packages/ainasclaw/target/app/openclaw/package.json', '/var/pack
         pass
 version = spk_ver or app_ver or 'unknown'
 binary_path = '/var/packages/ainasclaw/target/bin/openclaw' if os.path.exists('/var/packages/ainasclaw/target/bin/openclaw') else ''
-gateway_token = str((((cfg.get('gateway') or {}).get('auth') or {}).get('token')) or '')
+gateway_token = (((cfg.get('gateway') or {}).get('auth') or {}).get('token'))
+if isinstance(gateway_token, dict) and gateway_token.get('source') == 'file':
+    try:
+        provider = (((cfg.get('secrets') or {}).get('providers') or {}).get(gateway_token.get('provider')) or {})
+        if provider.get('source') == 'file' and provider.get('path'):
+            secret_value = json.load(open(provider['path'], 'r', encoding='utf-8'))
+            for segment in str(gateway_token.get('id') or '').split('/'):
+                if segment:
+                    secret_value = secret_value[segment]
+            gateway_token = secret_value
+    except Exception:
+        gateway_token = ''
+gateway_token = gateway_token if isinstance(gateway_token, str) else ''
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -4711,10 +4723,11 @@ cat <<'HTML'
       return '/openclaw-terminal/';
     }
     function buildOpenclawWebUrl() {
-      // Same-origin DSM nginx reverse proxy. It follows the DSM management
-      // port automatically (HTTPS 5001 by default, or a user-customized port)
-      // and keeps the gateway token server-side.
-      return '/openclaw-web/chat';
+      // Same-origin DSM nginx reverse proxy. It follows whichever DSM port
+      // (HTTP/HTTPS/custom) the user is currently using, while automatically
+      // carrying the gateway token so Control UI does not prompt for it.
+      const token = String(window.__ainasGatewayToken || '').trim();
+      return token ? ('/openclaw-web/chat?token=' + encodeURIComponent(token)) : '/openclaw-web/chat';
     }
     function openOpenclawWeb() {
       const u = buildOpenclawWebUrl();

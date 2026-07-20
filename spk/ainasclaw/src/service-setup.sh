@@ -1,8 +1,8 @@
 OPENCLAW_NODE="${SYNOPKG_PKGDEST}/bin/node"
 OPENCLAW_APP_DIR="${SYNOPKG_PKGDEST}/app/openclaw"
 OPENCLAW_ENTRY="${OPENCLAW_APP_DIR}/dist/index.js"
-# Keep all mutable workspace/state under the DSM service account home.
-OPENCLAW_WORKSPACE_DEFAULT="/var/packages/ainasclaw/home"
+# Default only; an installation-wizard workspace always overrides this value.
+OPENCLAW_WORKSPACE_DEFAULT="/volume1/openclaw"
 OPENCLAW_STATE_DIR_BASE="${OPENCLAW_WORKSPACE_DEFAULT}/.openclaw"
 OPENCLAW_CONFIG_FILE_BASE="${OPENCLAW_STATE_DIR_BASE}/openclaw.json"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DEFAULT}"
@@ -1032,8 +1032,8 @@ SUDOERS_EOF
 }
 
 write_openclaw_web_proxy() {
-    # DSM nginx is the access boundary for this same-origin Control UI route.
-    # The gateway token remains server-side and is injected only on proxy hops.
+    # DSM nginx provides a same-origin route. Control UI WebSocket auth still
+    # uses the token placed in the launch URL by the package UI.
     local cfg="${OPENCLAW_CONFIG_FILE:-${OPENCLAW_CONFIG_FILE_BASE}}"
     [ -f "${cfg}" ] || return 0
     local token port
@@ -1074,7 +1074,6 @@ location ^~ /openclaw-web/ {
     proxy_set_header X-Forwarded-Proto \$scheme;
     proxy_set_header X-Forwarded-Host \$host;
     proxy_set_header Cookie \$http_cookie;
-    proxy_set_header Authorization "Bearer ${token}";
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
     proxy_connect_timeout 60s;

@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-# Runtime state belongs under the DSM service account home: $HOME/.openclaw.
-BASE_DEFAULT="/var/packages/ainasclaw/home"
+# Default only; an installation-wizard workspace overrides this value.
+BASE_DEFAULT="/volume1/openclaw"
 WORKSPACE_PTR_FILE="/var/packages/ainasclaw/var/workspace.path"
 WORKSPACE_HOME_PTR_FILE="/var/packages/ainasclaw/var/workspace.home.path"
 WORKSPACE_HOME_DEFAULT="$BASE_DEFAULT"
