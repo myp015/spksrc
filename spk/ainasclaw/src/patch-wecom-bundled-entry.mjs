@@ -95,50 +95,14 @@ const patchQQBot = (dir) => {
   const pluginApiPath = path.join(dir, 'plugin-api.ts');
   if (!fs.existsSync(indexPath)) return 0;
   copyIfMissing(indexPath, pluginApiPath);
-  // OpenClaw 2026.7 validates the ID of the underlying channel plugin against
-  // the bundled manifest. QQBot 2.x still exports `openclaw-qqbot`, so wrap
-  // the channel object with the canonical bundled ID instead of mutating the
-  // upstream source module.
-  ensureFile(path.join(dir, 'channel-plugin-api.ts'), `import * as pluginNamespace from "./plugin-api.ts";
-const upstream = pluginNamespace.default?.qqbotPlugin ?? pluginNamespace.qqbotPlugin;
-if (!upstream) throw new Error("QQBot channel export not found");
-export const qqbotPlugin = { ...upstream, id: "qqbot" };
-`);
-  ensureFile(path.join(dir, 'runtime-api.ts'), `import * as pluginNamespace from "./plugin-api.ts";
-const setQQBotRuntime = pluginNamespace.default?.setQQBotRuntime ?? pluginNamespace.setQQBotRuntime;
-if (!setQQBotRuntime) throw new Error("QQBot runtime export not found");
-export { setQQBotRuntime };
-`);
-  writeRegisterFullProxy({
-    file: path.join(dir, 'full-api.ts'),
-    importPath: './plugin-api.ts',
-    registerName: 'registerQQBotPluginFull',
-  });
-  ensureFile(
-    indexPath,
-    `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
-
-const qqbotEntry = defineBundledChannelEntry({
-  id: "qqbot",
-  name: "QQ Bot",
-  description: "QQ Bot channel plugin",
-  importMetaUrl: import.meta.url,
-  plugin: {
-    specifier: "./channel-plugin-api.ts",
-    exportName: "qqbotPlugin"
-  },
-  runtime: {
-    specifier: "./runtime-api.ts",
-    exportName: "setQQBotRuntime"
-  },
-  registerFull(api) {
-    return import("./full-api.ts").then((m) => m.registerQQBotPluginFull(api));
-  }
-});
-
-export default qqbotEntry;
-`,
-  );
+  // QQBot 2.x is a normal plugin module. New OpenClaw validates its exported
+  // plugin ID against the manifest; normalize that source ID and load the
+  // native entry directly. Avoid a bundled-channel wrapper here because Jiti
+  // loads QQBot's TS exports through a nested default namespace.
+  let pluginApi = fs.readFileSync(pluginApiPath, 'utf8');
+  pluginApi = pluginApi.replace("id: 'openclaw-qqbot'", "id: 'qqbot'");
+  fs.writeFileSync(pluginApiPath, pluginApi, 'utf8');
+  fs.writeFileSync(indexPath, 'export { default } from "./plugin-api.ts";\n', 'utf8');
   patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
     id: 'qqbot',
     channels: ['qqbot'],
