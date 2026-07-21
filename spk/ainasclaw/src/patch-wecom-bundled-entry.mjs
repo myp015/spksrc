@@ -92,21 +92,20 @@ const patchFeishu = (dir) => {
 const patchQQBot = (dir) => {
   if (!fs.existsSync(dir)) return 0;
   const indexPath = path.join(dir, 'index.ts');
-  const pluginApiPath = path.join(dir, 'plugin-api.ts');
-  if (!fs.existsSync(indexPath)) return 0;
-  copyIfMissing(indexPath, pluginApiPath);
-  // QQBot 2.x is a normal plugin module. New OpenClaw validates its exported
-  // plugin ID against the manifest; normalize that source ID and load the
-  // native entry directly. Avoid a bundled-channel wrapper here because Jiti
-  // loads QQBot's TS exports through a nested default namespace.
-  let pluginApi = fs.readFileSync(pluginApiPath, 'utf8');
-  pluginApi = pluginApi.replace("id: 'openclaw-qqbot'", "id: 'qqbot'");
-  fs.writeFileSync(pluginApiPath, pluginApi, 'utf8');
-  fs.writeFileSync(indexPath, `import * as pluginNamespace from "./plugin-api.ts";
-const plugin = pluginNamespace.default?.default ?? pluginNamespace.default ?? pluginNamespace;
-if (!plugin || typeof plugin.register !== "function") throw new Error("QQBot plugin export not found");
-export default plugin;
-`, 'utf8');
+  const builtEntryPath = path.join(dir, 'dist', 'index.cjs');
+  if (!fs.existsSync(indexPath) || !fs.existsSync(builtEntryPath)) return 0;
+
+  // OpenClaw resolves a bundled source extension (`index.ts`) to its built
+  // artifact (`dist/index.cjs`). QQBot 2.x still emits `openclaw-qqbot` from
+  // that CJS entry, while the bundled manifest/config use `qqbot`.
+  // Patch the artifact that the runtime actually imports; changing index.ts
+  // alone has no effect on the generated bundled-plugin load path.
+  const builtEntry = fs.readFileSync(builtEntryPath, 'utf8');
+  const normalizedEntry = builtEntry.replace('id: "openclaw-qqbot"', 'id: "qqbot"');
+  if (normalizedEntry === builtEntry && !builtEntry.includes('id: "qqbot"')) {
+    throw new Error(`QQBot 2.x plugin ID not found in ${builtEntryPath}`);
+  }
+  fs.writeFileSync(builtEntryPath, normalizedEntry, 'utf8');
   patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
     id: 'qqbot',
     channels: ['qqbot'],
