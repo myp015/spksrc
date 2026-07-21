@@ -3595,7 +3595,12 @@ cat <<'HTML'
               }).join('') + '</div>';
           setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
           window.__statusRunning = !!data.running;
-          if (installBusy) {
+          // A completed stop may still leave a package keepalive process, so
+          // always derive button state from the Gateway port, not a stale busy
+          // marker left by an earlier async request.
+          if (installBusy && installBusyAction === 'stop' && !data.running) {
+            setInstallButtonsBusy('', false);
+          } else if (installBusy) {
             setInstallButtonsBusy(installBusyAction, true);
           } else {
             setInstallButtonsBusy('', false);
@@ -3614,7 +3619,9 @@ cat <<'HTML'
                 msgEl.textContent = '运行状态：' + nextText;
               }
               window.__statusRunning = nextRunning;
-              if (!installBusy) {
+              if (installBusy && installBusyAction === 'stop' && !nextRunning) {
+                setInstallButtonsBusy('', false);
+              } else if (!installBusy) {
                 setInstallButtonsBusy('', false);
               }
               const gridVals = document.querySelectorAll('.grid .cellv');
@@ -3880,7 +3887,11 @@ cat <<'HTML'
                   return;
                 }
               } else {
-                if (!gatewayRunning && !serviceRunning) {
+                // The DSM package deliberately keeps a tiny sleep process
+                // alive for Package Center. Gateway stopped is the only
+                // meaningful condition for this button.
+                if (!gatewayRunning) {
+                  window.__statusRunning = false;
                   setMsg('运行状态：已停止', 'ok');
                   return;
                 }

@@ -139,21 +139,6 @@ normalize_runtime_owner_if_root() {
     done
 }
 
-normalize_workspace_access_if_root() {
-    # The wizard-selected HOME is deliberately shared: DSM users need to use
-    # the terminal and manage workspace files without being the service user.
-    # Keep sensitive OpenClaw state private below $HOME/.openclaw.
-    # service_prestart may run as sc-openclaw rather than root; that account
-    # owns the selected HOME and can safely apply these mode bits too.
-    [ -d "${OPENCLAW_WORKSPACE}" ] || return 0
-    chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
-    # The state directory must remain private, but HOME may equal the default
-    # workspace and have its mode corrected after this function returns.
-    [ "${OPENCLAW_STATE_DIR}" = "${OPENCLAW_WORKSPACE}" ] || { [ -d "${OPENCLAW_STATE_DIR}" ] && chmod 700 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true; }
-    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
-    [ -f "${OPENCLAW_STATE_DIR}/secrets.json" ] && chmod 600 "${OPENCLAW_STATE_DIR}/secrets.json" 2>/dev/null || true
-}
-
 normalize_bundled_plugin_dependency_ranges() {
     "${OPENCLAW_NODE}" -e '
 const fs=require("fs");
@@ -791,10 +776,6 @@ start_gateway_if_needed() {
         OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
-    # OpenClaw may harden HOME during its own bootstrap. Restore the selected
-    # workspace mode after the child has initialized, while retaining private
-    # permissions for $HOME/.openclaw.
-    ( sleep 3; chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true ) >/dev/null 2>&1 &
     sleep 1
 }
 
@@ -1643,11 +1624,8 @@ fs.chmodSync(p, 0o600);
                 return 1
             fi
             echo "[postinst-debug] step=chown ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
-            # HOME is intentionally shared by DSM users; only .openclaw state
-            # is private because it can contain credentials and session data.
-            chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
-            [ -d "${OPENCLAW_STATE_DIR}" ] && chmod 700 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
-            [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+            # Do not alter the user-selected HOME permissions. Only protect
+            # OpenClaw's own sensitive configuration files.
         else
             # Fallback for install timing where service user is not yet resolvable:
             # keep workspace writable by synocommunity so prestart (sc-openclaw group)
@@ -1656,11 +1634,6 @@ fs.chmodSync(p, 0o600);
             if ! chown -R root:synocommunity "${OPENCLAW_WORKSPACE}"; then
                 echo "[ainasclaw] ERROR: failed to chown workspace fallback root:synocommunity" >&2
                 echo "[postinst-debug] step=chown_fallback fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
-                return 1
-            fi
-            if ! chmod 777 "${OPENCLAW_WORKSPACE}"; then
-                echo "[ainasclaw] ERROR: failed to chmod workspace fallback 775" >&2
-                echo "[postinst-debug] step=chmod_fallback fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
                 return 1
             fi
             echo "[postinst-debug] step=chown_fallback ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
@@ -2173,10 +2146,6 @@ try {
 
     # 源头归一权限到服务用户（在 root 上下文时执行）。
     normalize_runtime_owner_if_root "${EFF_USER}"
-    normalize_workspace_access_if_root
-    # normalize_runtime_owner_if_root recurses into HOME/.openclaw but must not
-    # turn the selected HOME itself private again.
-    chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
 
     # 清理无主 runtime-deps 锁，避免插件加载长时间卡在 lock timeout。
     cleanup_stale_runtime_deps_locks
