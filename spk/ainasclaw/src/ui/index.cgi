@@ -368,7 +368,7 @@ out = {
   'installed': True,
   'version': version,
   'port': port,
-  'proxyBasePath': '/default',
+  'proxyBasePath': (((cfg.get('gateway') or {}).get('controlUi') or {}).get('basePath') or '/openclaw-web'),
   'workspaceDir': workspace,
   'configPath': cfg_path,
   'binaryPath': binary_path,
@@ -2748,7 +2748,7 @@ if action in ('start','restart'):
         gw_port = 58789
     gw['port'] = gw_port
     cu = gw.setdefault('controlUi', {})
-    cu['basePath'] = '/default'
+    cu['basePath'] = '/openclaw-web'
     cu['allowInsecureAuth'] = True
     cu['dangerouslyDisableDeviceAuth'] = True
     cu['allowedOrigins'] = ['*']
@@ -2890,13 +2890,9 @@ def force_stop():
     except Exception:
         pass
 
-    # 1) prefer graceful gateway stop first (short timeout)
-    try:
-        rc, o = run(['/var/packages/ainasclaw/target/bin/openclaw','gateway','stop','--json'], timeout=12)
-        out.append((['openclaw','gateway','stop','--json'], rc, o[-800:]))
-    except Exception as e:
-        out.append((['openclaw','gateway','stop','--json'], 999, str(e)))
-    # 2) fallback precise kill patterns
+    # 1) Direct force-stop. The package owns this gateway and must release the
+    # port promptly; a graceful CLI shutdown can block DSM for 12+ seconds.
+    # 2) Fallback precise kill patterns
     # 注意：不要使用 `pkill -f openclaw.*gateway`，否则会误杀当前 CGI python 进程
     # （其 argv 包含 openclaw-gateway.spawn.log 路径），导致接口空响应。
     for cmd in [
@@ -2915,7 +2911,8 @@ def force_stop():
     killed = kill_port_listeners(gw_port)
     if killed:
         out.append((['kill-port-listeners', str(gw_port)], 0, 'pids=' + ','.join(map(str, killed))))
-    wait_port_free(gw_port, 6)
+    port_released = wait_port_free(gw_port, 2)
+    out.append((['port-free', str(gw_port)], 0 if port_released else 1, str(port_released)))
     return out
 
 logs=[]
@@ -2924,7 +2921,7 @@ if action in ('stop','restart'):
     # restart 语义由后续 start 分支完成（stop + start）。
     force = force_stop()
     logs.append({'cmd':('force-stop' if action == 'stop' else 'force-stop-restart'), 'out':str(force)[:1200]})
-    time.sleep(1.0 if action == 'stop' else 1.2)
+    time.sleep(0.25 if action == 'stop' else 0.4)
 
 if action in ('start','restart'):
     # 热修：跳过启动前外部模型同步脚本，避免阻塞导致 Web 页面“启动/重启卡顿”。

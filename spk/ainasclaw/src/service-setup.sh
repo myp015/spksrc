@@ -139,6 +139,21 @@ normalize_runtime_owner_if_root() {
     done
 }
 
+normalize_workspace_access_if_root() {
+    # The wizard-selected HOME is deliberately shared: DSM users need to use
+    # the terminal and manage workspace files without being the service user.
+    # Keep sensitive OpenClaw state private below $HOME/.openclaw.
+    # service_prestart may run as sc-openclaw rather than root; that account
+    # owns the selected HOME and can safely apply these mode bits too.
+    [ -d "${OPENCLAW_WORKSPACE}" ] || return 0
+    chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
+    # The state directory must remain private, but HOME may equal the default
+    # workspace and have its mode corrected after this function returns.
+    [ "${OPENCLAW_STATE_DIR}" = "${OPENCLAW_WORKSPACE}" ] || { [ -d "${OPENCLAW_STATE_DIR}" ] && chmod 700 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true; }
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+    [ -f "${OPENCLAW_STATE_DIR}/secrets.json" ] && chmod 600 "${OPENCLAW_STATE_DIR}/secrets.json" 2>/dev/null || true
+}
+
 normalize_bundled_plugin_dependency_ranges() {
     "${OPENCLAW_NODE}" -e '
 const fs=require("fs");
@@ -539,9 +554,9 @@ harden_extension_permissions() {
     find "${ext_dir}" -type f -exec chmod 644 {} \; 2>/dev/null || true
     # Ensure no world-writable bits remain.
     find "${ext_dir}" -perm -0002 -exec chmod o-w {} \; 2>/dev/null || true
-    # DSM Control-UI (index.cgi) runs under web account and must read runtime config.
-    # Keep config world-readable to avoid UI showing empty models/channels on fresh install.
-    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 644 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
+    # The UI reads config through the package CGI helper; do not expose tokens
+    # and provider credentials by making the runtime config world-readable.
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
 }
 
 validate_or_rollback_config() {
@@ -776,6 +791,10 @@ start_gateway_if_needed() {
         OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
+    # OpenClaw may harden HOME during its own bootstrap. Restore the selected
+    # workspace mode after the child has initialized, while retaining private
+    # permissions for $HOME/.openclaw.
+    ( sleep 3; chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true ) >/dev/null 2>&1 &
     sleep 1
 }
 
@@ -1624,9 +1643,11 @@ fs.chmodSync(p, 0o600);
                 return 1
             fi
             echo "[postinst-debug] step=chown ok" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
-            chmod -R u+rwX "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
-            find "${OPENCLAW_WORKSPACE}" -type d -exec chmod 700 {} \; 2>/dev/null || true
-            find "${OPENCLAW_WORKSPACE}" -type f -exec chmod 600 {} \; 2>/dev/null || true
+            # HOME is intentionally shared by DSM users; only .openclaw state
+            # is private because it can contain credentials and session data.
+            chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
+            [ -d "${OPENCLAW_STATE_DIR}" ] && chmod 700 "${OPENCLAW_STATE_DIR}" 2>/dev/null || true
+            [ -f "${OPENCLAW_CONFIG_FILE}" ] && chmod 600 "${OPENCLAW_CONFIG_FILE}" 2>/dev/null || true
         else
             # Fallback for install timing where service user is not yet resolvable:
             # keep workspace writable by synocommunity so prestart (sc-openclaw group)
@@ -1637,7 +1658,7 @@ fs.chmodSync(p, 0o600);
                 echo "[postinst-debug] step=chown_fallback fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
                 return 1
             fi
-            if ! chmod 775 "${OPENCLAW_WORKSPACE}"; then
+            if ! chmod 777 "${OPENCLAW_WORKSPACE}"; then
                 echo "[ainasclaw] ERROR: failed to chmod workspace fallback 775" >&2
                 echo "[postinst-debug] step=chmod_fallback fail" >> "${SYNOPKG_PKGVAR}/postinst.debug.log" 2>/dev/null || true
                 return 1
@@ -2014,6 +2035,7 @@ EOF
     # state/config=/xxx/.openclaw/openclaw.json
     "${OPENCLAW_NODE}" -e '
 const fs = require("fs");
+const path = require("path");
 const crypto = require("crypto");
 const cfgPath = process.argv[1];
 const ws = process.argv[2];
@@ -2058,8 +2080,50 @@ try {
   if (!c.gateway.auth.mode) c.gateway.auth.mode = "token";
   if (!c.gateway.auth.token) c.gateway.auth.token = crypto.randomBytes(16).toString("hex");
 
+  // Migrate credentials left by older packages into the private file-backed
+  // SecretRef provider. This keeps doctor clean without weakening LAN access.
+  const secretsPath = path.join(statePath, "secrets.json");
+  let secretValues = {};
+  try { secretValues = JSON.parse(fs.readFileSync(secretsPath, "utf8")); } catch {}
+  const putSecret = (pointer, value) => {
+    if (typeof value !== "string" || !value.trim()) return;
+    let target = secretValues;
+    const parts = pointer.split("/").filter(Boolean);
+    for (const part of parts.slice(0, -1)) target = target[part] = target[part] || {};
+    target[parts.at(-1)] = value;
+  };
+  const ref = (pointer) => ({ source: "file", provider: "ainasclaw", id: pointer });
+  if (typeof c.gateway.auth.token === "string") {
+    putSecret("/gateway/auth/token", c.gateway.auth.token);
+    c.gateway.auth.token = ref("/gateway/auth/token");
+  }
+  for (const [providerId, provider] of Object.entries(c.models?.providers || {})) {
+    if (typeof provider?.apiKey !== "string") continue;
+    const id = providerId.replace(/~/g, "~0").replace(/\//g, "~1");
+    const pointer = `/models/providers/${id}/apiKey`;
+    putSecret(pointer, provider.apiKey);
+    provider.apiKey = ref(pointer);
+  }
+  for (const [accountId, account] of Object.entries(c.channels?.feishu?.accounts || {})) {
+    if (typeof account?.appSecret !== "string") continue;
+    const id = accountId.replace(/~/g, "~0").replace(/\//g, "~1");
+    const pointer = `/channels/feishu/accounts/${id}/appSecret`;
+    putSecret(pointer, account.appSecret);
+    account.appSecret = ref(pointer);
+  }
+  if (Object.keys(secretValues).length) {
+    c.secrets = c.secrets || {};
+    c.secrets.providers = c.secrets.providers || {};
+    c.secrets.providers.ainasclaw = { source: "file", path: secretsPath, mode: "json" };
+    fs.writeFileSync(secretsPath, JSON.stringify(secretValues, null, 2) + "\n", { mode: 0o600 });
+    fs.chmodSync(secretsPath, 0o600);
+  }
+
   c.agents.defaults.memorySearch = c.agents.defaults.memorySearch || {};
-  if (typeof c.agents.defaults.memorySearch.enabled !== "boolean") c.agents.defaults.memorySearch.enabled = false;
+  // The bundled DSM build does not ship an embedding provider. Keep semantic
+  // recall disabled until the operator configures one, avoiding a misleading
+  // OpenAI credential warning on every doctor run.
+  c.agents.defaults.memorySearch.enabled = false;
 
   c.plugins = c.plugins || {};
   c.plugins.entries = c.plugins.entries || {};
@@ -2075,7 +2139,8 @@ try {
   if (!c.memory.qmd.paths.length) c.memory.qmd.paths.push({ path: statePath, name: "workspace", pattern: "**/*.md" });
   else c.memory.qmd.paths[0].path = statePath;
 
-  fs.writeFileSync(cfgPath, JSON.stringify(c, null, 2) + "\n", "utf8");
+  fs.writeFileSync(cfgPath, JSON.stringify(c, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+  fs.chmodSync(cfgPath, 0o600);
 } catch {}
 ' "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_WORKSPACE}"
     cleanup_duplicate_default_config
@@ -2108,6 +2173,10 @@ try {
 
     # 源头归一权限到服务用户（在 root 上下文时执行）。
     normalize_runtime_owner_if_root "${EFF_USER}"
+    normalize_workspace_access_if_root
+    # normalize_runtime_owner_if_root recurses into HOME/.openclaw but must not
+    # turn the selected HOME itself private again.
+    chmod 777 "${OPENCLAW_WORKSPACE}" 2>/dev/null || true
 
     # 清理无主 runtime-deps 锁，避免插件加载长时间卡在 lock timeout。
     cleanup_stale_runtime_deps_locks
@@ -2724,6 +2793,12 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 }
 
 stop_gateway_processes() {
+    # Force-stop package gateways immediately. This hook is called before each
+    # start as well as on stop, so a graceful multi-second shutdown here causes
+    # port races and makes DSM buttons feel stuck.
+    #
+    # The Gateway owns no data requiring a long drain: state is written under
+    # $HOME/.openclaw, and a fresh start must be able to bind its port at once.
     # best-effort stop for any detached gateway process (may survive package stop/uninstall)
     local pid_files="${GATEWAY_PID_FILE:-}"
     pid_files="${pid_files} /var/packages/ainasclaw/var/openclaw-gateway.runtime.pid"
@@ -2733,34 +2808,28 @@ stop_gateway_processes() {
         [ -f "${pid_file}" ] || continue
         local gpid
         gpid="$(cat "${pid_file}" 2>/dev/null || true)"
-        if [ -n "${gpid}" ]; then
-            kill -TERM "${gpid}" >/dev/null 2>&1 || true
-        fi
+        [ -n "${gpid}" ] && kill -KILL "${gpid}" >/dev/null 2>&1 || true
         rm -f "${pid_file}" >/dev/null 2>&1 || true
     done
-    sleep 1
     for pid_file in ${pid_files}; do
-        [ -f "${pid_file}" ] || continue
-        local gpid
-        gpid="$(cat "${pid_file}" 2>/dev/null || true)"
-        [ -n "${gpid}" ] && kill -KILL "${gpid}" >/dev/null 2>&1 || true
         rm -f "${pid_file}" >/dev/null 2>&1 || true
     done
 
     # Match every packaged gateway launch form. Keep these package-scoped first;
     # the broader OpenClaw matches below are only for stale/global supervisors.
-    pkill -TERM -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
-    pkill -TERM -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -TERM -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
-    pkill -TERM -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -TERM -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
-    pkill -TERM -f '/volume1/@appstore/ainasclaw/bin/node .*openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -KILL -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -KILL -f '/volume1/@appstore/ainasclaw/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -f '/volume1/@appstore/ainasclaw/bin/node .*openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
     # Kill externally installed/global OpenClaw gateway runtimes to prevent
     # DSM package from accidentally using outdated /usr/lib/node_modules/openclaw.
-    pkill -TERM -f '/usr/lib/node_modules/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
-    pkill -TERM -f 'openclaw gateway run' >/dev/null 2>&1 || true
-    pkill -TERM -x 'openclaw-gateway' >/dev/null 2>&1 || true
-    sleep 1
+    pkill -KILL -f '/usr/lib/node_modules/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
+    pkill -KILL -f 'openclaw gateway run' >/dev/null 2>&1 || true
+    pkill -KILL -x 'openclaw-gateway' >/dev/null 2>&1 || true
+    # Repeat package-specific matches after broad names for processes that
+    # forked between the first pass and their parent kill.
     pkill -KILL -f '/var/packages/ainasclaw/target/bin/openclaw gateway run' >/dev/null 2>&1 || true
     pkill -KILL -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway' >/dev/null 2>&1 || true
     pkill -KILL -f '/var/packages/ainasclaw/target/app/openclaw/dist/index.js gateway run' >/dev/null 2>&1 || true
@@ -2776,25 +2845,13 @@ stop_gateway_processes() {
     local cfg_port
     cfg_port="$(get_gateway_port_from_config 2>/dev/null || true)"
     ports="${ports} ${cfg_port}"
-    local pass
-    for pass in 1 2 3; do
-        local killed=""
-        for k_port in ${ports}; do
-            if ! [ "${k_port}" -ge 1 ] 2>/dev/null; then continue; fi
-            local pids
-            pids="$(netstat -lntp 2>/dev/null | awk -v p=":${k_port}" '$4 ~ p"$" {print $7}' | awk -F/ '{print $1}' | grep -E '^[0-9]+$' | sort -u || true)"
-            [ -n "${pids}" ] || continue
-            killed=1
-            for p in ${pids}; do
-                if [ "${pass}" -lt 3 ]; then
-                    kill -TERM "${p}" >/dev/null 2>&1 || true
-                else
-                    kill -KILL "${p}" >/dev/null 2>&1 || true
-                fi
-            done
+    for k_port in ${ports}; do
+        if ! [ "${k_port}" -ge 1 ] 2>/dev/null; then continue; fi
+        local pids
+        pids="$(netstat -lntp 2>/dev/null | awk -v p=":${k_port}" '$4 ~ p"$" {print $7}' | awk -F/ '{print $1}' | grep -E '^[0-9]+$' | sort -u || true)"
+        for p in ${pids}; do
+            kill -KILL "${p}" >/dev/null 2>&1 || true
         done
-        [ -n "${killed}" ] || break
-        sleep 1
     done
 }
 
