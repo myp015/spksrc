@@ -102,8 +102,8 @@ const patchQQBot = (dir) => {
   let pluginApi = fs.readFileSync(pluginApiPath, 'utf8');
   pluginApi = pluginApi.replace("id: 'openclaw-qqbot'", "id: 'qqbot'");
   fs.writeFileSync(pluginApiPath, pluginApi, 'utf8');
-  fs.writeFileSync(indexPath, `import pluginModule from "./plugin-api.ts";
-const plugin = pluginModule?.default ?? pluginModule;
+  fs.writeFileSync(indexPath, `import * as pluginNamespace from "./plugin-api.ts";
+const plugin = pluginNamespace.default?.default ?? pluginNamespace.default ?? pluginNamespace;
 if (!plugin || typeof plugin.register !== "function") throw new Error("QQBot plugin export not found");
 export default plugin;
 `, 'utf8');
