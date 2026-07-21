@@ -95,7 +95,13 @@ const patchQQBot = (dir) => {
   const pluginApiPath = path.join(dir, 'plugin-api.ts');
   if (!fs.existsSync(indexPath)) return 0;
   copyIfMissing(indexPath, pluginApiPath);
-  ensureFile(path.join(dir, 'channel-plugin-api.ts'), 'export { qqbotPlugin } from "./plugin-api.ts";\n');
+  // OpenClaw 2026.7 validates the ID of the underlying channel plugin against
+  // the bundled manifest. QQBot 2.x still exports `openclaw-qqbot`, so wrap
+  // the channel object with the canonical bundled ID instead of mutating the
+  // upstream source module.
+  ensureFile(path.join(dir, 'channel-plugin-api.ts'), `import { qqbotPlugin as upstream } from "./plugin-api.ts";
+export const qqbotPlugin = { ...upstream, id: "qqbot" };
+`);
   ensureFile(path.join(dir, 'runtime-api.ts'), 'export { setQQBotRuntime } from "./plugin-api.ts";\n');
   writeRegisterFullProxy({
     file: path.join(dir, 'full-api.ts'),
