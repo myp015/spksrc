@@ -99,7 +99,9 @@ const patchQQBot = (dir) => {
   // the bundled manifest. QQBot 2.x still exports `openclaw-qqbot`, so wrap
   // the channel object with the canonical bundled ID instead of mutating the
   // upstream source module.
-  ensureFile(path.join(dir, 'channel-plugin-api.ts'), `import { qqbotPlugin as upstream } from "./plugin-api.ts";
+  ensureFile(path.join(dir, 'channel-plugin-api.ts'), `import pluginModule from "./plugin-api.ts";
+const upstream = pluginModule?.qqbotPlugin ?? pluginModule?.default?.qqbotPlugin;
+if (!upstream) throw new Error("QQBot channel export not found");
 export const qqbotPlugin = { ...upstream, id: "qqbot" };
 `);
   ensureFile(path.join(dir, 'runtime-api.ts'), 'export { setQQBotRuntime } from "./plugin-api.ts";\n');
