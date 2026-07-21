@@ -754,6 +754,10 @@ sync_dsm_package_info_port() {
 
 start_gateway_if_needed() {
     local gw_port="$(get_gateway_port_from_config)"
+    local workspace_mode
+    local workspace_mode_file="${SYNOPKG_PKGVAR}/workspace.mode"
+    workspace_mode="$(cat "${workspace_mode_file}" 2>/dev/null | tr -cd '0-7' | head -c 4)"
+    [ -n "${workspace_mode}" ] || workspace_mode="$(stat -c '%a' "${OPENCLAW_WORKSPACE}" 2>/dev/null || true)"
     # Best-effort auto-start for install/init flows only.
     if [ "$(gateway_port_up "${gw_port}")" = "1" ]; then
         return 0
@@ -764,16 +768,41 @@ start_gateway_if_needed() {
     [ -x "${oc_cli}" ] || return 0
 
     local spawn_log="${SYNOPKG_PKGVAR}/openclaw-gateway.spawn.log"
+    local launcher="${SYNOPKG_PKGVAR}/openclaw-gateway-launcher.sh"
     mkdir -p "$(dirname "${spawn_log}")" >/dev/null 2>&1 || true
+    # Keep the mode-preservation helper in the Gateway process tree. DSM
+    # cleans detached children from service_prestart, while this wrapper stays
+    # alive with the Gateway and restores only the mode the user chose before
+    # this launch.
+    cat > "${launcher}" <<'LAUNCHER_EOF'
+#!/bin/sh
+set -eu
+mode="$1"
+workspace="$2"
+cli="$3"
+port="$4"
+(
+  attempt=1
+  while [ "$attempt" -le 15 ]; do
+    sleep 2
+    [ -d "$workspace" ] || exit 0
+    current_mode="$(stat -c '%a' "$workspace" 2>/dev/null || true)"
+    [ "$current_mode" = "$mode" ] || chmod "$mode" "$workspace" 2>/dev/null || true
+    attempt=$((attempt + 1))
+  done
+) &
+exec "$cli" gateway run --allow-unconfigured --port "$port"
+LAUNCHER_EOF
+    chmod 755 "${launcher}" 2>/dev/null || true
 
     # Run gateway under unified service account when possible.
     local eff_user="$(resolve_effective_service_user)"
     local bundled_plugin_allowlist
     bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${launcher}' '${workspace_mode}' '${OPENCLAW_WORKSPACE}' '${oc_cli}' '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
-        OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
+        OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${launcher}" "${workspace_mode}" "${OPENCLAW_WORKSPACE}" "${oc_cli}" "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
     sleep 1
@@ -2762,6 +2791,19 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 }
 
 stop_gateway_processes() {
+    # Snapshot the user's HOME mode before stopping a running Gateway. OpenClaw
+    # can tighten HOME during shutdown; this persisted value lets the next
+    # launcher restore the mode the user selected rather than the hardened one.
+    if [ -d "${OPENCLAW_WORKSPACE}" ]; then
+        local workspace_mode
+        workspace_mode="$(stat -c '%a' "${OPENCLAW_WORKSPACE}" 2>/dev/null || true)"
+        case "${workspace_mode}" in
+            [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7])
+                printf '%s' "${workspace_mode}" > "${SYNOPKG_PKGVAR}/workspace.mode" 2>/dev/null || true
+                chmod 600 "${SYNOPKG_PKGVAR}/workspace.mode" 2>/dev/null || true
+                ;;
+        esac
+    fi
     # Force-stop package gateways immediately. This hook is called before each
     # start as well as on stop, so a graceful multi-second shutdown here causes
     # port races and makes DSM buttons feel stuck.

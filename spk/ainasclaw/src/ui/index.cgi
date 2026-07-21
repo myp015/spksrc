@@ -2754,7 +2754,10 @@ if action in ('start','restart'):
     cu['allowedOrigins'] = ['*']
     # 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
     defs = c.setdefault('agents', {}).setdefault('defaults', {})
-    defs['workspace'] = os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw'
+    # The selected HOME is the workspace; .openclaw is only the private state
+    # directory. Writing the state path here makes OpenClaw harden HOME on
+    # every gateway start and breaks user-managed HOME permissions.
+    defs['workspace'] = workspace_root
     if isinstance(defs, dict) and 'fallbackModels' in defs:
         defs.pop('fallbackModels', None)
     # 外部命令权限：默认开启 full + elevated（用户要求“完整权限”）
