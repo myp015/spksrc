@@ -112,10 +112,8 @@ fi
 case "$WORKSPACE_DIR" in
   */.openclaw) WORKSPACE_DIR="${WORKSPACE_DIR%/.openclaw}" ;;
 esac
-case "$WORKSPACE_DIR" in
-  */.openclaw) WORKDIR_DEFAULT="$WORKSPACE_DIR" ;;
-  *) WORKDIR_DEFAULT="$WORKSPACE_DIR/.openclaw" ;;
-esac
+# Parent HOME is user-managed. All OpenClaw work/state lives below .openclaw.
+WORKDIR_DEFAULT="$WORKSPACE_DIR/.openclaw"
 WORKDIR="${OPENCLAW_STATE_DIR:-$WORKDIR_DEFAULT}"
 # If workspace comes from persistent pointer, always use that workspace config path
 # (avoid drifting to legacy/base configs).
@@ -124,7 +122,7 @@ if [ "$WORKSPACE_FROM_PTR" = "1" ] && [ -z "${CLI_CONFIG_PATH:-}" ] && [ -z "${O
 elif [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
   CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
-HOME="$WORKSPACE_DIR"
+HOME="$WORKDIR"
 
 # No implicit config migration from default workspace when switching user workspace.
 # New/empty workspace should be initialized explicitly by start/setup flow.
@@ -147,7 +145,7 @@ chmod 666 "$WORKSPACE_PTR_FILE" "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null || true
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
-OPENCLAW_WORKSPACE_DIR="$WORKSPACE_DIR"
+OPENCLAW_WORKSPACE_DIR="$WORKDIR"
 
 resolve_service_user() {
   # Canonical runtime account for this package is sc-openclaw.
@@ -185,12 +183,12 @@ PY
 OPENCLAW_SERVICE_USER="$(resolve_service_user)"
 USER="$OPENCLAW_SERVICE_USER"
 LOGNAME="$OPENCLAW_SERVICE_USER"
-# HOME is the workspace; OpenClaw state remains at $HOME/.openclaw.
-HOME_DEFAULT="$WORKSPACE_DIR"
+# HOME is the private state/work directory. Never chmod the parent selected
+# by the user; OpenClaw may safely harden this directory itself.
+HOME_DEFAULT="$OPENCLAW_STATE_DIR"
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
-# Keep all OpenClaw state beneath $HOME/.openclaw, without a nested state dir.
 mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" 2>/dev/null || true
-chmod 700 "$OPENCLAW_STATE_DIR" "$HOME" 2>/dev/null || true
+chmod 700 "$OPENCLAW_STATE_DIR" 2>/dev/null || true
 NPM_CONFIG_CACHE="$OPENCLAW_STATE_DIR/.npm"
 XDG_CACHE_HOME="$OPENCLAW_STATE_DIR/.cache"
 XDG_CONFIG_HOME="$OPENCLAW_STATE_DIR/.config"
@@ -286,11 +284,11 @@ case "$1" in
           OPENCLAW_CONFIG_PATH="$1"
           OPENCLAW_WORKSPACE_DIR="$(dirname "$1")"
           case "$OPENCLAW_WORKSPACE_DIR" in
-            */.openclaw) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR"; HOME_DIR="$(dirname "$OPENCLAW_WORKSPACE_DIR")" ;;
-            *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"; HOME_DIR="$OPENCLAW_WORKSPACE_DIR" ;;
+            */.openclaw) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR" ;;
+            *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"; OPENCLAW_WORKSPACE_DIR="$OPENCLAW_STATE_DIR" ;;
           esac
           mkdir -p "$OPENCLAW_STATE_DIR"
-          HOME="$HOME_DIR/.openclaw"
+          HOME="$OPENCLAW_STATE_DIR"
           NPM_CONFIG_CACHE="$HOME/.npm"
           XDG_CACHE_HOME="$HOME/.cache"
           XDG_CONFIG_HOME="$HOME/.config"

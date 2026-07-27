@@ -754,10 +754,6 @@ sync_dsm_package_info_port() {
 
 start_gateway_if_needed() {
     local gw_port="$(get_gateway_port_from_config)"
-    local workspace_mode
-    local workspace_mode_file="${SYNOPKG_PKGVAR}/workspace.mode"
-    workspace_mode="$(cat "${workspace_mode_file}" 2>/dev/null | tr -cd '0-7' | head -c 4)"
-    [ -n "${workspace_mode}" ] || workspace_mode="$(stat -c '%a' "${OPENCLAW_WORKSPACE}" 2>/dev/null || true)"
     # Best-effort auto-start for install/init flows only.
     if [ "$(gateway_port_up "${gw_port}")" = "1" ]; then
         return 0
@@ -768,41 +764,20 @@ start_gateway_if_needed() {
     [ -x "${oc_cli}" ] || return 0
 
     local spawn_log="${SYNOPKG_PKGVAR}/openclaw-gateway.spawn.log"
-    local launcher="${SYNOPKG_PKGVAR}/openclaw-gateway-launcher.sh"
     mkdir -p "$(dirname "${spawn_log}")" >/dev/null 2>&1 || true
-    # Keep the mode-preservation helper in the Gateway process tree. DSM
-    # cleans detached children from service_prestart, while this wrapper stays
-    # alive with the Gateway and restores only the mode the user chose before
-    # this launch.
-    cat > "${launcher}" <<'LAUNCHER_EOF'
-#!/bin/sh
-set -eu
-mode="$1"
-workspace="$2"
-cli="$3"
-port="$4"
-(
-  attempt=1
-  while [ "$attempt" -le 15 ]; do
-    sleep 2
-    [ -d "$workspace" ] || exit 0
-    current_mode="$(stat -c '%a' "$workspace" 2>/dev/null || true)"
-    [ "$current_mode" = "$mode" ] || chmod "$mode" "$workspace" 2>/dev/null || true
-    attempt=$((attempt + 1))
-  done
-) &
-exec "$cli" gateway run --allow-unconfigured --port "$port"
-LAUNCHER_EOF
-    chmod 755 "${launcher}" 2>/dev/null || true
 
-    # Run gateway under unified service account when possible.
+    # Keep every OpenClaw runtime path below HOME/.openclaw. In particular,
+    # HOME must be the state directory so OpenClaw's own 700 hardening never
+    # changes the user-selected parent HOME directory.
     local eff_user="$(resolve_effective_service_user)"
     local bundled_plugin_allowlist
     bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
-        su -s /bin/sh "${eff_user}" -c "OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_WORKSPACE}' HOME='${OPENCLAW_WORKSPACE}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${launcher}' '${workspace_mode}' '${OPENCLAW_WORKSPACE}' '${oc_cli}' '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        # `su -` resets HOME to the account home. Supply HOME after switching
+        # users so the Gateway receives the private state directory instead.
+        su -s /bin/sh "${eff_user}" -c "env OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_STATE_DIR}' HOME='${OPENCLAW_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
-        OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${launcher}" "${workspace_mode}" "${OPENCLAW_WORKSPACE}" "${oc_cli}" "${gw_port}" >>"${spawn_log}" 2>&1 &
+        OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR}" HOME="${OPENCLAW_STATE_DIR}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
     sleep 1
@@ -1429,7 +1404,7 @@ if (modelIdInput || baseUrlInput || apiKeyInput) {
 
 cfg.agents = cfg.agents || {};
 cfg.agents.defaults = cfg.agents.defaults || {};
-if (workspace) cfg.agents.defaults.workspace = workspace;
+if (workspace) cfg.agents.defaults.workspace = `${workspace}/.openclaw`;
 
 cfg.gateway = cfg.gateway || {};
 if (!cfg.gateway.mode) cfg.gateway.mode = "local";
@@ -1695,7 +1670,7 @@ fs.chmodSync(p, 0o600);
   },
   "agents": {
     "defaults": {
-      "workspace": "${OPENCLAW_WORKSPACE}"
+      "workspace": "${OPENCLAW_STATE_DIR}"
     }
   },
   "plugins": {
@@ -1900,8 +1875,12 @@ EOF
         selected_source_config="${OPENCLAW_CONFIG_FILE_BASE}"
     fi
 
-    OPENCLAW_WORKSPACE="${selected_workspace}"
-    OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")"
+    # `selected_workspace` is the user-selected parent HOME. OpenClaw's own
+    # workspace/runtime is deliberately the private HOME/.openclaw directory.
+    case "${selected_workspace}" in
+        */.openclaw) OPENCLAW_STATE_DIR="${selected_workspace}"; OPENCLAW_WORKSPACE="$(dirname "${selected_workspace}")" ;;
+        *) OPENCLAW_WORKSPACE="${selected_workspace}"; OPENCLAW_STATE_DIR="$(resolve_state_dir_from_workspace "${OPENCLAW_WORKSPACE}")" ;;
+    esac
     OPENCLAW_CONFIG_FILE="${OPENCLAW_STATE_DIR}/openclaw.json"
 
     # When active workspace is not default, keep default state dir clean to avoid confusion.
@@ -1955,7 +1934,7 @@ EOF
   },
   "agents": {
     "defaults": {
-      "workspace": "${OPENCLAW_WORKSPACE}"
+      "workspace": "${OPENCLAW_STATE_DIR}"
     }
   },
   "plugins": {
@@ -1999,7 +1978,7 @@ EOF
   },
   "agents": {
     "defaults": {
-      "workspace": "${OPENCLAW_WORKSPACE}"
+      "workspace": "${OPENCLAW_STATE_DIR}"
     }
   },
   "plugins": {
@@ -2046,7 +2025,7 @@ try {
   const c = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
   c.agents = c.agents || {};
   c.agents.defaults = c.agents.defaults || {};
-  c.agents.defaults.workspace = ws;
+  c.agents.defaults.workspace = statePath;
   const explicitDefaultModelRef = typeof c.agents.defaults.model === "string" ? c.agents.defaults.model : c.agents.defaults.model && typeof c.agents.defaults.model === "object" ? c.agents.defaults.model.primary : "";
   const inferFirstConfiguredModelRef = () => {
     const providers = c.models && typeof c.models === "object" && c.models.providers && typeof c.models.providers === "object" ? c.models.providers : {};
@@ -2166,8 +2145,8 @@ try {
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-    export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE}"
-    export HOME="${OPENCLAW_WORKSPACE}"
+    export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR}"
+    export HOME="${OPENCLAW_STATE_DIR}"
     export NPM_CONFIG_CACHE="${runtime_home_dir}/.npm"
     export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
     export XDG_CONFIG_HOME="${runtime_home_dir}/.config"
@@ -2767,7 +2746,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 
     # Auto-start only after channel/plugin config has been repaired, otherwise
     # bundledDiscovery=allowlist can launch with browser-only discovery.
-    if [ -d "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_WORKSPACE}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
+    if [ -d "${OPENCLAW_STATE_DIR}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
         start_gateway_if_needed
     fi
 
@@ -2791,19 +2770,6 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
 }
 
 stop_gateway_processes() {
-    # Snapshot the user's HOME mode before stopping a running Gateway. OpenClaw
-    # can tighten HOME during shutdown; this persisted value lets the next
-    # launcher restore the mode the user selected rather than the hardened one.
-    if [ -d "${OPENCLAW_WORKSPACE}" ]; then
-        local workspace_mode
-        workspace_mode="$(stat -c '%a' "${OPENCLAW_WORKSPACE}" 2>/dev/null || true)"
-        case "${workspace_mode}" in
-            [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7])
-                printf '%s' "${workspace_mode}" > "${SYNOPKG_PKGVAR}/workspace.mode" 2>/dev/null || true
-                chmod 600 "${SYNOPKG_PKGVAR}/workspace.mode" 2>/dev/null || true
-                ;;
-        esac
-    fi
     # Force-stop package gateways immediately. This hook is called before each
     # start as well as on stop, so a graceful multi-second shutdown here causes
     # port races and makes DSM buttons feel stuck.
@@ -2926,8 +2892,8 @@ service_postuninst() {
 # Default exports before prestart recalculates runtime paths.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
-export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DEFAULT}"
-export HOME="${OPENCLAW_WORKSPACE_DEFAULT}"
+export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR_BASE}"
+export HOME="${OPENCLAW_STATE_DIR_BASE}"
 export NPM_CONFIG_CACHE="${OPENCLAW_STATE_DIR_BASE}/.npm"
 export XDG_CACHE_HOME="${OPENCLAW_STATE_DIR_BASE}/.cache"
 export XDG_CONFIG_HOME="${OPENCLAW_STATE_DIR_BASE}/.config"

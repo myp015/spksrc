@@ -2199,8 +2199,8 @@ env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume
 # Align terminal env with wrapper semantics: HOME=workspace root, state under HOME/.openclaw
 state_dir = env['OPENCLAW_STATE_DIR']
 workspace_root = state_dir[:-10] if state_dir.endswith('/.openclaw') else '/volume1/openclaw'
-env['OPENCLAW_WORKSPACE_DIR'] = workspace_root
-env['HOME'] = workspace_root
+env['OPENCLAW_WORKSPACE_DIR'] = state_dir
+env['HOME'] = state_dir
 env['NPM_CONFIG_CACHE'] = env['OPENCLAW_STATE_DIR'] + '/.npm'
 env['XDG_CACHE_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.cache'
 env['XDG_CONFIG_HOME'] = env['OPENCLAW_STATE_DIR'] + '/.config'
@@ -2607,10 +2607,10 @@ env['OPENCLAW_USE_SYSTEM_CONFIG']='0'
 env['OPENCLAW_DATA_DIR']='/volume1/@appdata/ainasclaw/data'
 state_dir=(os.path.dirname(cfg) if cfg else '/volume1/openclaw/.openclaw')
 workspace_root=(state_dir[:-10] if state_dir.endswith('/.openclaw') else '/volume1/openclaw')
-env['HOME']=workspace_root
+env['HOME']=state_dir
 env['OPENCLAW_CONFIG_PATH']=cfg
 env['OPENCLAW_STATE_DIR']=state_dir
-env['OPENCLAW_WORKSPACE_DIR']=workspace_root
+env['OPENCLAW_WORKSPACE_DIR']=state_dir
 env['NPM_CONFIG_CACHE']=state_dir+'/.npm'
 env['XDG_CACHE_HOME']=state_dir+'/.cache'
 env['XDG_CONFIG_HOME']=state_dir+'/.config'
@@ -2754,10 +2754,9 @@ if action in ('start','restart'):
     cu['allowedOrigins'] = ['*']
     # 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
     defs = c.setdefault('agents', {}).setdefault('defaults', {})
-    # The selected HOME is the workspace; .openclaw is only the private state
-    # directory. Writing the state path here makes OpenClaw harden HOME on
-    # every gateway start and breaks user-managed HOME permissions.
-    defs['workspace'] = workspace_root
+    # Keep OpenClaw's workspace and all runtime artifacts below HOME/.openclaw.
+    # The user-selected parent HOME is never passed to OpenClaw as its HOME.
+    defs['workspace'] = state_dir
     if isinstance(defs, dict) and 'fallbackModels' in defs:
         defs.pop('fallbackModels', None)
     # 外部命令权限：默认开启 full + elevated（用户要求“完整权限”）
