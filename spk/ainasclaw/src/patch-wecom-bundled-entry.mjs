@@ -100,12 +100,21 @@ const patchQQBot = (dir) => {
   // that CJS entry, while the bundled manifest/config use `qqbot`.
   // Patch the artifact that the runtime actually imports; changing index.ts
   // alone has no effect on the generated bundled-plugin load path.
-  const builtEntry = fs.readFileSync(builtEntryPath, 'utf8');
-  const normalizedEntry = builtEntry.replace('id: "openclaw-qqbot"', 'id: "qqbot"');
-  if (normalizedEntry === builtEntry && !builtEntry.includes('id: "qqbot"')) {
-    throw new Error(`QQBot 2.x plugin ID not found in ${builtEntryPath}`);
-  }
-  fs.writeFileSync(builtEntryPath, normalizedEntry, 'utf8');
+  const normalizePluginId = (file) => {
+    const source = fs.readFileSync(file, 'utf8');
+    const normalized = source
+      .replace("id: 'openclaw-qqbot'", "id: 'qqbot'")
+      .replace('id: "openclaw-qqbot"', 'id: "qqbot"');
+    if (normalized === source && !source.includes("id: 'qqbot'") && !source.includes('id: "qqbot"')) {
+      throw new Error(`QQBot 2.x plugin ID not found in ${file}`);
+    }
+    fs.writeFileSync(file, normalized, 'utf8');
+  };
+
+  // Gateway startup loads dist/index.cjs while plugin validation/pre-warming
+  // loads index.ts through Jiti. Both exports must use the bundled ID.
+  normalizePluginId(indexPath);
+  normalizePluginId(builtEntryPath);
   patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
     id: 'qqbot',
     channels: ['qqbot'],
