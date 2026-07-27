@@ -115,12 +115,26 @@ const patchQQBot = (dir) => {
   // loads index.ts through Jiti. Both exports must use the bundled ID.
   normalizePluginId(indexPath);
   normalizePluginId(builtEntryPath);
+  // The discovery scan picks package.json's built JS extension. Supply the
+  // same contract entry for QQBot, rather than leaving it as a plain plugin.
+  const channelApiPath = path.join(dir, 'channel-plugin-api.js');
+  const runtimeApiPath = path.join(dir, 'runtime-api.js');
+  const fullApiPath = path.join(dir, 'full-api.js');
+  const bundledEntryPath = path.join(dir, 'index.js');
+  ensureFile(channelApiPath, 'import pluginModule from "./dist/index.cjs";\nexport const qqbotPlugin = pluginModule.qqbotPlugin;\n');
+  ensureFile(runtimeApiPath, 'export { setQQBotRuntime } from "./dist/index.cjs";\n');
+  ensureFile(fullApiPath, 'import pluginModule from "./dist/index.cjs";\nexport function registerQQBotPluginFull(api) { if (!pluginModule || typeof pluginModule.register !== "function") return; const proxy = Object.create(api); proxy.registerChannel = () => {}; return pluginModule.register(proxy); }\n');
+  ensureFile(bundledEntryPath, `import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
+export default defineBundledChannelEntry({ id: "qqbot", name: "QQ Bot", description: "QQ Bot channel plugin", importMetaUrl: import.meta.url, plugin: { specifier: "./channel-plugin-api.js", exportName: "qqbotPlugin" }, runtime: { specifier: "./runtime-api.js", exportName: "setQQBotRuntime" }, registerFull(api) { return import("./full-api.js").then((m) => m.registerQQBotPluginFull(api)); } });
+`);
+  copyIfMissing(indexPath, path.join(dir, 'plugin-api.ts'));
+  ensureFile(indexPath, 'export { default } from \"./index.js\";\n');
   patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
     id: 'qqbot',
     channels: ['qqbot'],
-    extensions: ['./index.ts']
+    extensions: ['./index.js']
   });
-  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'qqbot', 'qqbot', ['./index.ts']);
+  patchPackageOpenClawMeta(path.join(dir, 'package.json'), 'qqbot', 'qqbot', ['./index.js']);
   return 1;
 };
 
@@ -162,6 +176,7 @@ const dingtalkEntry = defineBundledChannelEntry({
 export default dingtalkEntry;
 `,
   );
+  ensureFile(indexPath, 'export { default } from \"./index.js\";\n');
   patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
     id: 'dingtalk',
     channels: ['dingtalk'],
@@ -259,6 +274,7 @@ const weixinEntry = defineBundledChannelEntry({
 export default weixinEntry;
 `,
   );
+  ensureFile(indexPath, 'export { default } from \"./index.js\";\n');
   patchPluginManifestContract(path.join(dir, 'openclaw.plugin.json'), {
     id: 'openclaw-weixin',
     channels: ['openclaw-weixin'],

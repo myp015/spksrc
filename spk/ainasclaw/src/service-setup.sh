@@ -476,11 +476,19 @@ force_js_channel_entries() {
     "${OPENCLAW_NODE}" -e '
 const fs=require("fs"),path=require("path");
 const app=process.argv[1];
-const roots=[path.join(app,"node_modules","@soimy","dingtalk"),path.join(app,"node_modules","@tencent-weixin","openclaw-weixin"),path.join(app,"dist","extensions","dingtalk"),path.join(app,"dist","extensions","openclaw-weixin")];
+const roots=[path.join(app,"node_modules","@tencent-connect","openclaw-qqbot"),path.join(app,"node_modules","@soimy","dingtalk"),path.join(app,"node_modules","@tencent-weixin","openclaw-weixin"),path.join(app,"dist","extensions","qqbot"),path.join(app,"dist","extensions","dingtalk"),path.join(app,"dist","extensions","openclaw-weixin")];
 const w=(f,c)=>fs.writeFileSync(f,c,"utf8");
 const pj=(f,fn)=>{if(!fs.existsSync(f))return;const o=JSON.parse(fs.readFileSync(f,"utf8"));fn(o);fs.writeFileSync(f,JSON.stringify(o,null,2)+"\n","utf8");};
 for(const d of roots){
   if(!fs.existsSync(d)) continue;
+  if(d.endsWith("qqbot") && fs.existsSync(path.join(d,"dist","index.cjs"))){
+    w(path.join(d,"channel-plugin-api.js"),"import e from \"./dist/index.cjs\";\nexport const qqbotPlugin=e.qqbotPlugin;\n");
+    w(path.join(d,"runtime-api.js"),"export { setQQBotRuntime } from \"./dist/index.cjs\";\n");
+    w(path.join(d,"full-api.js"),"import e from \"./dist/index.cjs\";\nexport function registerQQBotPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
+    w(path.join(d,"index.js"),"import { defineBundledChannelEntry } from \"openclaw/plugin-sdk/channel-entry-contract\";\nexport default defineBundledChannelEntry({id:\"qqbot\",name:\"QQ Bot\",description:\"QQ Bot channel plugin\",importMetaUrl:import.meta.url,plugin:{specifier:\"./channel-plugin-api.js\",exportName:\"qqbotPlugin\"},runtime:{specifier:\"./runtime-api.js\",exportName:\"setQQBotRuntime\"},registerFull(api){return import(\"./full-api.js\").then(m=>m.registerQQBotPluginFull(api));}});\n");
+    pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="qqbot";o.channels=["qqbot"];o.extensions=["./index.js"];});
+    pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="qqbot";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="qqbot";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
+  }
   if(d.endsWith("dingtalk") && fs.existsSync(path.join(d,"dist","index.js"))){
     w(path.join(d,"channel-plugin-api.js"),"export { dingtalkPlugin } from \"./dist/index.js\";\n");
     w(path.join(d,"runtime-api.js"),"export { setDingTalkRuntime } from \"./dist/index.js\";\n");
