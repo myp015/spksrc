@@ -669,8 +669,44 @@ for p in providers_payload:
         saved.setdefault('maxTokens', 16384)
         provider['models'].append(saved)
     providers_map[pid] = provider
-cfg.setdefault('models', {})['providers'] = providers_map
-os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+    cfg.setdefault('models', {})['providers'] = providers_map
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+
+    # Set defaults.model / defaults.imageModel from provider config
+    try:
+        defaults = cfg.setdefault('agents', {}).setdefault('defaults', {})
+        text_refs = []
+        image_refs = []
+        for pid, pv in providers_map.items():
+            if not isinstance(pv, dict):
+                continue
+            dtm = (pv.get('defaultTextModel') or '').strip()
+            dim = (pv.get('defaultImageModel') or '').strip()
+            if dtm:
+                text_refs.append(dtm)
+            if dim:
+                image_refs.append(dim)
+        if text_refs:
+            defaults['model'] = {'primary': text_refs[0]}
+        if image_refs:
+            dim_ref = image_refs[0]
+            defaults['imageModel'] = {'primary': dim_ref}
+            # Auto-add image input support for the default image model
+            for pid, pv in providers_map.items():
+                if not isinstance(pv, dict):
+                    continue
+                for m in (pv.get('models') or []):
+                    if not isinstance(m, dict):
+                        continue
+                    mid = m.get('modelId') or m.get('id') or ''
+                    full_ref = (pv.get('id') or pid) + '/' + mid
+                    if full_ref == dim_ref or mid == dim_ref:
+                        inp = m.setdefault('input', ['text'])
+                        if 'image' not in inp:
+                            inp.append('image')
+                        break
+    except Exception:
+        pass
 
 # user requirement: changing workspace should initialize by defaults only (no migration)
 if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json'):
@@ -3737,17 +3773,22 @@ cat <<'HTML'
             + '  <div class="list" style="flex:1 1 auto;min-height:0;overflow:auto;padding-right:4px;">'
             + providers.map((p, idx) => {
                 const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
+                const dtm = (p.defaultTextModel || '').trim();
+                const dim = (p.defaultImageModel || '').trim();
+                let defaultHtml = '';
+                if (dtm) defaultHtml += '<div style="font-size:12px;color:#1d2939;margin-top:4px;"><span style="color:#667085;">默认文本：</span>' + esc(dtm) + '</div>';
+                if (dim) defaultHtml += '<div style="font-size:12px;color:#1d2939;margin-top:2px;"><span style="color:#667085;">默认图像：</span>' + esc(dim) + '</div>';
                 return '<div class="item">'
                   + '<div class="item-title">' + esc(p.displayName || p.id || '未命名服务') + '</div>'
                   + '<div class="item-meta">providerId=' + esc(p.id || '-') + ' / api=' + esc(p.api || '-') + ' / baseUrl=' + esc(p.baseUrl || '-') + '</div>'
                   + '<div class="chips">' + modelIds.map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div>'
+                  + defaultHtml
                   + '<div style="display:flex;gap:8px;">'
                   + '<button class="btn" onclick="openModelDialog(' + idx + ')">编辑</button>'
                   + '<button class="btn" onclick="deleteModelProvider(' + idx + ')">删除</button>'
                   + '</div>'
                   + '</div>';
-              }).join('')
-            + '  </div>'
+              }).join('')            + '  </div>'
             + '</div>'
             + '<div class="modal-mask" id="modelModalMask">'
             + '  <div class="modal model-modal">'
@@ -3773,7 +3814,23 @@ cat <<'HTML'
             + '      </div>'
             + '      <input id="dlg_model_ids" type="hidden">'
             + '    </div>'
-            + '    <div class="modal-actions">'
+            + '    <div class="field"><label>默认文本模型</label>'
+            + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认文本模型，留空则自动选择第一个可用模型。</div>'
+            + '      <select id="dlg_default_text_model" style="width:100%;"><option value="">（自动选择）</option></select>'
+            + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
+            + '        <input id="dlg_default_text_model_manual" style="flex:1;" placeholder="手动输入 ProviderID/模型名">'
+            + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultTextModelFromManual()">设置</button>'
+            + '      </div>'
+            + '    </div>'
+            + '    <div class="field"><label>默认图像模型</label>'
+            + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认图像模型，留空则无默认图像模型。勾选后自动为该模型添加 image 输入支持。</div>'
+            + '      <select id="dlg_default_image_model" style="width:100%;"><option value="">（无默认图像模型）</option></select>'
+            + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
+            + '        <input id="dlg_default_image_model_manual" style="flex:1;" placeholder="手动输入 ProviderID/模型名">'
+            + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">设置</button>'
+            + '      </div>'
+            + '    </div>'
+            + '    <div class="modal-actions">'            + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="syncProviderModelsToCache()">手动同步到本地缓存</button>'
             + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveModelDialog()">保存</button>'
@@ -4053,6 +4110,70 @@ cat <<'HTML'
       setModelSelectOptions(next, next);
       inp.value = '';
     }
+    function setDefaultTextModelFromManual() {
+      const val = (document.getElementById('dlg_default_text_model_manual').value || '').trim();
+      if (!val) { setModelDialogHint('请输入 ProviderID/模型名', 'err'); return; }
+      const sel = document.getElementById('dlg_default_text_model');
+      let found = false;
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === val) { sel.selectedIndex = i; found = true; break; }
+      }
+      if (!found) {
+        const opt = document.createElement('option');
+        opt.value = val; opt.textContent = val;
+        sel.appendChild(opt); sel.value = val;
+      }
+      document.getElementById('dlg_default_text_model_manual').value = val;
+      setModelDialogHint('默认文本模型已设置为: ' + val, 'ok');
+    }
+    function setDefaultImageModelFromManual() {
+      const val = (document.getElementById('dlg_default_image_model_manual').value || '').trim();
+      if (!val) { setModelDialogHint('请输入 ProviderID/模型名', 'err'); return; }
+      const sel = document.getElementById('dlg_default_image_model');
+      let found = false;
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === val) { sel.selectedIndex = i; found = true; break; }
+      }
+      if (!found) {
+        const opt = document.createElement('option');
+        opt.value = val; opt.textContent = val;
+        sel.appendChild(opt); sel.value = val;
+      }
+      document.getElementById('dlg_default_image_model_manual').value = val;
+      setModelDialogHint('默认图像模型已设置为: ' + val, 'ok');
+    }
+    function populateDefaultModelDialogs(p) {
+      const textSel = document.getElementById('dlg_default_text_model');
+      const imageSel = document.getElementById('dlg_default_image_model');
+      if (!textSel || !imageSel) return;
+      // Clear all options except placeholder
+      while (textSel.options.length > 0) textSel.remove(0);
+      while (imageSel.options.length > 0) imageSel.remove(0);
+      // Add placeholders
+      textSel.add(new Option('', '（自动选择）', false, false));
+      imageSel.add(new Option('', '（无默认图像模型）', false, false));
+      // Populate from provider's model list
+      const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
+      for (const mid of modelIds) {
+        textSel.add(new Option(mid, mid, false, false));
+        imageSel.add(new Option(mid, mid, false, false));
+      }
+      // Set current defaults from provider data
+      const dtm = (p.defaultTextModel || '').trim();
+      if (dtm) {
+        for (let i = 0; i < textSel.options.length; i++) {
+          if (textSel.options[i].value === dtm) { textSel.selectedIndex = i; break; }
+        }
+        document.getElementById('dlg_default_text_model_manual').value = dtm;
+      }
+      const dim = (p.defaultImageModel || '').trim();
+      if (dim) {
+        for (let i = 0; i < imageSel.options.length; i++) {
+          if (imageSel.options[i].value === dim) { imageSel.selectedIndex = i; break; }
+        }
+        document.getElementById('dlg_default_image_model_manual').value = dim;
+      }
+    }
     function selectAllModelSelections() {
       const all = getAvailableModelIdsFromDropdown();
       setModelSelectOptions(all, all);
@@ -4124,6 +4245,7 @@ cat <<'HTML'
         applyProviderPresetDialog();
       }
       window.__modelOptionPool = Array.isArray(currentIds) ? currentIds.slice() : [];
+      populateDefaultModelDialogs(p);
       window.__modelsDiscovering = false;
       window.__modelsDiscoveredKey = '';
       document.getElementById('modelModalMask').style.display = 'flex';
@@ -4237,7 +4359,9 @@ cat <<'HTML'
           // subsequently edits this provider; manually entered IDs are
           // completed by the server-side save path.
           rawModels: rawModels,
-          models: selectedModelIds.map(id => ({ modelId: id, id: id }))
+          models: selectedModelIds.map(id => ({ modelId: id, id: id })),
+          defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
+          defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: false };
