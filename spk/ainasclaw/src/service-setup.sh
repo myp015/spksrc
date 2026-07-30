@@ -1072,10 +1072,12 @@ NODE
     [ -n "${token}" ] || return 0
 
     cat > "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" <<EOF
-# Control UI upgrades its WebSocket on the exact base path (without a trailing
-# slash). WebSocket clients cannot follow an HTTP 302, so proxy it directly.
+# Gateway handles all auth via its own token mechanism. No nginx-level cookie
+# guard is applied — it would block users who click "Open" immediately after
+# a fresh install (the new tab may lack a DSM session cookie). The gateway
+# token embedded in the redirect URL provides proper authentication.
+
 location = /openclaw-web {
-    if (\$http_cookie !~* "(^|;\\\\s*)id=") { return 403; }
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
     proxy_set_header Upgrade \$http_upgrade;
@@ -1092,9 +1094,6 @@ location = /openclaw-web {
     proxy_buffering off;
 }
 location ^~ /openclaw-web/ {
-    # This route requires an authenticated DSM session; the gateway token never
-    # reaches the browser URL, local storage, or page source.
-    if (\$http_cookie !~* "(^|;\\\\s*)id=") { return 403; }
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
     proxy_set_header Upgrade \$http_upgrade;
