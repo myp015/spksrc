@@ -360,6 +360,20 @@ if isinstance(gateway_token, dict) and gateway_token.get('source') == 'file':
     except Exception:
         gateway_token = ''
 gateway_token = gateway_token if isinstance(gateway_token, str) else ''
+
+def get_config_val(cfg, *keys):
+    try:
+        v = cfg
+        for k in keys:
+            v = v[k]
+        return v
+    except (KeyError, TypeError, IndexError):
+        return None
+
+terminal_port = get_config_val(cfg, 'gateway', 'port') or 58789
+# terminal ttyd port is 17682 by default, configured via openclaw-bundle.json
+# but we hardcode it for now since the DSM UI panel doesn't need to read it from config
+terminal_port = 17682
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -374,6 +388,8 @@ out = {
   'binaryPath': binary_path,
   'uptimeSeconds': uptime_seconds,
   'startedAt': started_ts,
+  'gatewayPort': port,
+  'terminalPort': terminal_port,
   'gatewayToken': gateway_token
 }
 print(json.dumps(out, ensure_ascii=False))
@@ -3568,6 +3584,7 @@ cat <<'HTML'
         if (tab === 'status') {
           window.__ainasGatewayPort = data.port || 58789;
           window.__ainasGatewayToken = data.gatewayToken || '';
+          window.__ainasTerminalPort = data.terminalPort || 17682;
           const uptimeText = data.running ? formatUptime(data.uptimeSeconds || 0) : '-';
           const hostFix = (window.location && window.location.hostname) ? window.location.hostname : 'LAN_HOST';
           window.__statusWorkspaceDir = data.workspaceDir || '/volume1/openclaw';
@@ -3634,6 +3651,7 @@ cat <<'HTML'
               }
               window.__ainasGatewayPort = (s && s.port) || window.__ainasGatewayPort || 58789;
               window.__ainasGatewayToken = (s && s.gatewayToken) || window.__ainasGatewayToken || '';
+              window.__ainasTerminalPort = (s && s.terminalPort) || window.__ainasTerminalPort || 17682;
             } catch (_) {}
           }, 1500);
           return;
@@ -4729,15 +4747,17 @@ cat <<'HTML'
       }
     }
     function resolveTerminalUrl() {
-      // 统一走 DSM nginx alias，避免 HTTPS 页面直连 HTTP:17682 触发混合内容拦截。
-      return '/openclaw-terminal/';
+      // Direct ttyd port. No DSM nginx alias available on restart.
+      const port = String(window.__ainasTerminalPort || '17682');
+      return 'http://' + window.location.hostname + ':' + port + '/';
     }
     function buildOpenclawWebUrl() {
-      // Same-origin DSM nginx reverse proxy. It follows whichever DSM port
-      // (HTTP/HTTPS/custom) the user is currently using, while automatically
-      // carrying the gateway token so Control UI does not prompt for it.
+      // Direct gateway port. No longer relies on DSM nginx alias
+      // (lost on DSM restart since package user cannot write /etc/nginx/conf.d/).
       const token = String(window.__ainasGatewayToken || '').trim();
-      return token ? ('/openclaw-web/chat?token=' + encodeURIComponent(token)) : '/openclaw-web/chat';
+      const port = String(window.__ainasGatewayPort || '58789');
+      const base = 'http://' + window.location.hostname + ':' + port + '/openclaw-web';
+      return token ? (base + '/chat?token=' + encodeURIComponent(token)) : (base + '/chat');
     }
     function openOpenclawWeb() {
       const u = buildOpenclawWebUrl();
