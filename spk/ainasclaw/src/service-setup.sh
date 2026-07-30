@@ -1112,8 +1112,12 @@ location ^~ /openclaw-web/ {
 EOF
     chmod 600 "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" 2>/dev/null || true
     ln -sfn "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" /etc/nginx/conf.d/alias.openclaw-web.conf 2>/dev/null || true
-    if nginx -t >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1; then
-        systemctl reload nginx >/dev/null 2>&1 || true
+    if nginx -t >/dev/null 2>&1; then
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl reload nginx >/dev/null 2>&1 || true
+        elif command -v nginx >/dev/null 2>&1; then
+            nginx -s reload >/dev/null 2>&1 || true
+        fi
     fi
 }
 
