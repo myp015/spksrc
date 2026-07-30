@@ -1069,7 +1069,9 @@ NODE
 )"
     port="$(get_gateway_port_from_config "${cfg}")"
     [ -n "${port}" ] || port="58789"
-    [ -n "${token}" ] || return 0
+    # Always write alias config, even before gateway generates token.
+    # postinst runs as package user — cannot create symlink to
+    # /etc/nginx/conf.d/ or reload nginx. DSM framework handles that.
 
     cat > "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" <<EOF
 # Gateway handles all auth via its own token mechanism. No nginx-level cookie
