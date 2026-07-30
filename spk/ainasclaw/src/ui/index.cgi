@@ -628,7 +628,9 @@ for p in providers_payload:
     provider = {
         'api': p.get('api') or 'openai-completions',
         'baseUrl': p.get('baseUrl') or '',
-        'models': []
+        'models': [],
+        'defaultTextModel': (p.get('defaultTextModel') or '').strip(),
+        'defaultImageModel': (p.get('defaultImageModel') or '').strip()
     }
     old_key = ''
     if isinstance(existing_providers.get(pid), dict) and isinstance(existing_providers.get(pid).get('apiKey'), str):
@@ -4299,6 +4301,19 @@ cat <<'HTML'
         }
         // 按原逻辑：同步后全部选中
         setModelSelectOptions(ids, ids);
+        // 同时刷新默认模型下拉列表
+        const mask = document.getElementById('modelModalMask');
+        const editIdx = mask ? mask.dataset.editIndex : '';
+        if (editIdx !== '' && editIdx !== undefined) {
+          const currentProviders = (window.__modelsData || {}).configuredProviders || [];
+          const pIdx = parseInt(editIdx, 10);
+          if (Number.isFinite(pIdx) && pIdx >= 0 && pIdx < currentProviders.length) {
+            const updatedP = Object.assign({}, currentProviders[pIdx], {
+              models: ids.map(id => ({ modelId: id, id: id }))
+            });
+            populateDefaultModelDialogs(updatedP);
+          }
+        }
         setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
         setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
       } catch (e) { setModelDialogHint('同步失败：' + (e.message || e), 'err'); setMsg('同步失败：' + (e.message || e), 'err'); }
