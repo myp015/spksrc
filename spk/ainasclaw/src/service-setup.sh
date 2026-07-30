@@ -1111,7 +1111,15 @@ location ^~ /openclaw-web/ {
 }
 EOF
     chmod 600 "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" 2>/dev/null || true
-    ln -sfn "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" /etc/nginx/conf.d/alias.openclaw-web.conf 2>/dev/null || true
+    # postinst runs as package user (sc-openclaw), not root.
+    # DSM sudoers grants sc-openclaw (root) NOPASSWD: /bin/ln, /usr/sbin/nginx.
+    if ! ln -sfn "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" /etc/nginx/conf.d/alias.openclaw-web.conf 2>/dev/null; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo -n ln -sfn "${SYNOPKG_PKGVAR}/alias.openclaw-web.conf" /etc/nginx/conf.d/alias.openclaw-web.conf >/dev/null 2>&1 || true
+        fi
+    fi
+    # prestart (root) always runs nginx reload. postinst sudo fallback is the
+    # best-effort path — it may fail when sudoers does not match.
     if nginx -t >/dev/null 2>&1; then
         if command -v systemctl >/dev/null 2>&1; then
             systemctl reload nginx >/dev/null 2>&1 || true
