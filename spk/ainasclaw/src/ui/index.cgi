@@ -4172,7 +4172,11 @@ cat <<'HTML'
       textSel.add(new Option('（自动选择）', '', false, false));
       imageSel.add(new Option('（无默认图像模型）', '', false, false));
       // Populate from provider's model list
-      const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
+      // Fallback: if p.models is empty (adding mode before save), read from dialog state
+      let modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
+      if (!modelIds.length && window.__modelOptionPool && window.__modelOptionPool.length) {
+        modelIds = window.__modelOptionPool.slice();
+      }
       for (const mid of modelIds) {
         textSel.add(new Option(mid, mid, false, false));
         imageSel.add(new Option(mid, mid, false, false));
