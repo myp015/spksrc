@@ -4158,7 +4158,7 @@ cat <<'HTML'
       while (textSel.options.length > 0) textSel.remove(0);
       while (imageSel.options.length > 0) imageSel.remove(0);
       // Add placeholders
-textSel.add(new Option('（自动选择）', '', false, false));      
+      textSel.add(new Option('（自动选择）', '', false, false));
       imageSel.add(new Option('（无默认图像模型）', '', false, false));
       // Populate from provider's model list
       const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
@@ -4312,6 +4312,22 @@ textSel.add(new Option('（自动选择）', '', false, false));
         const editIdx = mask ? mask.dataset.editIndex : '';
         if (editIdx !== '' && editIdx !== undefined) {
           const currentProviders = (window.__modelsData || {}).configuredProviders || [];
+          const pIdx = parseInt(editIdx, 10);
+          if (Number.isFinite(pIdx) && pIdx >= 0 && pIdx < currentProviders.length) {
+            const updatedP = Object.assign({}, currentProviders[pIdx], {
+              models: ids.map(id => ({ modelId: id, id: id }))
+            });
+            populateDefaultModelDialogs(updatedP);
+          } else {
+            // Adding mode: populate from current dialog state
+            const pId = (document.getElementById('dlg_provider_id').value || '').trim();
+            if (pId) {
+              populateDefaultModelDialogs({
+                models: ids.map(id => ({ modelId: id, id: id })),
+                defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
+                defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
+              });
+            }
           }
         }
         setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
