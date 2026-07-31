@@ -420,7 +420,9 @@ for pid, p in providers_map.items():
         'baseUrl': p.get('baseUrl') or '',
         'models': [],
         # Preserve configured metadata so manual models remain resolver-ready.
-        'rawModels': p.get('models') if isinstance(p.get('models'), list) else []
+        'rawModels': p.get('models') if isinstance(p.get('models'), list) else [],
+        'defaultTextModel': (p.get('defaultTextModel') or '').strip(),
+        'defaultImageModel': (p.get('defaultImageModel') or '').strip()
     }
     if isinstance(p.get('apiKey'), str) and p.get('apiKey'):
         item['apiKeyMasked'] = '*' * min(16, max(8, len(p.get('apiKey'))))
