@@ -4928,26 +4928,10 @@ cat <<'HTML'
       return 'http://' + window.location.hostname + ':' + port + '/';
     }
     function buildOpenclawWebUrl() {
-      // If the DSM web manager proxy alias (/openclaw-web -> gateway) is active
-      // (set by service-setup.sh prestart as root), use the DSM port directly.
-      // Otherwise fall back to the gateway's own port.
+      // Direct gateway port only. DSM nginx alias is unreliable (lost on reboot).
       var token = String(window.__ainasGatewayToken || '').trim();
-      var gwPort = String(window.__ainasGatewayPort || '58789');
-      var base;
-      // Probe whether DSM alias responds at /openclaw-web on current page's origin
-      var x = new XMLHttpRequest();
-      try {
-        x.open('HEAD', '/openclaw-web', false);  // same-origin, synchronous probe
-        x.send(null);
-        if (x.status >= 200 && x.status < 400) {
-          // DSM proxy alias works
-          base = window.location.protocol + '//' + window.location.host + '/openclaw-web';
-        } else {
-          base = 'http://' + window.location.hostname + ':' + gwPort + '/openclaw-web';
-        }
-      } catch(e) {
-        base = 'http://' + window.location.hostname + ':' + gwPort + '/openclaw-web';
-      }
+      var port = String(window.__ainasGatewayPort || '58789');
+      var base = 'http://' + window.location.hostname + ':' + port + '/openclaw-web';
       return token ? (base + '/chat?token=' + encodeURIComponent(token)) : (base + '/chat');
     }
     function openOpenclawWeb() {
