@@ -421,8 +421,8 @@ for pid, p in providers_map.items():
         'models': [],
         # Preserve configured metadata so manual models remain resolver-ready.
         'rawModels': p.get('models') if isinstance(p.get('models'), list) else [],
-        'defaultTextModel': (p.get('defaultTextModel') or '').strip(),
-        'defaultImageModel': (p.get('defaultImageModel') or '').strip()
+        'defaultTextModel': default_model_for_provider(p.get('id') or pid, cfg, 'model') or '',
+        'defaultImageModel': default_model_for_provider(p.get('id') or pid, cfg, 'imageModel') or ''
     }
     if isinstance(p.get('apiKey'), str) and p.get('apiKey'):
         item['apiKeyMasked'] = '*' * min(16, max(8, len(p.get('apiKey'))))
@@ -631,8 +631,8 @@ for p in providers_payload:
         'api': p.get('api') or 'openai-completions',
         'baseUrl': p.get('baseUrl') or '',
         'models': [],
-        'defaultTextModel': (p.get('defaultTextModel') or '').strip(),
-        'defaultImageModel': (p.get('defaultImageModel') or '').strip()
+        '_textDefault': (p.get('defaultTextModel') or '').strip(),
+        '_imageDefault': (p.get('defaultImageModel') or '').strip()
     }
     old_key = ''
     if isinstance(existing_providers.get(pid), dict) and isinstance(existing_providers.get(pid).get('apiKey'), str):
@@ -684,8 +684,8 @@ for p in providers_payload:
         for pid, pv in providers_map.items():
             if not isinstance(pv, dict):
                 continue
-            dtm = (pv.get('defaultTextModel') or '').strip()
-            dim = (pv.get('defaultImageModel') or '').strip()
+            dtm = (pv.get('_textDefault') or pv.get('defaultTextModel') or '').strip()
+            dim = (pv.get('_imageDefault') or pv.get('defaultImageModel') or '').strip()
             if dtm:
                 text_refs.append(dtm)
             if dim:
@@ -787,6 +787,15 @@ try:
         defaults['reasoningDefault'] = 'stream'
 except Exception:
     pass
+
+# Strip transient provider fields before writing to config
+for _pid in list(providers_map.keys()):
+    _pv = providers_map.get(_pid)
+    if isinstance(_pv, dict):
+        _pv.pop('_textDefault', None)
+        _pv.pop('_imageDefault', None)
+        _pv.pop('defaultTextModel', None)
+        _pv.pop('defaultImageModel', None)
 
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
@@ -3822,16 +3831,16 @@ cat <<'HTML'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认文本模型，留空则自动选择第一个可用模型。</div>'
             + '      <select id="dlg_default_text_model" style="width:100%;"><option value="">（自动选择）</option></select>'
             + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
-            + '        <input id="dlg_default_text_model_manual" style="flex:1;" placeholder="手动输入 ProviderID/模型名">'
-            + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultTextModelFromManual()">设置</button>'
+            + '        <input id="dlg_default_text_model_manual" style="flex:1;" placeholder="输入模型名（自动补全 ProviderID）">'
+            + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultTextModelFromManual()">添加</button>'
             + '      </div>'
             + '    </div>'
             + '    <div class="field"><label>默认图像模型</label>'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认图像模型，留空则无默认图像模型。勾选后自动为该模型添加 image 输入支持。</div>'
             + '      <select id="dlg_default_image_model" style="width:100%;"><option value="">（无默认图像模型）</option></select>'
             + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
-            + '        <input id="dlg_default_image_model_manual" style="flex:1;" placeholder="手动输入 ProviderID/模型名">'
-            + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">设置</button>'
+            + '        <input id="dlg_default_image_model_manual" style="flex:1;" placeholder="输入模型名（自动补全 ProviderID）">'
+            + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">添加</button>'
             + '      </div>'
             + '    </div>'
             + '    <div class="modal-actions">'            + '    <div class="modal-actions">'
