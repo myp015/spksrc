@@ -3843,7 +3843,8 @@ cat <<'HTML'
             + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">添加</button>'
             + '      </div>'
             + '    </div>'
-            + '    <div class="modal-actions">'            + '    <div class="modal-actions">'
+            + '    </div>'
+            + '    <div class="modal-actions">'
             + '      <button class="btn" onclick="syncProviderModelsToCache()">手动同步到本地缓存</button>'
             + '      <button class="btn" onclick="closeModelDialog()">取消</button>'
             + '      <button class="btn primary" onclick="saveModelDialog()">保存</button>'
@@ -4172,8 +4173,8 @@ cat <<'HTML'
       textSel.add(new Option('（自动选择）', '', false, false));
       imageSel.add(new Option('（无默认图像模型）', '', false, false));
       // Populate from provider's model list
-      // Fallback: if p.models is empty (adding mode before save), read from dialog state
       let modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
+      // In adding mode (p.models empty), use __modelOptionPool which is populated by sync
       if (!modelIds.length && window.__modelOptionPool && window.__modelOptionPool.length) {
         modelIds = window.__modelOptionPool.slice();
       }
@@ -4339,9 +4340,11 @@ cat <<'HTML'
             if (pId) {
               populateDefaultModelDialogs({
                 models: ids.map(id => ({ modelId: id, id: id })),
-                defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
-                defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
+                defaultTextModel: '',
+                defaultImageModel: ''
               });
+            // After populate, set them checked — all synced models are selected
+            setModelSelectOptions(ids, ids);
             }
           }
         }
