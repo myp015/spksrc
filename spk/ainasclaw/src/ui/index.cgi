@@ -667,7 +667,7 @@ for p in providers_payload:
         saved = dict(raw_by_id.get(mid) or {})
         saved['id'] = mid
         saved['name'] = str(saved.get('name') or (f"{pid} / {mid}"))
-        saved.setdefault('contextWindow', 128000)
+        saved.setdefault('contextWindow', 1048576)
         saved.setdefault('maxTokens', 16384)
         provider['models'].append(saved)
     providers_map[pid] = provider
