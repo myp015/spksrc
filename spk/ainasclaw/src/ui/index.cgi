@@ -4113,8 +4113,11 @@ cat <<'HTML'
       inp.value = '';
     }
     function setDefaultTextModelFromManual() {
-      const val = (document.getElementById('dlg_default_text_model_manual').value || '').trim();
-      if (!val) { setModelDialogHint('请输入 ProviderID/模型名', 'err'); return; }
+      const providerId = (document.getElementById('dlg_provider_id').value || '').trim();
+      let val = (document.getElementById('dlg_default_text_model_manual').value || '').trim();
+      if (!val) { setModelDialogHint('请输入模型名', 'err'); return; }
+      // Auto-prepend Provider ID if model name doesn't contain '/'
+      if (providerId && val.indexOf('/') < 0) val = providerId + '/' + val;
       const sel = document.getElementById('dlg_default_text_model');
       let found = false;
       for (let i = 0; i < sel.options.length; i++) {
@@ -4129,8 +4132,11 @@ cat <<'HTML'
       setModelDialogHint('默认文本模型已设置为: ' + val, 'ok');
     }
     function setDefaultImageModelFromManual() {
-      const val = (document.getElementById('dlg_default_image_model_manual').value || '').trim();
-      if (!val) { setModelDialogHint('请输入 ProviderID/模型名', 'err'); return; }
+      const providerId = (document.getElementById('dlg_provider_id').value || '').trim();
+      let val = (document.getElementById('dlg_default_image_model_manual').value || '').trim();
+      if (!val) { setModelDialogHint('请输入模型名', 'err'); return; }
+      // Auto-prepend Provider ID if model name doesn't contain '/'
+      if (providerId && val.indexOf('/') < 0) val = providerId + '/' + val;
       const sel = document.getElementById('dlg_default_image_model');
       let found = false;
       for (let i = 0; i < sel.options.length; i++) {
@@ -4152,8 +4158,8 @@ cat <<'HTML'
       while (textSel.options.length > 0) textSel.remove(0);
       while (imageSel.options.length > 0) imageSel.remove(0);
       // Add placeholders
-      textSel.add(new Option('', '（自动选择）', false, false));
-      imageSel.add(new Option('', '（无默认图像模型）', false, false));
+textSel.add(new Option('（自动选择）', '', false, false));      
+      imageSel.add(new Option('（无默认图像模型）', '', false, false));
       // Populate from provider's model list
       const modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
       for (const mid of modelIds) {
@@ -4306,12 +4312,6 @@ cat <<'HTML'
         const editIdx = mask ? mask.dataset.editIndex : '';
         if (editIdx !== '' && editIdx !== undefined) {
           const currentProviders = (window.__modelsData || {}).configuredProviders || [];
-          const pIdx = parseInt(editIdx, 10);
-          if (Number.isFinite(pIdx) && pIdx >= 0 && pIdx < currentProviders.length) {
-            const updatedP = Object.assign({}, currentProviders[pIdx], {
-              models: ids.map(id => ({ modelId: id, id: id }))
-            });
-            populateDefaultModelDialogs(updatedP);
           }
         }
         setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
@@ -4398,12 +4398,15 @@ cat <<'HTML'
     }
     async function deleteModelProvider(index) {
       try {
-        const data = window.__modelsData || {};
-        const providers = (data.configuredProviders || []).slice();
-        providers.splice(index, 1);
-        await api('models_save', 'POST', { providers, applyNow: false });
-        await load('models');
-        setMsg('模型服务器已删除，重启后生效', 'ok');
+      const data = window.__modelsData || {};
+      const providers = (data.configuredProviders || []);
+      const pName = providers[index] ? (providers[index].displayName || providers[index].id || '未命名服务') : '该服务器';
+      if (!confirm('确认要删除“' + pName + '”吗？')) { return; }
+      const providersCopy = providers.slice();
+      providersCopy.splice(index, 1);
+      await api('models_save', 'POST', { providers: providersCopy, applyNow: false });
+      await load('models');
+      setMsg('模型服务器“' + pName + '”已删除，重启后生效', 'ok');
       } catch (e) { setMsg('删除失败：' + (e.message || e), 'err'); }
     }
     async function saveWorkspaceQuick() {
