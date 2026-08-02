@@ -145,12 +145,13 @@ chmod 666 "$WORKSPACE_PTR_FILE" "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null || true
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
-# HOME and OPENCLAW_WORKSPACE_DIR must be the workspace PARENT (e.g.
-# /volume1/openclaw). OpenClaw derives its runtime state at $HOME/.openclaw, so
-# HOME must equal the parent or it creates a nested .openclaw and OpenClaw
-# reports 'Multiple state directories detected' (splits session history).
+# Home is the user-selected PARENT (e.g. /volume1/openclaw); do NOT chmod it.
+# The OpenClaw workspace/state is uniformly $HOME/.openclaw ( == WORKDIR /
+# OPENCLAW_STATE_DIR), matching agents.defaults.workspace. Keeping all three
+# (HOME=$HOME, WORKSPACE_DIR, STATE_DIR) pointed at $HOME/.openclaw avoids a
+# nested .openclaw AND keeps plugins reading a consistent workspace path.
 HOME="$WORKSPACE_DIR"
-OPENCLAW_WORKSPACE_DIR="$WORKSPACE_DIR"
+OPENCLAW_WORKSPACE_DIR="$WORKDIR"
 
 resolve_service_user() {
   # Canonical runtime account for this package is sc-openclaw.
@@ -291,11 +292,11 @@ case "$1" in
           OPENCLAW_CONFIG_PATH="$1"
           OPENCLAW_WORKSPACE_DIR="$(dirname "$1")"
           case "$OPENCLAW_WORKSPACE_DIR" in
-            */.openclaw) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR" ;;
-            *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"; OPENCLAW_WORKSPACE_DIR="$OPENCLAW_STATE_DIR" ;;
+            */.openclaw) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR"
+                         HOME="${OPENCLAW_WORKSPACE_DIR%/.openclaw}" ;;
+            *) OPENCLAW_STATE_DIR="$OPENCLAW_WORKSPACE_DIR/.openclaw"; OPENCLAW_WORKSPACE_DIR="$OPENCLAW_STATE_DIR"; HOME="${OPENCLAW_WORKSPACE_DIR%/.openclaw}" ;;
           esac
           mkdir -p "$OPENCLAW_STATE_DIR"
-          HOME="$OPENCLAW_STATE_DIR"
           NPM_CONFIG_CACHE="$HOME/.npm"
           XDG_CACHE_HOME="$HOME/.cache"
           XDG_CONFIG_HOME="$HOME/.config"
