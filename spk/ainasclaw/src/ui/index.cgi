@@ -4112,6 +4112,31 @@ cat <<'HTML'
       setSelectedModelIdsToHidden(selected);
       renderModelDropdown(all, selected);
       renderModelChips(selected);
+      // Live-sync the default text/image model dropdowns with the available model list.
+      refreshDefaultModelDropdownOptions(all);
+    }
+    function refreshDefaultModelDropdownOptions(modelIds) {
+      const textSel = document.getElementById('dlg_default_text_model');
+      const imageSel = document.getElementById('dlg_default_image_model');
+      if (!textSel || !imageSel) return;
+      const prevText = textSel.value;
+      const prevImage = imageSel.value;
+      // Rebuild options, preserving the current selected values when they still exist.
+      const textOptions = ['（自动选择）', ''].concat(modelIds || []);
+      const imageOptions = ['（无默认图像模型）', ''].concat(modelIds || []);
+      textSel.innerHTML = '';
+      imageSel.innerHTML = '';
+      for (const [label, val] of [[textOptions[0], ''], ...(modelIds||[]).map(m => [m, m])]) {
+        const o = new Option(label, val, false, false);
+        textSel.add(o);
+      }
+      for (const [label, val] of [[imageOptions[0], ''], ...(modelIds||[]).map(m => [m, m])]) {
+        const o = new Option(label, val, false, false);
+        imageSel.add(o);
+      }
+      // Restore previous selections if the value is still available
+      if (prevText && Array.prototype.some.call(textSel.options, o => o.value === prevText)) textSel.value = prevText;
+      if (prevImage && Array.prototype.some.call(imageSel.options, o => o.value === prevImage)) imageSel.value = prevImage;
     }
     function toggleModelSelection(id, checked) {
       const curr = getSelectedModelIdsFromHidden();
@@ -4359,33 +4384,9 @@ cat <<'HTML'
           setMsg(msg, data.error ? 'err' : '');
           return;
         }
-        // 按原逻辑：同步后全部选中
+        // 按原逻辑：同步后全部选中。setModelSelectOptions 内部会实时刷新
+        // 默认文本/图像模型下拉列表，使其与已同步/可用的模型列表保持一致。
         setModelSelectOptions(ids, ids);
-        // 同时刷新默认模型下拉列表
-        const mask = document.getElementById('modelModalMask');
-        const editIdx = mask ? mask.dataset.editIndex : '';
-        if (editIdx !== '' && editIdx !== undefined) {
-          const currentProviders = (window.__modelsData || {}).configuredProviders || [];
-          const pIdx = parseInt(editIdx, 10);
-          if (Number.isFinite(pIdx) && pIdx >= 0 && pIdx < currentProviders.length) {
-            const updatedP = Object.assign({}, currentProviders[pIdx], {
-              models: ids.map(id => ({ modelId: id, id: id }))
-            });
-            populateDefaultModelDialogs(updatedP);
-          } else {
-            // Adding mode: populate from current dialog state
-            const pId = (document.getElementById('dlg_provider_id').value || '').trim();
-            if (pId) {
-              populateDefaultModelDialogs({
-                models: ids.map(id => ({ modelId: id, id: id })),
-                defaultTextModel: '',
-                defaultImageModel: ''
-              });
-            // After populate, set them checked — all synced models are selected
-            setModelSelectOptions(ids, ids);
-            }
-          }
-        }
         setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
         setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
       } catch (e) { setModelDialogHint('同步失败：' + (e.message || e), 'err'); setMsg('同步失败：' + (e.message || e), 'err'); }
