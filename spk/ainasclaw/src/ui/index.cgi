@@ -783,6 +783,13 @@ try:
             mid = str(m.get('id') or m.get('modelId') or '').strip()
             if mid:
                 active_refs.append(f'{pid}/{mid}')
+    active_set = set(active_refs)
+    # Prune stale defaults.models entries that no longer match any current
+    # provider/model reference (e.g. leftover keys from providers removed during
+    # a previous delete or a provider whose model list shrank).
+    for key in list(model_defaults.keys()):
+        if key not in active_set:
+            model_defaults.pop(key, None)
     for ref in active_refs:
         ref_key = ref.strip()
         if re.search(r'(?:^|/)deepseek-v4-(?:flash|pro)$', ref_key.lower().split('@', 1)[0]):
@@ -797,6 +804,32 @@ try:
             model_defaults[ref_key] = ent
     if model_defaults:
         defaults['models'] = model_defaults
+    # Sanitize default primary refs: if they point to a model that no longer
+    # exists after deletion, drop the primary (gateway will auto-pick) instead
+    # of leaving a dangling reference.
+    def _valid_ref(value):
+        v = str(value or '').strip().lower().split('@', 1)[0]
+        if not v:
+            return False
+        base = v.split('/')[-1]
+        for av in active_refs:
+            a = av.strip().lower().split('@', 1)[0]
+            if a == v or a.split('/')[-1] == base:
+                return True
+        return False
+    for _k in ('model', 'imageModel'):
+        _d = defaults.get(_k)
+        if isinstance(_d, dict):
+            if not _valid_ref(_d.get('primary')):
+                if active_refs:
+                    _d['primary'] = active_refs[0]
+                else:
+                    _d.pop('primary', None)
+        elif isinstance(_d, str) and not _valid_ref(_d):
+            if active_refs:
+                defaults[_k] = {'primary': active_refs[0]}
+            else:
+                defaults.pop(_k, None)
     default_model = defaults.get('model')
     if isinstance(default_model, str):
         default_model_ref = default_model.strip().lower()
