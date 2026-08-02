@@ -4192,7 +4192,7 @@ cat <<'HTML'
         opt.value = val; opt.textContent = val;
         sel.appendChild(opt); sel.value = val;
       }
-      document.getElementById('dlg_default_text_model_manual').value = val;
+      document.getElementById('dlg_default_text_model_manual').value = '';
       setModelDialogHint('默认文本模型已设置为: ' + val, 'ok');
     }
     function setDefaultImageModelFromManual() {
@@ -4211,7 +4211,7 @@ cat <<'HTML'
         opt.value = val; opt.textContent = val;
         sel.appendChild(opt); sel.value = val;
       }
-      document.getElementById('dlg_default_image_model_manual').value = val;
+      document.getElementById('dlg_default_image_model_manual').value = '';
       setModelDialogHint('默认图像模型已设置为: ' + val, 'ok');
     }
     function populateDefaultModelDialogs(p) {
@@ -4240,14 +4240,12 @@ cat <<'HTML'
         for (let i = 0; i < textSel.options.length; i++) {
           if (textSel.options[i].value === dtm) { textSel.selectedIndex = i; break; }
         }
-        document.getElementById('dlg_default_text_model_manual').value = dtm;
       }
       const dim = (p.defaultImageModel || '').trim();
       if (dim) {
         for (let i = 0; i < imageSel.options.length; i++) {
           if (imageSel.options[i].value === dim) { imageSel.selectedIndex = i; break; }
         }
-        document.getElementById('dlg_default_image_model_manual').value = dim;
       }
     }
     function selectAllModelSelections() {
@@ -4322,6 +4320,9 @@ cat <<'HTML'
       }
       window.__modelOptionPool = Array.isArray(currentIds) ? currentIds.slice() : [];
       populateDefaultModelDialogs(p);
+      // The manual default-model inputs are entry points only; always start empty.
+      document.getElementById('dlg_default_text_model_manual').value = '';
+      document.getElementById('dlg_default_image_model_manual').value = '';
       window.__modelsDiscovering = false;
       window.__modelsDiscoveredKey = '';
       document.getElementById('modelModalMask').style.display = 'flex';
