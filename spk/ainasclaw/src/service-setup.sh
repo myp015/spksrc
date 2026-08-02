@@ -2110,6 +2110,21 @@ try {
     putSecret("/gateway/auth/token", c.gateway.auth.token);
     c.gateway.auth.token = ref("/gateway/auth/token");
   }
+  // Recovery: if the gateway token is stored as a SecretRef but the referenced
+  // value is missing from secrets.json (e.g. a reinstall/recycle clobbered the
+  // file after config was written), mint a fresh token and persist it so the
+  // gateway can start instead of failing with
+  //   SecretRefResolutionError: JSON pointer segment "gateway" does not exist.
+  const gwTokenIsRef =
+    c.gateway.auth.token &&
+    typeof c.gateway.auth.token === "object" &&
+    c.gateway.auth.token.source &&
+    c.gateway.auth.token.id;
+  if (gwTokenIsRef && (!secretValues.gateway || !secretValues.gateway.auth || !secretValues.gateway.auth.token)) {
+    const freshToken = crypto.randomBytes(16).toString("hex");
+    putSecret("/gateway/auth/token", freshToken);
+    c.gateway.auth.token = ref("/gateway/auth/token");
+  }
   for (const [providerId, provider] of Object.entries(c.models?.providers || {})) {
     if (typeof provider?.apiKey !== "string") continue;
     const id = providerId.replace(/~/g, "~0").replace(/\//g, "~1");
