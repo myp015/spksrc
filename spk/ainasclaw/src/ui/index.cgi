@@ -3832,7 +3832,7 @@ cat <<'HTML'
                   + defaultHtml
                   + '<div style="display:flex;gap:8px;">'
                   + '<button class="btn" onclick="openModelDialog(' + idx + ')">编辑</button>'
-                  + '<button class="btn" onclick="deleteModelProvider(' + idx + ')">删除</button>'
+                  + '<button class="btn" onclick="deleteModelProvider(\'' + esc(p.id || '') + '\')">删除</button>'
                   + '</div>'
                   + '</div>';
               }).join('')            + '  </div>'
@@ -4463,10 +4463,21 @@ cat <<'HTML'
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText || '保存'; }
       }
     }
-    async function deleteModelProvider(index) {
+    async function deleteModelProvider(idOrIndex) {
       try {
       const data = window.__modelsData || {};
       const providers = (data.configuredProviders || []);
+      // Resolve target index: delete by provider ID (string) or legacy index (number)
+      let index = -1;
+      if (typeof idOrIndex === 'string' && idOrIndex !== '') {
+        index = providers.findIndex(p => (p && (p.id || '') === idOrIndex));
+      } else if (typeof idOrIndex === 'number') {
+        index = idOrIndex;
+      }
+      if (index < 0 || index >= providers.length) {
+        setMsg('删除失败：未找到对应的模型服务器', 'err');
+        return;
+      }
       const pName = providers[index] ? (providers[index].displayName || providers[index].id || '未命名服务') : '该服务器';
       if (!confirm('确认要删除“' + pName + '”吗？')) { return; }
       const providersCopy = providers.slice();
