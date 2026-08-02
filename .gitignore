@@ -28,3 +28,7 @@ local.mk
 
 # PyCharm project settings
 .idea
+
+# Downloaded GitHub Actions SPK artifacts (build output)
+.spk-artifacts/
+
