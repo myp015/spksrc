@@ -27,10 +27,18 @@ function patchDingtalk(dir) {
   const distIndex = path.join(dir, 'dist', 'index.js');
   if (!exists(distIndex)) return 0;
 
-  write(path.join(dir, 'channel-plugin-api.js'), 'export { dingtalkPlugin } from "./dist/index.js";\n');
-  write(path.join(dir, 'runtime-api.js'), 'export { setDingTalkRuntime } from "./dist/index.js";\n');
+  // Keep the built runtime under a non-shadowing name so OpenClaw's bundled
+  // channel discovery loads the ESM *source* contract (index.js) instead of
+  // the old defineChannelPluginEntry runtime dist/index.js. Otherwise discovery
+  // sees kind != bundled-channel-entry and logs a warning.
+  if (exists(distIndex) && !exists(path.join(dir, 'dist', 'index.runtime.js'))) {
+    fs.copyFileSync(distIndex, path.join(dir, 'dist', 'index.runtime.js'));
+  }
+
+  write(path.join(dir, 'channel-plugin-api.js'), 'export { dingtalkPlugin } from "./dist/index.runtime.js";\n');
+  write(path.join(dir, 'runtime-api.js'), 'export { setDingTalkRuntime } from "./dist/index.runtime.js";\n');
   write(path.join(dir, 'full-api.js'),
-`import dingtalkEntry from "./dist/index.js";
+`import dingtalkEntry from "./dist/index.runtime.js";
 
 export function registerDingTalkPluginFull(api) {
   if (!dingtalkEntry || typeof dingtalkEntry.register !== "function") return;
@@ -54,6 +62,14 @@ const dingtalkEntry = defineBundledChannelEntry({
 
 export default dingtalkEntry;
 `);
+  // Do NOT keep dist/index.js: if it exists, OpenClaw's bundled channel
+  // discovery loads it as the entry (treating dist/ as plugin root) instead of
+  // the real ESM contract ../index.js, producing a warning and path errors.
+  // Removing it makes discovery fall back to the root index.js contract, the
+  // same pattern as the qqbot/wecom plugins. The runtime stays under
+  // dist/index.runtime.js, referenced by the api files above.
+  fs.rmSync(distIndex, { force: true });
+
 
   let changed = 1;
   changed += patchJsonFile(path.join(dir, 'openclaw.plugin.json'), (j) => {
@@ -74,17 +90,22 @@ export default dingtalkEntry;
 
 function patchWeixin(dir) {
   if (!exists(dir)) return 0;
-  const distIndex = path.join(dir, 'dist', 'index.js');
-  const channelSrc = path.join(dir, 'dist', 'src', 'channel.js');
-  const runtimeSrc = path.join(dir, 'dist', 'src', 'runtime.js');
-  if (!exists(distIndex) || !exists(channelSrc)) return 0;
+  const distDir = path.join(dir, 'dist');
+  const distIndex = path.join(distDir, 'index.js');
+  const channelSrc = path.join(distDir, 'src', 'channel.js');
+  const runtimeSrc = path.join(distDir, 'src', 'runtime.js');
+  // The vendor package may ship without a built dist dir; create it so the
+  // contract entry can be written.
+  fs.mkdirSync(distDir, { recursive: true });
 
-  write(path.join(dir, 'channel-plugin-api.js'), 'export { weixinPlugin } from "./dist/src/channel.js";\n');
+  write(path.join(dir, 'channel-plugin-api.js'), exists(channelSrc)
+    ? 'export { weixinPlugin } from "./dist/src/channel.js";\n'
+    : 'export const weixinPlugin = {};\n');
   write(path.join(dir, 'runtime-api.js'), exists(runtimeSrc)
     ? 'export { setWeixinRuntime } from "./dist/src/runtime.js";\n'
     : 'export const setWeixinRuntime = () => {};\n');
   write(path.join(dir, 'full-api.js'),
-`import weixinEntry from "./dist/index.js";
+`import weixinEntry from "./dist/index.runtime.js";
 
 export function registerWeixinPluginFull(api) {
   if (!weixinEntry || typeof weixinEntry.register !== "function") return;
@@ -108,6 +129,18 @@ const weixinEntry = defineBundledChannelEntry({
 
 export default weixinEntry;
 `);
+
+  // Built entry: copy any real vendor runtime to a non-shadowing name and then
+  // REMOVE dist/index.js. If dist/index.js stays, OpenClaw's bundled channel
+  // discovery loads it (treating dist/ as plugin root) instead of the real
+  // contract ../index.js, which triggers the warning and path errors. Removing
+  // it makes discovery fall back to the root index.js contract (qqbot/wecom
+  // pattern).
+  const runtimeRel = path.join(dir, 'dist', 'index.runtime.js');
+  if (exists(distIndex) && !exists(runtimeRel)) {
+    fs.copyFileSync(distIndex, runtimeRel);
+  }
+  fs.rmSync(distIndex, { force: true });
 
   let changed = 1;
   changed += patchJsonFile(path.join(dir, 'openclaw.plugin.json'), (j) => {
