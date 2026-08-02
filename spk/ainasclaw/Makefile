@@ -1,12 +1,28 @@
 SPK_NAME = ainasclaw
-# Keep SPK_VERS strictly upstream-semver-like for DSM compatibility.
-# Put custom build identity into numeric SPK_REV only.
-# Pin the latest stable npm release. DSM package INFO versions do not accept
-# npm prerelease suffixes such as `-2`.
-# OPENCLAW_NPM_VERS = npm package version to pack (may include `-N` build
-# suffixes, e.g. 2026.7.1-2). SPK_VERS stays on the clean base semver so DSM
-# accepts it; custom build identity lives in numeric SPK_REV only.
-OPENCLAW_NPM_VERS := 2026.7.1-2
+# Version resolution: automatically fetch the latest STABLE versions of the
+# OpenClaw core package and its bundled channel plugins from the npm registry
+# (dist-tags.latest) at build time. This keeps the build tracking upstream
+# releases without manual pins. resolve-versions.sh is also run by CI (and can
+# be invoked with --json for tooling).
+#
+# Keep SPK_VERS strictly upstream-semver-like for DSM compatibility:
+# DSM package INFO versions do not accept npm build suffixes like `-2`, so we
+# derive SPK_VERS from the clean base semver and carry the exact npm version
+# (with suffix, e.g. 2026.7.1-2) in OPENCLAW_NPM_VERS for packaging.
+RESOLVE_VERSIONS := $(CURDIR)/spk/ainasclaw/src/resolve-versions.sh
+RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS)')
+OPENCLAW_NPM_VERSION := $(patsubst OPENCLAW_NPM_VERSION=%,%,$(filter OPENCLAW_NPM_VERSION=%,$(RESOLVED_VERSIONS)))
+OPENCLAW_SPK_VERSION_TMP := $(patsubst OPENCLAW_SPK_VERSION=%,%,$(filter OPENCLAW_SPK_VERSION=%,$(RESOLVED_VERSIONS)))
+FEISHU_VERSION := $(patsubst FEISHU_VERSION=%,%,$(filter FEISHU_VERSION=%,$(RESOLVED_VERSIONS)))
+DINGTALK_VERSION := $(patsubst DINGTALK_VERSION=%,%,$(filter DINGTALK_VERSION=%,$(RESOLVED_VERSIONS)))
+WECOM_VERSION := $(patsubst WECOM_VERSION=%,%,$(filter WECOM_VERSION=%,$(RESOLVED_VERSIONS)))
+QQ_BOT_VERSION := $(patsubst QQ_BOT_VERSION=%,%,$(filter QQ_BOT_VERSION=%,$(RESOLVED_VERSIONS)))
+WEIXIN_VERSION := $(patsubst WEIXIN_VERSION=%,%,$(filter WEIXIN_VERSION=%,$(RESOLVED_VERSIONS)))
+ifeq ($(strip $(OPENCLAW_NPM_VERSION)),)
+OPENCLAW_NPM_VERSION := 2026.7.1-2
+OPENCLAW_SPK_VERSION_TMP := 2026.7.1
+endif
+OPENCLAW_NPM_VERS := $(OPENCLAW_NPM_VERSION)
 MIN_NODEJS_RUNTIME_VERS := 24.11.1
 NODEJS_RUNTIME_VERS := $(shell sh -c 'set -e; \
 	v=""; \
@@ -27,8 +43,14 @@ ifneq ($(shell printf '%s\n%s\n' $(MIN_NODEJS_RUNTIME_VERS) $(NODEJS_RUNTIME_VER
 $(warning Resolved Node.js runtime v$(NODEJS_RUNTIME_VERS) is below minimum v$(MIN_NODEJS_RUNTIME_VERS); force minimum)
 NODEJS_RUNTIME_VERS := $(MIN_NODEJS_RUNTIME_VERS)
 endif
-SPK_VERS := 2026.7.1
-SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
+SPK_VERS := $(OPENCLAW_SPK_VERSION_TMP)
+# SPK_REV is the numeric-ish build identity DSM uses to compare package
+# versions. Combine the git commit count with a short hash of the resolved
+# upstream dependency versions so that a change in OpenClaw core or any
+# channel plugin version (even without a new git commit) yields a distinct
+# revision that DSM treats as an upgrade.
+SPK_REV_FP = $(shell printf '%s' "$(OPENCLAW_NPM_VERS)|$(FEISHU_VERSION)|$(DINGTALK_VERSION)|$(WECOM_VERSION)|$(QQ_BOT_VERSION)|$(WEIXIN_VERSION)" | cksum | cut -d' ' -f1)
+SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo "$$GITHUB_RUN_NUMBER.$(SPK_REV_FP)"; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "$$(git rev-list --count HEAD).$(SPK_REV_FP)"; else echo "$$(date +%Y%m%d%H%M).$(SPK_REV_FP)"; fi)
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
@@ -106,11 +128,11 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(OPENCLAW_NPM_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
-		@openclaw/feishu@2026.7.1 \
-		@soimy/dingtalk@3.6.10 \
-		@sunnoy/wecom@3.4.0 \
-		@tencent-connect/openclaw-qqbot@2.0.0 \
-		@tencent-weixin/openclaw-weixin@2.4.6 \
+		@openclaw/feishu@$(FEISHU_VERSION) \
+		@soimy/dingtalk@$(DINGTALK_VERSION) \
+		@sunnoy/wecom@$(WECOM_VERSION) \
+		@tencent-connect/openclaw-qqbot@$(QQ_BOT_VERSION) \
+		@tencent-weixin/openclaw-weixin@$(WEIXIN_VERSION) \
 		acpx@0.5.3 \
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs

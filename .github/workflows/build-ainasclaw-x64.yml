@@ -7,6 +7,12 @@ on:
     paths:
       - 'spk/ainasclaw/**'
       - '.github/workflows/build-ainasclaw-x64.yml'
+  # Periodically rebuild against the latest stable upstream releases.
+  # resolve-versions.sh in the Makefile fetches the newest OpenClaw core,
+  # bundled skills, and channel plugin versions from the npm registry at
+  # build time, so a scheduled run picks up upstream updates automatically.
+  schedule:
+    - cron: '0 3 * * *'   # daily at 03:00 UTC
   workflow_dispatch:
     inputs:
       ref:
