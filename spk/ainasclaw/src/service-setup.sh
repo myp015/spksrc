@@ -675,10 +675,18 @@ PY
 ensure_gateway_port_in_config() {
     local force_new="${1:-0}"
     local cfg_path="${2:-${OPENCLAW_CONFIG_FILE}}"
-    python3 - <<'PY' "${cfg_path}" "${force_new}"
+    python3 - <<'PY' "${cfg_path}" "${force_new}" "${wizard_gateway_port:-${WIZARD_GATEWAY_PORT:-}}"
 import json, os, socket, sys
 cfg_path = sys.argv[1] if len(sys.argv) > 1 else ''
 force_new = (sys.argv[2] if len(sys.argv) > 2 else '0') == '1'
+wizard_port_raw = (sys.argv[3] if len(sys.argv) > 3 else '')
+
+try:
+    wizard_port = int(wizard_port_raw)
+except Exception:
+    wizard_port = 0
+if not (1024 <= wizard_port <= 65535):
+    wizard_port = 0
 
 os.makedirs(os.path.dirname(cfg_path) or '/', exist_ok=True)
 try:
@@ -696,11 +704,14 @@ try:
 except Exception:
     cur = 0
 has_valid = 1024 <= cur <= 65535
-# force_new means reset to package default port instead of random ephemeral port.
+# force_new means (re)assign the listening port. Prefer the installation
+# wizard's chosen port (installation variable), falling back to the package
+# default only when no wizard port is available. Do not hardcode a port that
+# silently overrides what the user selected in the installer.
 if force_new:
-    port = 58789
+    port = wizard_port if wizard_port else 58789
 else:
-    port = cur if has_valid else 58789
+    port = cur if has_valid else (wizard_port if wizard_port else 58789)
 c['gateway']['port'] = port
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(c, f, ensure_ascii=False, indent=2)
