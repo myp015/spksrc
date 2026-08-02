@@ -409,6 +409,37 @@ except Exception as e:
     cfg = {}
     read_error = f"{type(e).__name__}: {e}"
 providers_map = ((cfg.get('models') or {}).get('providers') or {})
+
+def default_model_for_provider(pid, cfg, kind):
+    """Return the default model ref for a given provider, or '' if the
+    provider does not own the primary default model of the given kind
+    ('model' for text, 'imageModel' for image)."""
+    try:
+        defaults = (cfg.get('agents') or {}).get('defaults') or {}
+        primary = defaults.get(kind)
+        # primary may be a dict like {'primary': 'provider/model'} or a bare str
+        if isinstance(primary, dict):
+            ref = str(primary.get('primary') or '').strip()
+        elif isinstance(primary, str):
+            ref = primary.strip()
+        else:
+            ref = ''
+        if not ref:
+            return ''
+        # ref may be 'provider/model' or bare 'model' (providerless)
+        if '/' in ref:
+            owner = ref.split('/', 1)[0]
+            return ref if owner == pid else ''
+        # providerless ref: only return it for the matching provider's models
+        for _mid in (((cfg.get('models') or {}).get('providers') or {}).get(pid) or {}).get('models') or []:
+            if isinstance(_mid, dict):
+                _mid_val = str(_mid.get('modelId') or _mid.get('id') or '').strip()
+                if _mid_val == ref:
+                    return ref
+        return ''
+    except Exception:
+        return ''
+
 providers = []
 for pid, p in providers_map.items():
     if not isinstance(p, dict):
