@@ -4121,22 +4121,22 @@ cat <<'HTML'
       if (!textSel || !imageSel) return;
       const prevText = textSel.value;
       const prevImage = imageSel.value;
-      // Rebuild options, preserving the current selected values when they still exist.
-      const textOptions = ['（自动选择）', ''].concat(modelIds || []);
-      const imageOptions = ['（无默认图像模型）', ''].concat(modelIds || []);
-      textSel.innerHTML = '';
-      imageSel.innerHTML = '';
-      for (const [label, val] of [[textOptions[0], ''], ...(modelIds||[]).map(m => [m, m])]) {
-        const o = new Option(label, val, false, false);
-        textSel.add(o);
-      }
-      for (const [label, val] of [[imageOptions[0], ''], ...(modelIds||[]).map(m => [m, m])]) {
-        const o = new Option(label, val, false, false);
-        imageSel.add(o);
+      const ids = Array.isArray(modelIds) ? modelIds.filter(Boolean) : [];
+      // Robustly rebuild options. Avoid innerHTML + add() ordering quirks in
+      // different WebKit/Safari versions used by the DSM UI shell.
+      textSel.options.length = 0;
+      imageSel.options.length = 0;
+      textSel.appendChild(new Option('（自动选择）', ''));
+      imageSel.appendChild(new Option('（无默认图像模型）', ''));
+      for (const mid of ids) {
+        textSel.appendChild(new Option(mid, mid));
+        imageSel.appendChild(new Option(mid, mid));
       }
       // Restore previous selections if the value is still available
-      if (prevText && Array.prototype.some.call(textSel.options, o => o.value === prevText)) textSel.value = prevText;
-      if (prevImage && Array.prototype.some.call(imageSel.options, o => o.value === prevImage)) imageSel.value = prevImage;
+      const textVals = Array.prototype.map.call(textSel.options, o => o.value);
+      const imageVals = Array.prototype.map.call(imageSel.options, o => o.value);
+      if (prevText && textVals.indexOf(prevText) >= 0) textSel.value = prevText;
+      if (prevImage && imageVals.indexOf(prevImage) >= 0) imageSel.value = prevImage;
     }
     function toggleModelSelection(id, checked) {
       const curr = getSelectedModelIdsFromHidden();
@@ -4229,12 +4229,12 @@ cat <<'HTML'
       const textSel = document.getElementById('dlg_default_text_model');
       const imageSel = document.getElementById('dlg_default_image_model');
       if (!textSel || !imageSel) return;
-      // Clear all options except placeholder
-      while (textSel.options.length > 0) textSel.remove(0);
-      while (imageSel.options.length > 0) imageSel.remove(0);
+      // Clear all options except placeholder (robust across WebKit variants)
+      textSel.options.length = 0;
+      imageSel.options.length = 0;
       // Add placeholders
-      textSel.add(new Option('（自动选择）', '', false, false));
-      imageSel.add(new Option('（无默认图像模型）', '', false, false));
+      textSel.appendChild(new Option('（自动选择）', ''));
+      imageSel.appendChild(new Option('（无默认图像模型）', ''));
       // Populate from provider's model list
       let modelIds = (p.models || []).map(m => m.modelId || m.id).filter(Boolean);
       // In adding mode (p.models empty), use __modelOptionPool which is populated by sync
@@ -4242,8 +4242,8 @@ cat <<'HTML'
         modelIds = window.__modelOptionPool.slice();
       }
       for (const mid of modelIds) {
-        textSel.add(new Option(mid, mid, false, false));
-        imageSel.add(new Option(mid, mid, false, false));
+        textSel.appendChild(new Option(mid, mid));
+        imageSel.appendChild(new Option(mid, mid));
       }
       // Set current defaults from provider data
       const dtm = (p.defaultTextModel || '').trim();
