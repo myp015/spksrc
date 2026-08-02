@@ -44,13 +44,12 @@ $(warning Resolved Node.js runtime v$(NODEJS_RUNTIME_VERS) is below minimum v$(M
 NODEJS_RUNTIME_VERS := $(MIN_NODEJS_RUNTIME_VERS)
 endif
 SPK_VERS := $(OPENCLAW_SPK_VERSION_TMP)
-# SPK_REV is the numeric-ish build identity DSM uses to compare package
-# versions. Combine the git commit count with a short hash of the resolved
-# upstream dependency versions so that a change in OpenClaw core or any
-# channel plugin version (even without a new git commit) yields a distinct
-# revision that DSM treats as an upgrade.
-SPK_REV_FP = $(shell printf '%s' "$(OPENCLAW_NPM_VERS)|$(FEISHU_VERSION)|$(DINGTALK_VERSION)|$(WECOM_VERSION)|$(QQ_BOT_VERSION)|$(WEIXIN_VERSION)" | cksum | cut -d' ' -f1)
-SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo "$$GITHUB_RUN_NUMBER.$(SPK_REV_FP)"; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "$$(git rev-list --count HEAD).$(SPK_REV_FP)"; else echo "$$(date +%Y%m%d%H%M).$(SPK_REV_FP)"; fi)
+# SPK_REV must be a plain integer: DSM package INFO only accepts
+# `SPK_VERS-SPK_REV` where the revision is a non-negative integer (spksrc
+# writes version="$(SPK_VERS)-$(SPK_REV)"). Putting a '.' or long hash here
+# makes DSM reject the package as '套件格式不正确'. Upstream version changes
+# are surfaced through SPK_VERS itself (e.g. 2026.7.1 -> 2026.7.2).
+SPK_REV = $(shell if [ -n "$$GITHUB_RUN_NUMBER" ]; then echo $$GITHUB_RUN_NUMBER; elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-list --count HEAD; else date +%Y%m%d%H%M; fi)
 SPK_ICON = src/openclaw.png
 
 DEPENDS =
