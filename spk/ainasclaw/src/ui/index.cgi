@@ -4996,9 +4996,10 @@ cat <<'HTML'
       }
     }
     function resolveTerminalUrl() {
-      // Direct ttyd port. No DSM nginx alias available on restart.
+      // Direct ttyd port. ttyd runs with --base-path /openclaw-terminal/, so the
+      // root path returns 404; the iframe must request the base-path URL.
       const port = String(window.__ainasTerminalPort || '17682');
-      return 'http://' + window.location.hostname + ':' + port + '/';
+      return 'http://' + window.location.hostname + ':' + port + '/openclaw-terminal/';
     }
     function buildOpenclawWebUrl() {
       // Direct gateway port only. DSM nginx alias is unreliable (lost on reboot).
