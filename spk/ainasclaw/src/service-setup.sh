@@ -147,8 +147,8 @@ const appDir=process.argv[1];
 const targets=[
   ["dist/extensions/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
   ["node_modules/@sunnoy/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
-  ["dist/extensions/dingtalk/package.json", { zod: "4.3.6", axios: "^1.13.6" }],
-  ["node_modules/@soimy/dingtalk/package.json", { zod: "4.3.6", axios: "^1.13.6" }],
+  ["dist/extensions/dingtalk/package.json", { zod: "^4.4.3", axios: "^1.13.6" }],
+  ["node_modules/@soimy/dingtalk/package.json", { zod: "^4.4.3", axios: "^1.13.6" }],
   ["dist/extensions/qqbot/package.json", { zod: "4.3.6" }],
   ["node_modules/@tencent-connect/openclaw-qqbot/package.json", { zod: "4.3.6" }],
   ["dist/extensions/openclaw-weixin/package.json", { zod: "4.3.6" }],
