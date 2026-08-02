@@ -122,7 +122,7 @@ if [ "$WORKSPACE_FROM_PTR" = "1" ] && [ -z "${CLI_CONFIG_PATH:-}" ] && [ -z "${O
 elif [ -z "${CONFIG_PATH:-}" ] || [ "$CONFIG_PATH" = "$BASE_CFG" ]; then
   CONFIG_PATH="$WORKDIR/openclaw.json"
 fi
-HOME="$WORKDIR"
+HOME="$WORKSPACE_DIR"
 
 # No implicit config migration from default workspace when switching user workspace.
 # New/empty workspace should be initialized explicitly by start/setup flow.
@@ -145,7 +145,12 @@ chmod 666 "$WORKSPACE_PTR_FILE" "$WORKSPACE_HOME_PTR_FILE" 2>/dev/null || true
 
 OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
 OPENCLAW_STATE_DIR="$WORKDIR"
-OPENCLAW_WORKSPACE_DIR="$WORKDIR"
+# HOME and OPENCLAW_WORKSPACE_DIR must be the workspace PARENT (e.g.
+# /volume1/openclaw). OpenClaw derives its runtime state at $HOME/.openclaw, so
+# HOME must equal the parent or it creates a nested .openclaw and OpenClaw
+# reports 'Multiple state directories detected' (splits session history).
+HOME="$WORKSPACE_DIR"
+OPENCLAW_WORKSPACE_DIR="$WORKSPACE_DIR"
 
 resolve_service_user() {
   # Canonical runtime account for this package is sc-openclaw.
@@ -183,9 +188,11 @@ PY
 OPENCLAW_SERVICE_USER="$(resolve_service_user)"
 USER="$OPENCLAW_SERVICE_USER"
 LOGNAME="$OPENCLAW_SERVICE_USER"
-# HOME is the private state/work directory. Never chmod the parent selected
-# by the user; OpenClaw may safely harden this directory itself.
-HOME_DEFAULT="$OPENCLAW_STATE_DIR"
+# HOME is the workspace PARENT (user-selected, e.g. /volume1/openclaw);
+# OpenClaw derives its state at $HOME/.openclaw ( == OPENCLAW_STATE_DIR). Do not
+# set HOME to the .openclaw state dir, or OpenClaw creates a nested .openclaw.
+# Never chmod the parent HOME; OpenClaw hardens only $HOME/.openclaw itself.
+HOME_DEFAULT="$WORKSPACE_DIR"
 HOME="${OPENCLAW_HOME:-$HOME_DEFAULT}"
 mkdir -p "$OPENCLAW_STATE_DIR/agents/main/sessions" 2>/dev/null || true
 chmod 700 "$OPENCLAW_STATE_DIR" 2>/dev/null || true

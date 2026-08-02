@@ -772,6 +772,15 @@ sync_dsm_package_info_port() {
 }
 
 start_gateway_if_needed() {
+    local gw_ws="${OPENCLAW_STATE_DIR}"
+    case "${gw_ws}" in
+      */.openclaw) gw_ws="${gw_ws%/.openclaw}" ;;
+    esac
+    : "${OPENCLAW_WORKSPACE_DIR:=${gw_ws}}"
+    local eff_ws_home="${OPENCLAW_WORKSPACE_DIR}"
+    case "${eff_ws_home}" in
+      */.openclaw) eff_ws_home="${eff_ws_home%/.openclaw}" ;;
+    esac
     local gw_port="$(get_gateway_port_from_config)"
     # Best-effort auto-start for install/init flows only.
     if [ "$(gateway_port_up "${gw_port}")" = "1" ]; then
@@ -787,16 +796,21 @@ start_gateway_if_needed() {
 
     # Keep every OpenClaw runtime path below HOME/.openclaw. In particular,
     # HOME must be the state directory so OpenClaw's own 700 hardening never
-    # changes the user-selected parent HOME directory.
+    # OpenClaw must live under HOME/.openclaw (the state dir). HOME and
+# OPENCLAW_WORKSPACE_DIR are the workspace PARENT so that $HOME/.openclaw
+# == the state dir and no nested .openclaw is created. OpenClaw's own 700
+# hardening applies to $HOME/.openclaw (the state dir), never touching the
+# user-selected parent HOME directory.
     local eff_user="$(resolve_effective_service_user)"
     local bundled_plugin_allowlist
     bundled_plugin_allowlist="$(resolve_bundled_plugin_dir_allowlist)"
     if [ "$(id -u 2>/dev/null || echo 1)" = "0" ] && [ -n "${eff_user}" ] && id "${eff_user}" >/dev/null 2>&1; then
         # `su -` resets HOME to the account home. Supply HOME after switching
-        # users so the Gateway receives the private state directory instead.
-        su -s /bin/sh "${eff_user}" -c "env OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_STATE_DIR}' HOME='${OPENCLAW_STATE_DIR}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
+        # users so the Gateway receives the workspace parent and derives its
+        # state at $HOME/.openclaw ( == OPENCLAW_STATE_DIR).
+        su -s /bin/sh "${eff_user}" -c "env OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST='${bundled_plugin_allowlist}' OPENCLAW_CONFIG_PATH='${OPENCLAW_CONFIG_FILE}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${eff_ws_home}' HOME='${eff_ws_home}' NPM_CONFIG_CACHE='${NPM_CONFIG_CACHE}' XDG_CACHE_HOME='${XDG_CACHE_HOME}' XDG_CONFIG_HOME='${XDG_CONFIG_HOME}' XDG_DATA_HOME='${XDG_DATA_HOME}' JITI_FS_CACHE='${OPENCLAW_STATE_DIR}/.cache/jiti' TMPDIR='${OPENCLAW_STATE_DIR}/.tmp' nohup '${oc_cli}' gateway run --allow-unconfigured --port '${gw_port}' >>'${spawn_log}' 2>&1 & echo \$! >'${GATEWAY_PID_FILE}'" >/dev/null 2>&1 || true
     else
-        OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR}" HOME="${OPENCLAW_STATE_DIR}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
+        OPENCLAW_NO_RESPAWN=0 OPENCLAW_BUNDLED_PLUGIN_DIR_ALLOWLIST="${bundled_plugin_allowlist}" OPENCLAW_WORKSPACE_DIR="${eff_ws_home}" HOME="${eff_ws_home}" JITI_FS_CACHE="${OPENCLAW_STATE_DIR}/.cache/jiti" TMPDIR="${OPENCLAW_STATE_DIR}/.tmp" nohup "${oc_cli}" gateway run --allow-unconfigured --port "${gw_port}" >>"${spawn_log}" 2>&1 &
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
     sleep 1
@@ -2192,8 +2206,16 @@ try {
 
     export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}"
     export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}"
-    export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR}"
-    export HOME="${OPENCLAW_STATE_DIR}"
+    # HOME / OPENCLAW_WORKSPACE_DIR must be the workspace PARENT (e.g.
+    # /volume1/openclaw), not the .openclaw state dir. Otherwise components that
+    # derive state from $HOME/.openclaw create a nested .openclaw and OpenClaw
+    # reports 'Multiple state directories detected' (splits session history).
+    local _state_ws="${OPENCLAW_STATE_DIR}"
+    case "${_state_ws}" in
+      */.openclaw) _state_ws="${_state_ws%/.openclaw}" ;;
+    esac
+    export OPENCLAW_WORKSPACE_DIR="${_state_ws}"
+    export HOME="${_state_ws}"
     export NPM_CONFIG_CACHE="${runtime_home_dir}/.npm"
     export XDG_CACHE_HOME="${runtime_home_dir}/.cache"
     export XDG_CONFIG_HOME="${runtime_home_dir}/.config"
@@ -2937,10 +2959,14 @@ service_postuninst() {
 }
 
 # Default exports before prestart recalculates runtime paths.
+# HOME and OPENCLAW_WORKSPACE_DIR must be the workspace PARENT (e.g.
+# /volume1/openclaw), NOT the .openclaw state dir. Using the state dir here
+# makes components that default state from $HOME/.openclaw create a nested
+# .openclaw and triggers OpenClaw's 'Multiple state directories detected'.
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR_BASE}"
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_FILE_BASE}"
-export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_STATE_DIR_BASE}"
-export HOME="${OPENCLAW_STATE_DIR_BASE}"
+export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DEFAULT}"
+export HOME="${OPENCLAW_WORKSPACE_DEFAULT}"
 export NPM_CONFIG_CACHE="${OPENCLAW_STATE_DIR_BASE}/.npm"
 export XDG_CACHE_HOME="${OPENCLAW_STATE_DIR_BASE}/.cache"
 export XDG_CONFIG_HOME="${OPENCLAW_STATE_DIR_BASE}/.config"
