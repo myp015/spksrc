@@ -704,44 +704,49 @@ for p in providers_payload:
         saved.setdefault('maxTokens', 16384)
         provider['models'].append(saved)
     providers_map[pid] = provider
-    cfg.setdefault('models', {})['providers'] = providers_map
-    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
-    # Set defaults.model / defaults.imageModel from provider config
-    try:
-        defaults = cfg.setdefault('agents', {}).setdefault('defaults', {})
-        text_refs = []
-        image_refs = []
-        for pid, pv in providers_map.items():
-            if not isinstance(pv, dict):
+# Always persist the (possibly empty) providers map, even for a delete that
+# removes the last provider. If the payload has providers:[], the loop above
+# never runs; without this assignment the existing providers would be kept and
+# a deleted provider would reappear on reload.
+cfg.setdefault('models', {})['providers'] = providers_map
+os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+
+# Set defaults.model / defaults.imageModel from provider config
+try:
+    defaults = cfg.setdefault('agents', {}).setdefault('defaults', {})
+    text_refs = []
+    image_refs = []
+    for pid, pv in providers_map.items():
+        if not isinstance(pv, dict):
+            continue
+        dtm = (pv.get('_textDefault') or pv.get('defaultTextModel') or '').strip()
+        dim = (pv.get('_imageDefault') or pv.get('defaultImageModel') or '').strip()
+        if dtm:
+            text_refs.append(dtm)
+        if dim:
+            image_refs.append(dim)
+    if text_refs:
+        defaults['model'] = {'primary': text_refs[0]}
+    if image_refs:
+        dim_ref = image_refs[0]
+        defaults['imageModel'] = {'primary': dim_ref}
+        # Auto-add image input support for the default image model
+        for pid2, pv2 in providers_map.items():
+            if not isinstance(pv2, dict):
                 continue
-            dtm = (pv.get('_textDefault') or pv.get('defaultTextModel') or '').strip()
-            dim = (pv.get('_imageDefault') or pv.get('defaultImageModel') or '').strip()
-            if dtm:
-                text_refs.append(dtm)
-            if dim:
-                image_refs.append(dim)
-        if text_refs:
-            defaults['model'] = {'primary': text_refs[0]}
-        if image_refs:
-            dim_ref = image_refs[0]
-            defaults['imageModel'] = {'primary': dim_ref}
-            # Auto-add image input support for the default image model
-            for pid, pv in providers_map.items():
-                if not isinstance(pv, dict):
+            for m in (pv2.get('models') or []):
+                if not isinstance(m, dict):
                     continue
-                for m in (pv.get('models') or []):
-                    if not isinstance(m, dict):
-                        continue
-                    mid = m.get('modelId') or m.get('id') or ''
-                    full_ref = (pv.get('id') or pid) + '/' + mid
-                    if full_ref == dim_ref or mid == dim_ref:
-                        inp = m.setdefault('input', ['text'])
-                        if 'image' not in inp:
-                            inp.append('image')
-                        break
-    except Exception:
-        pass
+                mid = m.get('modelId') or m.get('id') or ''
+                full_ref = (pv2.get('id') or pid2) + '/' + mid
+                if full_ref == dim_ref or mid == dim_ref:
+                    inp = m.setdefault('input', ['text'])
+                    if 'image' not in inp:
+                        inp.append('image')
+                    break
+except Exception:
+    pass
 
 # user requirement: changing workspace should initialize by defaults only (no migration)
 if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json'):
