@@ -4535,24 +4535,19 @@ cat <<'HTML'
         textSel.appendChild(new Option(mid, mid));
         imageSel.appendChild(new Option(mid, mid));
       }
-      // Set current defaults from provider data. dtm/dim may be a full ref like
-      // "deepseek/deepseek-v4-flash" or a bare id "deepseek-v4-flash" while the
-      // dropdown options carry the bare model id; also match the id portion
-      // stripped of the provider prefix so the default actually appears selected.
+      // Set current default TEXT model from provider data (display only).
+      // NOTE: do NOT pre-select the image default here. Editing a provider whose
+      // imageModel is set must NOT echo it back into the dropdown, otherwise
+      // saving without touching the image dropdown re-persists the stale value
+      // (the '删不掉图像模型' loop). The image default is only meaningful when
+      // the operator explicitly selects one (or via 清除图像默认 which keeps it
+      // empty -> backend clears imageModel).
       const dtm = (p.defaultTextModel || '').trim();
       const dtmId = dtm.indexOf('/') >= 0 ? dtm.slice(dtm.indexOf('/') + 1) : dtm;
       if (dtm) {
         for (let i = 0; i < textSel.options.length; i++) {
           const v = textSel.options[i].value;
           if (v === dtm || v === dtmId) { textSel.selectedIndex = i; break; }
-        }
-      }
-      const dim = (p.defaultImageModel || '').trim();
-      const dimId = dim.indexOf('/') >= 0 ? dim.slice(dim.indexOf('/') + 1) : dim;
-      if (dim) {
-        for (let i = 0; i < imageSel.options.length; i++) {
-          const v = imageSel.options[i].value;
-          if (v === dim || v === dimId) { imageSel.selectedIndex = i; break; }
         }
       }
     }
