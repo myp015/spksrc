@@ -926,12 +926,16 @@ try:
         _d = defaults.get(_k)
         if isinstance(_d, dict):
             if not _valid_ref(_d.get('primary')):
-                if active_refs:
+                if _k == 'model' and active_refs:
+                    # text default: keep one (fall back to first model)
                     _d['primary'] = active_refs[0]
                 else:
+                    # image default: an empty/invalid value must stay unset — do
+                    # NOT auto-fill with the first provider model (that is why the
+                    # cleared image default kept coming back as deepseek-v4-flash).
                     _d.pop('primary', None)
         elif isinstance(_d, str) and not _valid_ref(_d):
-            if active_refs:
+            if _k == 'model' and active_refs:
                 defaults[_k] = {'primary': active_refs[0]}
             else:
                 defaults.pop(_k, None)
