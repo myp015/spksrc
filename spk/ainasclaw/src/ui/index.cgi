@@ -826,6 +826,22 @@ try:
 except Exception:
     pass
 
+# HARD backend guarantee: if NO provider in this save declared an explicit image
+# default, force the image default empty on disk regardless of any prior value or
+# frontend quirk. This is the final safety net — the operator can only retain an
+# image default by actually selecting one in the dialog.
+try:
+    defaults = cfg.setdefault('agents', {}).setdefault('defaults', {})
+    _any_img = False
+    for _pid2, _pv2 in providers_map.items():
+        if isinstance(_pv2, dict) and ((_pv2.get('_imageDefault') or _pv2.get('defaultImageModel') or '').strip()):
+            _any_img = True
+            break
+    if not _any_img:
+        defaults['imageModel'] = {'primary': ''}
+except Exception:
+    pass
+
 # user requirement: changing workspace should initialize by defaults only (no migration)
 if (not os.path.exists(cfg_path)) and os.path.exists('/var/packages/ainasclaw/target/app/openclaw/config/openclaw.template.json'):
     try:
