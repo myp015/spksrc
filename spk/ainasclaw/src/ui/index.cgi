@@ -4636,18 +4636,33 @@ cat <<'HTML'
           api: document.getElementById('dlg_api').value
         };
         const data = await api('models_sync_provider', 'POST', payload);
-        const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
+        const synced = (data.models || []).filter(m => m && (m.modelId || m.id));
+        const ids = synced.map(m => m.modelId || m.id).filter(Boolean);
         if (!ids.length) {
           const msg = data.error ? ('同步失败：' + data.error) : '未同步到模型';
           setModelDialogHint(msg, data.error ? 'err' : 'ok');
           setMsg(msg, data.error ? 'err' : '');
           return;
         }
+        // Merge synced models with any existing raw metadata so fields like
+        // input:['text','image'] and other provider-specific config the operator
+        // added are NOT dropped by a re-sync (sync response only carries id).
+        let existingRaw = [];
+        try { existingRaw = JSON.parse(document.getElementById('modelModalMask').dataset.rawModels || '[]') || []; } catch (_) { existingRaw = []; }
+        const existingById = {};
+        for (const em of existingRaw) {
+          if (em && typeof em === 'object') existingById[em.id || em.modelId || ''] = em;
+        }
+        const mergedRaw = ids.map(id => {
+          const prev = existingById[id];
+          return prev && typeof prev === 'object' ? prev : { id: id, modelId: id };
+        });
+        document.getElementById('modelModalMask').dataset.rawModels = JSON.stringify(mergedRaw);
         // 按原逻辑：同步后全部选中。setModelSelectOptions 内部会实时刷新
         // 默认文本/图像模型下拉列表，使其与已同步/可用的模型列表保持一致。
         setModelSelectOptions(ids, ids);
-        setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
-        setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
+        setModelDialogHint('已同步并写入本地缓存（保留已配置的输入能力），共 ' + ids.length + ' 个', 'ok');
+        setMsg('已同步并写入本地缓存（保留已配置的输入能力），共 ' + ids.length + ' 个', 'ok');
       } catch (e) { setModelDialogHint('同步失败：' + (e.message || e), 'err'); setMsg('同步失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
