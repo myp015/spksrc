@@ -1379,6 +1379,44 @@ NGINX_EOF
             in_port="${bootstrap_port}"
         fi
 
+        # Defensive data-loss guard (upgrade path): the config normalization below
+        # runs on an empty template if the bootstrap config file was ever seen as
+        # missing during upgrade, which wipes a user's configured providers and
+        # channels. If this bootstrap config has NO providers/channels but the
+        # workspace's own backup (.bak) does, restore those two blocks up front so
+        # the normalize step preserves them instead of persisting empty ones (see
+        # "升级 2026.7.1-304 后套件无法启动" incident on 2026-08-03).
+        if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ] && [ -f "${bootstrap_config_file}" ]; then
+            local _bc_bak="${bootstrap_config_file}.bak"
+            if [ -f "${_bc_bak}" ] && [ -s "${bootstrap_config_file}" ]; then
+              "${OPENCLAW_NODE}" -e '
+(() => {
+const fs=require("fs");
+const cur=process.argv[1], bak=process.argv[2];
+function dr(f){ try{ return JSON.parse(fs.readFileSync(f,"utf8")); }catch{ return null; } }
+const c=dr(cur), b=dr(bak);
+if(!c||!b) return;
+let changed=false;
+const cp=((b.models&&typeof b.models==="object")?b.models.providers:null);
+const cprov=((c.models&&typeof c.models==="object")?c.models.providers:null);
+if(cp && (typeof cp==="object") && Object.keys(cp).length && (!cprov || typeof cprov!=="object" || !Object.keys(cprov).length)){
+  c.models=c.models||{}; c.models.providers=cp; changed=true;
+}
+const cc=typeof b.channels==="object"?b.channels:null;
+const cc2=typeof c.channels==="object"?c.channels:null;
+if(cc && Object.keys(cc).length && (!cc2 || !Object.keys(cc2).length)){
+  c.channels=cc; changed=true;
+}
+const bd=(b.agents&&b.agents.defaults&&typeof b.agents.defaults==="object")?b.agents.defaults:null;
+const cd=(c.agents&&c.agents.defaults&&typeof c.agents.defaults==="object")?c.agents.defaults:null;
+if(bd&&bd.model&&(!cd||!cd.model)){ c.agents=c.agents||{}; c.agents.defaults=c.agents.defaults||{}; c.agents.defaults.model=bd.model; changed=true; }
+if(bd&&bd.imageModel&&(!cd||!cd.imageModel)){ c.agents=c.agents||{}; c.agents.defaults=c.agents.defaults||{}; c.agents.defaults.imageModel=bd.imageModel; changed=true; }
+if(changed) fs.writeFileSync(cur, JSON.stringify(c,null,2)+"\n", "utf8");
+})();
+' "${bootstrap_config_file}" "${_bc_bak}" 2>/dev/null || true
+            fi
+        fi
+
         # 同步 DSM 套件详情页端口展示（adminport）到当前 runtime 端口。
         sync_dsm_package_info_port "${bootstrap_port}"
 
