@@ -785,35 +785,25 @@ try:
         defaults['model'] = {'primary': _normalize_ref(text_refs[0])}
     if image_refs:
         dim_ref = image_refs[0]
-        _text_primary = ''
-        _cur_model = defaults.get('model')
-        if isinstance(_cur_model, dict):
-            _text_primary = str(_cur_model.get('primary') or '').strip()
-        elif isinstance(_cur_model, str):
-            _text_primary = _cur_model.strip()
-        _dim_short = dim_ref.split('/')[-1] if '/' in dim_ref else dim_ref
-        _text_short = _text_primary.split('/')[-1] if '/' in _text_primary else _text_primary
-        # 兜底：若默认图像模型的最终值(短名)等于默认文本模型，说明它只是被 UI
-        # 镜像/带回，而非用户独立设置——此时清空 imageModel，而不是把文本默认
-        # 又写回成图像默认（否则“选无保存后仍显示文本模型当图像默认”会复现）。
-        if _dim_short and _dim_short == _text_short:
-            defaults['imageModel'] = {'primary': ''}
-        else:
-            defaults['imageModel'] = {'primary': dim_ref}
-            # Auto-add image input support for the default image model
-            for pid2, pv2 in providers_map.items():
-                if not isinstance(pv2, dict):
+        # NOTE: do NOT clear/guard here when image default equals text default.
+        # That would break multimodal providers where the same model is used for
+        # both text and image defaults. Just persist what the operator set; the
+        # frontend __imageDefaultCleared intent handles actual clearing.
+        defaults['imageModel'] = {'primary': dim_ref}
+        # Auto-add image input support for the default image model
+        for pid2, pv2 in providers_map.items():
+            if not isinstance(pv2, dict):
+                continue
+            for m in (pv2.get('models') or []):
+                if not isinstance(m, dict):
                     continue
-                for m in (pv2.get('models') or []):
-                    if not isinstance(m, dict):
-                        continue
-                    mid = m.get('modelId') or m.get('id') or ''
-                    full_ref = (pv2.get('id') or pid2) + '/' + mid
-                    if full_ref == dim_ref or mid == dim_ref:
-                        inp = m.setdefault('input', ['text'])
-                        if 'image' not in inp:
-                            inp.append('image')
-                        break
+                mid = m.get('modelId') or m.get('id') or ''
+                full_ref = (pv2.get('id') or pid2) + '/' + mid
+                if full_ref == dim_ref or mid == dim_ref:
+                    inp = m.setdefault('input', ['text'])
+                    if 'image' not in inp:
+                        inp.append('image')
+                    break
     else:
         # 默认图像模型被清空（改成空）：移除 imageModel 残留，并删除之前为
         # 支持图片而加进模型（文本模型和图像模型）的 input 里的 'image'，
