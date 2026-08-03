@@ -410,6 +410,38 @@ except Exception as e:
     read_error = f"{type(e).__name__}: {e}"
 providers_map = ((cfg.get('models') or {}).get('providers') or {})
 
+# Secrets store for provider SecretRefs ({"source":"file","id":"/models/providers/<pid>/apiKey"}).
+# Resolve it once up-front so the edit dialog can show a masked API key and
+# "手动同步到本地缓存" never fires with an empty key (API auth error).
+_SECRETS = {}
+_state_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
+if _state_dir.endswith('/.openclaw'):
+    _state_dir = _state_dir[:-len('/.openclaw')]
+for _sp_cand in (os.path.join(_state_dir, '.openclaw', 'secrets.json'), os.path.join(_state_dir, 'secrets.json')):
+    if os.path.exists(_sp_cand):
+        try:
+            _SECRETS = json.load(open(_sp_cand, 'r', encoding='utf-8')) or {}
+        except Exception:
+            _SECRETS = {}
+        break
+
+
+def _resolve_secret_ref(ref):
+    """Resolve a file-backed SecretRef dict into its stored string value."""
+    if not isinstance(ref, dict) or not ref.get('id'):
+        return ''
+    try:
+        _seg = [s for s in str(ref.get('id')).split('/') if s]
+        _t = _SECRETS
+        for _k in _seg:
+            if isinstance(_t, dict) and _k in _t:
+                _t = _t[_k]
+            else:
+                return ''
+        return _t if isinstance(_t, str) else ''
+    except Exception:
+        return ''
+
 def default_model_for_provider(pid, cfg, kind):
     """Return the default model ref for a provider. The default text/image
     model is stored globally at agents.defaults.model/.imageModel (primary).
@@ -447,6 +479,15 @@ for pid, p in providers_map.items():
     if isinstance(p.get('apiKey'), str) and p.get('apiKey'):
         item['apiKeyMasked'] = '*' * min(16, max(8, len(p.get('apiKey'))))
         item['apiKeyRaw'] = p.get('apiKey')
+    elif isinstance(p.get('apiKey'), dict):
+        # SecretRef (e.g. {"source":"file","provider":"ainasclaw","id":"/models/providers/<pid>/apiKey"})
+        # points into the private file-backed secrets store. Resolve it so the
+        # edit dialog can show a masked placeholder and "手动同步到本地缓存" does
+        # not fire with an empty key (which would raise an API auth error).
+        _resolved = _resolve_secret_ref(p.get('apiKey'))
+        if _resolved:
+            item['apiKeyMasked'] = '*' * min(16, max(8, len(_resolved)))
+            item['apiKeyRaw'] = _resolved
     for m in (p.get('models') or []):
         if isinstance(m, dict):
             mid = m.get('modelId') or m.get('id') or ''
