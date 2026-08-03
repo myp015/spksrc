@@ -793,23 +793,43 @@ try:
     # 发给不支持视觉的 provider 而报 400 "unknown variant `image_url`"）。
     if image_refs:
         dim_ref = image_refs[0]
-        defaults['imageModel'] = {'primary': dim_ref}
-        # 为显式设置的默认图像模型补 image 输入（仅当该模型本身支持图片时
-        # 才有意义；deepseek 等纯文本模型不应补，OpenClaw 仅把它当作图片默认
-        # 的入口。此处在用户显式指定时按需补齐 input）。
-        for pid2, pv2 in providers_map.items():
-            if not isinstance(pv2, dict):
-                continue
-            for m in (pv2.get('models') or []):
-                if not isinstance(m, dict):
+        # 保护：若默认图像模型误等于默认文本模型（常见于编辑已有 provider 时
+        # 下拉被历史全局默认选中、或添加默认文本时图像下拉被连带），而没有任何
+        # 其它 provider 显式指定不同的图像默认，则视为误连带，清空 imageModel。
+        _text_primary = ''
+        _cur_model = defaults.get('model')
+        if isinstance(_cur_model, dict):
+            _text_primary = str(_cur_model.get('primary') or '').strip()
+        elif isinstance(_cur_model, str):
+            _text_primary = _cur_model.strip()
+        _dim_ref_short = dim_ref.split('/')[-1] if '/' in dim_ref else dim_ref
+        _text_short = _text_primary.split('/')[-1] if '/' in _text_primary else _text_primary
+        _other_image_explicit = any(
+            isinstance(pv2, dict)
+            and ((pv2.get('_imageDefault') or pv2.get('defaultImageModel') or '').strip())
+            and ((pv2.get('_imageDefault') or pv2.get('defaultImageModel') or '').strip()) != dim_ref
+            for pv2 in providers_map.values()
+        )
+        if (_dim_ref_short == _text_short and not _other_image_explicit) or dim_ref == _text_primary:
+            defaults['imageModel'] = {'primary': ''}
+        else:
+            defaults['imageModel'] = {'primary': dim_ref}
+            # 为显式设置的默认图像模型补 image 输入（仅当该模型本身支持图片时
+            # 才有意义；deepseek 等纯文本模型不应补，OpenClaw 仅把它当作图片默认
+            # 的入口。此处在用户显式指定时按需补齐 input）。
+            for pid2, pv2 in providers_map.items():
+                if not isinstance(pv2, dict):
                     continue
-                mid = m.get('modelId') or m.get('id') or ''
-                full_ref = (pv2.get('id') or pid2) + '/' + mid
-                if full_ref == dim_ref or mid == dim_ref:
-                    inp = m.setdefault('input', ['text'])
-                    if 'image' not in inp:
-                        inp.append('image')
-                    break
+                for m in (pv2.get('models') or []):
+                    if not isinstance(m, dict):
+                        continue
+                    mid = m.get('modelId') or m.get('id') or ''
+                    full_ref = (pv2.get('id') or pid2) + '/' + mid
+                    if full_ref == dim_ref or mid == dim_ref:
+                        inp = m.setdefault('input', ['text'])
+                        if 'image' not in inp:
+                            inp.append('image')
+                        break
     elif not image_refs:
         # 未手动设置默认图像模型：确保 imageModel 为空（不残留历史默认）
         defaults['imageModel'] = {'primary': ''}

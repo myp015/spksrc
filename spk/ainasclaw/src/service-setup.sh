@@ -1938,6 +1938,15 @@ export NPM_CONFIG_CACHE="$state/.npm"
 export XDG_CACHE_HOME="$state/.cache"
 export XDG_CONFIG_HOME="$state/.config"
 export XDG_DATA_HOME="$state/.local/share"
+# Terminal runs under the service account (sc-openclaw), not root. ttyd is
+# launched by prestart (root); switch to the canonical service user so file
+# ownership of the workspace is respected. su resets HOME, so re-export it.
+if id -u sc-openclaw >/dev/null 2>&1; then
+  if [ -x /bin/bash ]; then
+    exec su -s /bin/bash sc-openclaw -c "export HOME=\"$ws\"; exec /bin/bash -l"
+  fi
+  exec su -s /bin/sh sc-openclaw -c "export HOME=\"$ws\"; exec /bin/sh -l"
+fi
 if [ -x /bin/bash ]; then
   exec /bin/bash -l
 fi
