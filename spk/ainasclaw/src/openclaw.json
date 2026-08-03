@@ -59,7 +59,10 @@
   },
   "commands": {
     "native": "auto",
-    "nativeSkills": "auto"
+    "nativeSkills": "auto",
+    "ownerAllowFrom": [
+      "webchat:*"
+    ]
   },
   "skills": {
     "entries": {

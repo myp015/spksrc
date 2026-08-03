@@ -855,6 +855,78 @@ for _pid in list(providers_map.keys()):
         _pv.pop('defaultTextModel', None)
         _pv.pop('defaultImageModel', None)
 
+# Migrate plaintext provider apiKeys into the private file-backed SecretRef
+# store (cfg.secrets.providers.ainasclaw), so openclaw doctor reports no
+# 'plaintext secret-bearing config fields' after adding/editing a provider.
+try:
+    secrets_path = ''
+    _ain = (((cfg.get('secrets') or {}).get('providers') or {}).get('ainasclaw') or {})
+    if _ain.get('source') == 'file' and _ain.get('path'):
+        secrets_path = _ain['path']
+    if not secrets_path:
+        secrets_path = os.path.join(os.path.dirname(cfg_path), 'secrets.json')
+    _sec = {}
+    try:
+        if os.path.exists(secrets_path):
+            _sec = json.load(open(secrets_path, 'r', encoding='utf-8'))
+            if not isinstance(_sec, dict):
+                _sec = {}
+    except Exception:
+        _sec = {}
+    _def_ref = lambda _ptr: {'source': 'file', 'provider': 'ainasclaw', 'id': _ptr}
+    # helper inline
+    def _store(pointer, value):
+        cur = _sec
+        parts = [p for p in pointer.split('/') if p]
+        for p in parts[:-1]:
+            cur = cur.setdefault(p, {})
+        cur[parts[-1]] = value
+    _changed = False
+    for _pname, _pvmap in providers_map.items():
+        _k = _pvmap.get('apiKey') if isinstance(_pvmap, dict) else None
+        if isinstance(_k, str) and _k.strip() and not (set(_k.strip()) == {'*'}):
+            _esc = _pname.replace('~', '~0').replace('/', '~1')
+            _ptr = '/models/providers/' + _esc + '/apiKey'
+            _store(_ptr, _k.strip())
+            _pvmap['apiKey'] = _def_ref(_ptr)
+            _changed = True
+        elif isinstance(_k, dict) and _k.get('id'):
+            # already a ref; ensure value exists in secrets store
+            _ptr = _k.get('id')
+            _pth = _ptr.split('/')
+            cur = _sec
+            for p in _pth[1:]:
+                if isinstance(cur, dict) and p in cur:
+                    cur = cur[p]
+                else:
+                    cur = None
+                    break
+            if cur is None:
+                # recoverable only if... skip; leave as-is
+                pass
+    # migrate channel appSecrets (feishu) into the same store
+    _facc = (((cfg.get('channels') or {}).get('feishu') or {}).get('accounts') or {})
+    for _aid, _acct in _facc.items():
+        if isinstance(_acct, dict) and isinstance(_acct.get('appSecret'), str) and _acct.get('appSecret').strip():
+            _esc_a = _aid.replace('~', '~0').replace('/', '~1')
+            _ptr2 = '/channels/feishu/accounts/' + _esc_a + '/appSecret'
+            _store(_ptr2, _acct['appSecret'].strip())
+            _acct['appSecret'] = _def_ref(_ptr2)
+            _changed = True
+    if _changed:
+        os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
+        cfg.setdefault('secrets', {}).setdefault('providers', {})['ainasclaw'] = {
+            'source': 'file', 'path': secrets_path, 'mode': 'json'
+        }
+        with open(secrets_path, 'w', encoding='utf-8') as _sf:
+            json.dump(_sec, _sf, ensure_ascii=False, indent=2)
+        try:
+            os.chmod(secrets_path, 0o600)
+        except Exception:
+            pass
+except Exception:
+    pass
+
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
@@ -1518,6 +1590,74 @@ def enabled_ids(channels):
         else:
             ids.append(cid)
     return ids
+
+# Migrate plaintext channel credentials into the private file-backed SecretRef
+# store so openclaw doctor reports no 'plaintext secret-bearing config fields'.
+try:
+    secrets_path = ''
+    _ain = (((cfg.get('secrets') or {}).get('providers') or {}).get('ainasclaw') or {})
+    if _ain.get('source') == 'file' and _ain.get('path'):
+        secrets_path = _ain['path']
+    if not secrets_path:
+        secrets_path = os.path.join(os.path.dirname(cfg_path), 'secrets.json')
+    _sec = {}
+    try:
+        if os.path.exists(secrets_path):
+            _sec = json.load(open(secrets_path, 'r', encoding='utf-8'))
+            if not isinstance(_sec, dict):
+                _sec = {}
+    except Exception:
+        _sec = {}
+    def _store(pointer, value):
+        cur = _sec
+        parts = [p for p in pointer.split('/') if p]
+        for p in parts[:-1]:
+            cur = cur.setdefault(p, {})
+        cur[parts[-1]] = value
+    def _def_ref(ptr):
+        return {'source': 'file', 'provider': 'ainasclaw', 'id': ptr}
+    def _migr(obj, base_ptr, field):
+        # returns True if migrated
+        v = obj.get(field)
+        if isinstance(v, str) and v.strip():
+            _store(base_ptr, v.strip())
+            obj[field] = _def_ref(base_ptr)
+            return True
+        return False
+    _ch_changed = False
+    _ch = ch or {}
+    _f = _ch.get('feishu')
+    if isinstance(_f, dict):
+        for _aid, _acct in ((_f.get('accounts') or {}).items() or []):
+            if isinstance(_acct, dict):
+                _ea = _aid.replace('~','~0').replace('/','~1')
+                if _migr(_acct, '/channels/feishu/accounts/'+_ea+'/appSecret', 'appSecret'):
+                    _ch_changed = True
+    _w = _ch.get('wecom')
+    if isinstance(_w, dict):
+        if _migr(_w, '/channels/wecom/secret', 'secret'):
+            _ch_changed = True
+    _d = _ch.get('dingtalk')
+    if isinstance(_d, dict):
+        if _migr(_d, '/channels/dingtalk/clientSecret', 'clientSecret'):
+            _ch_changed = True
+    _q = _ch.get('qqbot')
+    if isinstance(_q, dict):
+        if _migr(_q, '/channels/qqbot/clientSecret', 'clientSecret'):
+            _ch_changed = True
+    if _ch_changed:
+        os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
+        cfg.setdefault('secrets', {}).setdefault('providers', {})['ainasclaw'] = {
+            'source': 'file', 'path': secrets_path, 'mode': 'json'
+        }
+        with open(secrets_path, 'w', encoding='utf-8') as _sf:
+            json.dump(_sec, _sf, ensure_ascii=False, indent=2)
+        try:
+            os.chmod(secrets_path, 0o600)
+        except Exception:
+            pass
+except Exception:
+    pass
 
 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 with open(cfg_path, 'w', encoding='utf-8') as f:
