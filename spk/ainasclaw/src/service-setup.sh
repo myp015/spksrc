@@ -646,7 +646,7 @@ cleanup_missing_session_transcripts_if_needed() {
     [ -f "${sessions_store}" ] || return 0
 
     local need_fix="0"
-    if ! "${OPENCLAW_NODE}" -e 'const fs=require("fs"); const path=require("path"); const storePath=process.argv[1]; const store=JSON.parse(fs.readFileSync(storePath,"utf8")); if (!store || typeof store !== "object") process.exit(1); const sessionsDir=path.join(path.dirname(storePath), ".."); const sessRoot=path.resolve(sessionsDir); const refs=new Set(); for (const [k,v] of Object.entries(store)) { if (!v || typeof v !== "object" || !v.sessionId) continue; refs.add(v.sessionId); } let missing=0; for (const sid of refs) { const candidates=[path.join(sessRoot, `${sid}.jsonl`), path.join(sessRoot, `${sid}.trajectory.jsonl`), path.join(sessRoot, `${sid}.trajectory-path.json`)]; let found=false; for (const c of candidates) { if (fs.existsSync(c)) { found=true; break; } } if (!found) missing++; } if (missing > 0) process.exit(2);' "${sessions_store}" >/dev/null 2>&1; then
+    if ! "${OPENCLAW_NODE}" -e 'const fs=require("fs"); const path=require("path"); const storePath=process.argv[1]; const store=JSON.parse(fs.readFileSync(storePath,"utf8")); if (!store || typeof store !== "object") process.exit(1); const sessRoot=path.resolve(path.dirname(storePath)); const refs=new Set(); for (const [k,v] of Object.entries(store)) { if (!v || typeof v !== "object" || !v.sessionId) continue; refs.add(v.sessionId); } let missing=0; for (const sid of refs) { const candidates=[path.join(sessRoot, `${sid}.jsonl`), path.join(sessRoot, `${sid}.trajectory.jsonl`), path.join(sessRoot, `${sid}.trajectory-path.json`)]; let found=false; for (const c of candidates) { if (fs.existsSync(c)) { found=true; break; } } if (!found) missing++; } if (missing > 0) process.exit(2);' "${sessions_store}" >/dev/null 2>&1; then
         need_fix="1"
     fi
 
@@ -2825,6 +2825,11 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # bundledDiscovery=allowlist can launch with browser-only discovery.
     if [ -d "${OPENCLAW_STATE_DIR}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
         start_gateway_if_needed
+        # The gateway may create a main-session placeholder (sessions.json index)
+        # whose transcript is only written once there is real dialogue. On a fresh
+        # install that yields a '1/1 sessions missing transcripts' doctor warning.
+        # Prune such placeholders now so doctor is clean without wiping real history.
+        cleanup_missing_session_transcripts_if_needed
     fi
 
     # fn-port monitor runtime dirs (ported from sc-openclaw)
