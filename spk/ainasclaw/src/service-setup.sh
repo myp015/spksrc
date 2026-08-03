@@ -499,8 +499,19 @@ for(const d of roots){
   }
   if(d.endsWith("openclaw-weixin") && fs.existsSync(path.join(d,"dist","src","channel.js"))){
     w(path.join(d,"channel-plugin-api.js"),"export { weixinPlugin } from \"./dist/src/channel.js\";\n");
-    w(path.join(d,"runtime-api.js"),"export { setWeixinRuntime } from \"./dist/src/runtime.js\";\n");
-    w(path.join(d,"full-api.js"),"import e from \"./dist/index.js\";\nexport function registerWeixinPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
+    // @tencent-weixin/openclaw-weixin 2.x has no ./dist/src/runtime.js (it
+    // registers directly via api.registerChannel); use a runtime stub so the
+    // contract resolves instead of failing with
+    //   Cannot find module './dist/src/runtime.js'.
+    w(path.join(d,"runtime-api.js"),"export const setWeixinRuntime = () => {};\n");
+    // Keep the vendor compiled entry under a non-shadowing name so full-api.js
+    // can import it even after dist/index.js is removed by the bundled-entry
+    // patch (which forces discovery to load the source index.js contract).
+    if (fs.existsSync(path.join(d,"dist","index.js")) && !fs.existsSync(path.join(d,"dist","index.runtime.js"))) {
+      fs.copyFileSync(path.join(d,"dist","index.js"), path.join(d,"dist","index.runtime.js"));
+    }
+    const _wRuntime = fs.existsSync(path.join(d,"dist","index.runtime.js")) ? "./dist/index.runtime.js" : "./dist/index.js";
+    w(path.join(d,"full-api.js"),"import e from \"" + _wRuntime + "\";\nexport function registerWeixinPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
     w(path.join(d,"index.js"),"import { defineBundledChannelEntry } from \"openclaw/plugin-sdk/channel-entry-contract\";\nexport default defineBundledChannelEntry({id:\"openclaw-weixin\",name:\"Weixin\",description:\"Weixin channel plugin\",importMetaUrl:import.meta.url,plugin:{specifier:\"./channel-plugin-api.js\",exportName:\"weixinPlugin\"},runtime:{specifier:\"./runtime-api.js\",exportName:\"setWeixinRuntime\"},registerFull(api){return import(\"./full-api.js\").then(m=>m.registerWeixinPluginFull(api));}});\n");
     pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="openclaw-weixin";o.channels=["openclaw-weixin"];o.extensions=["./index.js"];});
     pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="openclaw-weixin";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="openclaw-weixin";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
