@@ -782,24 +782,16 @@ try:
             image_refs.append(dim)
     if text_refs:
         defaults['model'] = {'primary': text_refs[0]}
-    # Determine the EFFECTIVE default image model: prefer one set in this save,
-    # otherwise keep the existing global default (agents.defaults.imageModel.primary).
-    # "手动同步到本地缓存"/auto-set can make the first model the default image
-    # model without augmenting input, so a model ends up as the image default yet
-    # lacks the image modality and rejects pictures. Always ensure the effective
-    # default image model gets input:["text","image"].
-    _eff_img_ref = ''
+    # 默认图像模型只由用户在本弹窗显式设置（image_refs 非空）决定。
+    # 未手动设置时：imageModel 保持为空，且不自动给任何模型补 input:image
+    # （避免把纯文本模型误标为可接收图片，导致 agent 把图片作为 image_url
+    # 发给不支持视觉的 provider 而报 400 "unknown variant `image_url`"）。
     if image_refs:
-        _eff_img_ref = image_refs[0]
-        defaults['imageModel'] = {'primary': _eff_img_ref}
-    else:
-        _cur_img = defaults.get('imageModel')
-        if isinstance(_cur_img, dict):
-            _eff_img_ref = str(_cur_img.get('primary') or '').strip()
-        elif isinstance(_cur_img, str):
-            _eff_img_ref = _cur_img.strip()
-    if _eff_img_ref:
-        # Auto-add image input support for the effective default image model
+        dim_ref = image_refs[0]
+        defaults['imageModel'] = {'primary': dim_ref}
+        # 为显式设置的默认图像模型补 image 输入（仅当该模型本身支持图片时
+        # 才有意义；deepseek 等纯文本模型不应补，OpenClaw 仅把它当作图片默认
+        # 的入口。此处在用户显式指定时按需补齐 input）。
         for pid2, pv2 in providers_map.items():
             if not isinstance(pv2, dict):
                 continue
@@ -808,11 +800,14 @@ try:
                     continue
                 mid = m.get('modelId') or m.get('id') or ''
                 full_ref = (pv2.get('id') or pid2) + '/' + mid
-                if full_ref == _eff_img_ref or mid == _eff_img_ref:
+                if full_ref == dim_ref or mid == dim_ref:
                     inp = m.setdefault('input', ['text'])
                     if 'image' not in inp:
                         inp.append('image')
                     break
+    elif not image_refs:
+        # 未手动设置默认图像模型：确保 imageModel 为空（不残留历史默认）
+        defaults['imageModel'] = {'primary': ''}
 except Exception:
     pass
 
