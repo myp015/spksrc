@@ -825,60 +825,11 @@ start_gateway_if_needed() {
     sleep 1
 }
 
-# Seed configured model-provider API keys into the main agent's auth store
-# (agents/<id>/agent/openclaw-agent.sqlite).
-# The gateway's primary model path reads models.providers.<id>.apiKey direct
-# from config/secrets, but some channel traffic resolves provider auth through
-# the per-agent auth store. If the key is missing there, calls fail with
-#   ProviderAuthError: No API key found for provider "<id>".
-#   Auth store: .../agents/<id>/agent/openclaw-agent.sqlite
-# Surfaces to the user as "Authentication failed (provider returned HTTP 401)"
-# on dingtalk/wecom/weixin while feishu/qqbot stay fine. This seeds the key so
-# it survives restarts instead of only working after a manual re-init.
-# Idempotent: paste-api-key re-writes the <provider>:manual profile in place.
-seed_agent_provider_auth() {
-    local oc_cli="/var/packages/ainasclaw/target/bin/openclaw"
-    [ -x "${oc_cli}" ] || oc_cli="/var/packages/openclaw/target/bin/openclaw"
-    [ -x "${oc_cli}" ] || return 0
-
-    local cfg_file="${OPENCLAW_CONFIG_FILE}"
-    [ -f "${cfg_file}" ] && [ -f "${OPENCLAW_STATE_DIR}/secrets.json" ] || return 0
-
-    local eff_user
-    eff_user="$(resolve_effective_service_user 2>/dev/null || echo "${EFF_USER:-sc-openclaw}")"
-
-    # providerId<TAB>apiKey  -- apiKey resolved from config (SecretRef -> secrets.json).
-    # NOTE: must be POSIX-sh safe. DSM's start-stop-status sources this via
-    # /bin/sh (bash --posix); process substitution < <() is a syntax error there
-    # that aborts sourcing the whole service-setup (all lifecycle functions stay
-    # undefined, gateway never starts). Use a temp file instead.
-    local provider_id key out
-    local _prov_list
-    _prov_list="${SYNOPKG_PKGVAR}/.seed-provider-auth.$$.$RANDOM"
-    "${OPENCLAW_NODE}" -e '
-const fs=require("fs");
-const cfg=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
-let secrets={};
-try { secrets=JSON.parse(fs.readFileSync(process.argv[2],"utf8")); } catch {}
-const resolve=function(v){ if (v && typeof v==="object" && v.id){ const seg=v.id.split("/").filter(Boolean); let t=secrets; for (const p of seg){ t=(t&&typeof t==="object")?t[p]:undefined; } return typeof t==="string"?t:""; } return typeof v==="string"?v:""; };
-const provs=(cfg.models&&cfg.models.providers&&typeof cfg.models.providers==="object")?cfg.models.providers:{};
-for (const [id,p] of Object.entries(provs)){ if (p&&typeof p==="object"){ const k=resolve(p.apiKey); if (k) process.stdout.write(id+"\t"+k+"\n"); } }
-' "${cfg_file}" "${OPENCLAW_STATE_DIR}/secrets.json" > "${_prov_list}" 2>/dev/null || true
-    while IFS=$'\t' read -r provider_id key; do
-        [ -n "${provider_id}" ] && [ -n "${key}" ] || continue
-        # pipe the key via stdin so it never appears in argv / shell history
-        out="$(printf '%s\n' "${key}" | su -s /bin/sh "${eff_user}" -c "env HOME='${OPENCLAW_WORKSPACE_DIR}' OPENCLAW_CONFIG_PATH='${cfg_file}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_STATE_DIR}' '${oc_cli}' models auth paste-api-key --provider '${provider_id}' 2>&1" 2>/dev/null || true)"
-        case "${out}" in
-          *"Auth profile: ${provider_id}:manual"*) echo "[openclaw] seeded provider auth: ${provider_id}" 1>&2 ;;
-        esac
-    done < "${_prov_list}"
-    rm -f "${_prov_list}" 2>/dev/null || true
-}
-
 ensure_openclaw_in_path() {
     local target_cli="/var/packages/ainasclaw/target/bin/openclaw"
     [ -x "${target_cli}" ] || target_cli="/var/packages/openclaw/target/bin/openclaw"
     local link_cli="/usr/local/bin/openclaw"
+
     mkdir -p /usr/local/bin 2>/dev/null || true
 
     if [ -x "${target_cli}" ]; then
@@ -1385,44 +1336,6 @@ NGINX_EOF
         bootstrap_port="$(get_gateway_port_from_config "${bootstrap_config_file}")"
         if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ] && [ -n "${bootstrap_port}" ]; then
             in_port="${bootstrap_port}"
-        fi
-
-        # Defensive data-loss guard (upgrade path): the config normalization below
-        # runs on an empty template if the bootstrap config file was ever seen as
-        # missing during upgrade, which wipes a user's configured providers and
-        # channels. If this bootstrap config has NO providers/channels but the
-        # workspace's own backup (.bak) does, restore those two blocks up front so
-        # the normalize step preserves them instead of persisting empty ones (see
-        # "升级 2026.7.1-304 后套件无法启动" incident on 2026-08-03).
-        if [ "${SYNOPKG_PKG_STATUS}" = "UPGRADE" ] && [ -f "${bootstrap_config_file}" ]; then
-            local _bc_bak="${bootstrap_config_file}.bak"
-            if [ -f "${_bc_bak}" ] && [ -s "${bootstrap_config_file}" ]; then
-              "${OPENCLAW_NODE}" -e '
-(() => {
-const fs=require("fs");
-const cur=process.argv[1], bak=process.argv[2];
-function dr(f){ try{ return JSON.parse(fs.readFileSync(f,"utf8")); }catch{ return null; } }
-const c=dr(cur), b=dr(bak);
-if(!c||!b) return;
-let changed=false;
-const cp=((b.models&&typeof b.models==="object")?b.models.providers:null);
-const cprov=((c.models&&typeof c.models==="object")?c.models.providers:null);
-if(cp && (typeof cp==="object") && Object.keys(cp).length && (!cprov || typeof cprov!=="object" || !Object.keys(cprov).length)){
-  c.models=c.models||{}; c.models.providers=cp; changed=true;
-}
-const cc=typeof b.channels==="object"?b.channels:null;
-const cc2=typeof c.channels==="object"?c.channels:null;
-if(cc && Object.keys(cc).length && (!cc2 || !Object.keys(cc2).length)){
-  c.channels=cc; changed=true;
-}
-const bd=(b.agents&&b.agents.defaults&&typeof b.agents.defaults==="object")?b.agents.defaults:null;
-const cd=(c.agents&&c.agents.defaults&&typeof c.agents.defaults==="object")?c.agents.defaults:null;
-if(bd&&bd.model&&(!cd||!cd.model)){ c.agents=c.agents||{}; c.agents.defaults=c.agents.defaults||{}; c.agents.defaults.model=bd.model; changed=true; }
-if(bd&&bd.imageModel&&(!cd||!cd.imageModel)){ c.agents=c.agents||{}; c.agents.defaults=c.agents.defaults||{}; c.agents.defaults.imageModel=bd.imageModel; changed=true; }
-if(changed) fs.writeFileSync(cur, JSON.stringify(c,null,2)+"\n", "utf8");
-})();
-' "${bootstrap_config_file}" "${_bc_bak}" 2>/dev/null || true
-            fi
         fi
 
         # 同步 DSM 套件详情页端口展示（adminport）到当前 runtime 端口。
@@ -1938,15 +1851,6 @@ export NPM_CONFIG_CACHE="$state/.npm"
 export XDG_CACHE_HOME="$state/.cache"
 export XDG_CONFIG_HOME="$state/.config"
 export XDG_DATA_HOME="$state/.local/share"
-# Terminal runs under the service account (sc-openclaw), not root. ttyd is
-# launched by prestart (root); switch to the canonical service user so file
-# ownership of the workspace is respected. su resets HOME, so re-export it.
-if id -u sc-openclaw >/dev/null 2>&1; then
-  if [ -x /bin/bash ]; then
-    exec su -s /bin/bash sc-openclaw -c "export HOME=\"$ws\"; exec /bin/bash -l"
-  fi
-  exec su -s /bin/sh sc-openclaw -c "export HOME=\"$ws\"; exec /bin/sh -l"
-fi
 if [ -x /bin/bash ]; then
   exec /bin/bash -l
 fi
@@ -2921,9 +2825,6 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # Auto-start only after channel/plugin config has been repaired, otherwise
     # bundledDiscovery=allowlist can launch with browser-only discovery.
     if [ -d "${OPENCLAW_STATE_DIR}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
-        # Ensure model-provider keys exist in the agent auth store so channel
-        # traffic that resolves provider auth per-agent doesn't 401.
-        seed_agent_provider_auth
         start_gateway_if_needed
     fi
 

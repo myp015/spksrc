@@ -410,48 +410,12 @@ except Exception as e:
     read_error = f"{type(e).__name__}: {e}"
 providers_map = ((cfg.get('models') or {}).get('providers') or {})
 
-# Secrets store for provider SecretRefs ({"source":"file","id":"/models/providers/<pid>/apiKey"}).
-# Resolve it once up-front so the edit dialog can show a masked API key and
-# "手动同步到本地缓存" never fires with an empty key (API auth error).
-_SECRETS = {}
-_state_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
-if _state_dir.endswith('/.openclaw'):
-    _state_dir = _state_dir[:-len('/.openclaw')]
-for _sp_cand in (os.path.join(_state_dir, '.openclaw', 'secrets.json'), os.path.join(_state_dir, 'secrets.json')):
-    if os.path.exists(_sp_cand):
-        try:
-            _SECRETS = json.load(open(_sp_cand, 'r', encoding='utf-8')) or {}
-        except Exception:
-            _SECRETS = {}
-        break
-
-
-def _resolve_secret_ref(ref):
-    """Resolve a file-backed SecretRef dict into its stored string value."""
-    if not isinstance(ref, dict) or not ref.get('id'):
-        return ''
-    try:
-        _seg = [s for s in str(ref.get('id')).split('/') if s]
-        _t = _SECRETS
-        for _k in _seg:
-            if isinstance(_t, dict) and _k in _t:
-                _t = _t[_k]
-            else:
-                return ''
-        return _t if isinstance(_t, str) else ''
-    except Exception:
-        return ''
-
 def default_model_for_provider(pid, cfg, kind):
-    """Return the default model ref for a provider, without leaking the global
-    default onto every provider row.
-
-    The text/image default is stored globally at agents.defaults.model/.imageModel
-    (primary). We surface it on a provider row ONLY when that default is actually
-    provided by this provider (ref starts with '<pid>/' or equals a bare model id
-    the provider owns), so a provider the operator never assigned a default shows
-    empty instead of a misleading deepseek ref. Returns '' when unset or owned by
-    another provider."""
+    """Return the default model ref for a provider. The default text/image
+    model is stored globally at agents.defaults.model/.imageModel (primary).
+    When present, expose it to the edit dialog so it auto-fills from
+    openclaw.json regardless of which provider owns it. Returns '' only
+    when no default is configured."""
     try:
         defaults = (cfg.get('agents') or {}).get('defaults') or {}
         primary = defaults.get(kind)
@@ -461,26 +425,6 @@ def default_model_for_provider(pid, cfg, kind):
             ref = primary.strip()
         else:
             ref = ''
-        if not ref:
-            return ''
-        pid = (pid or '').strip()
-        # ref like "provider/model" or bare "model"
-        slash = ref.find('/')
-        ref_provider = ref[:slash] if slash > 0 else ''
-        ref_model = ref[slash + 1:] if slash > 0 else ref
-        if ref_provider and ref_provider != pid:
-            return ''  # default owned by another provider
-        if not ref_provider:
-            # bare model id: only claim it if this provider actually lists it
-            owned = False
-            for m in ((cfg.get('models') or {}).get('providers') or {}).get(pid, {}).get('models') or []:
-                if isinstance(m, dict):
-                    mid = str(m.get('modelId') or m.get('id') or '').strip()
-                    if mid == ref_model:
-                        owned = True
-                        break
-            if not owned:
-                return ''
         return ref
     except Exception:
         return ''
@@ -503,15 +447,6 @@ for pid, p in providers_map.items():
     if isinstance(p.get('apiKey'), str) and p.get('apiKey'):
         item['apiKeyMasked'] = '*' * min(16, max(8, len(p.get('apiKey'))))
         item['apiKeyRaw'] = p.get('apiKey')
-    elif isinstance(p.get('apiKey'), dict):
-        # SecretRef (e.g. {"source":"file","provider":"ainasclaw","id":"/models/providers/<pid>/apiKey"})
-        # points into the private file-backed secrets store. Resolve it so the
-        # edit dialog can show a masked placeholder and "手动同步到本地缓存" does
-        # not fire with an empty key (which would raise an API auth error).
-        _resolved = _resolve_secret_ref(p.get('apiKey'))
-        if _resolved:
-            item['apiKeyMasked'] = '*' * min(16, max(8, len(_resolved)))
-            item['apiKeyRaw'] = _resolved
     for m in (p.get('models') or []):
         if isinstance(m, dict):
             mid = m.get('modelId') or m.get('id') or ''
@@ -753,11 +688,6 @@ for p in providers_payload:
         # of the old incomplete `{id,name}` entry.
         saved = dict(raw_by_id.get(mid) or {})
         saved['id'] = mid
-        # Drop the transient UI-only `modelId` duplicate. OpenClaw's models
-        # provider schema only accepts `id`; persisting both triggers
-        #   Invalid config: models.providers.<p>.models.<i>: Unrecognized key "modelId"
-        # and surfaces as "Config invalid" in openclaw doctor.
-        saved.pop('modelId', None)
         saved['name'] = str(saved.get('name') or (f"{pid} / {mid}"))
         saved.setdefault('contextWindow', 1048576)
         saved.setdefault('maxTokens', 16384)
@@ -787,68 +717,23 @@ try:
             image_refs.append(dim)
     if text_refs:
         defaults['model'] = {'primary': text_refs[0]}
-    # 默认图像模型只由用户在本弹窗显式设置（image_refs 非空）决定。
-    # 未手动设置时：imageModel 保持为空，且不自动给任何模型补 input:image
-    # （避免把纯文本模型误标为可接收图片，导致 agent 把图片作为 image_url
-    # 发给不支持视觉的 provider 而报 400 "unknown variant `image_url`"）。
     if image_refs:
         dim_ref = image_refs[0]
-        # 保护：若默认图像模型误等于默认文本模型（常见于编辑已有 provider 时
-        # 下拉被历史全局默认选中、或添加默认文本时图像下拉被连带），而没有任何
-        # 其它 provider 显式指定不同的图像默认，则视为误连带，清空 imageModel。
-        _text_primary = ''
-        _cur_model = defaults.get('model')
-        if isinstance(_cur_model, dict):
-            _text_primary = str(_cur_model.get('primary') or '').strip()
-        elif isinstance(_cur_model, str):
-            _text_primary = _cur_model.strip()
-        _dim_ref_short = dim_ref.split('/')[-1] if '/' in dim_ref else dim_ref
-        _text_short = _text_primary.split('/')[-1] if '/' in _text_primary else _text_primary
-        _other_image_explicit = any(
-            isinstance(pv2, dict)
-            and ((pv2.get('_imageDefault') or pv2.get('defaultImageModel') or '').strip())
-            and ((pv2.get('_imageDefault') or pv2.get('defaultImageModel') or '').strip()) != dim_ref
-            for pv2 in providers_map.values()
-        )
-        if (_dim_ref_short == _text_short and not _other_image_explicit) or dim_ref == _text_primary:
-            defaults['imageModel'] = {'primary': ''}
-        else:
-            defaults['imageModel'] = {'primary': dim_ref}
-            # 为显式设置的默认图像模型补 image 输入（仅当该模型本身支持图片时
-            # 才有意义；deepseek 等纯文本模型不应补，OpenClaw 仅把它当作图片默认
-            # 的入口。此处在用户显式指定时按需补齐 input）。
-            for pid2, pv2 in providers_map.items():
-                if not isinstance(pv2, dict):
-                    continue
-                for m in (pv2.get('models') or []):
-                    if not isinstance(m, dict):
-                        continue
-                    mid = m.get('modelId') or m.get('id') or ''
-                    full_ref = (pv2.get('id') or pid2) + '/' + mid
-                    if full_ref == dim_ref or mid == dim_ref:
-                        inp = m.setdefault('input', ['text'])
-                        if 'image' not in inp:
-                            inp.append('image')
-                        break
-    elif not image_refs:
-        # 未手动设置默认图像模型：确保 imageModel 为空（不残留历史默认）
-        defaults['imageModel'] = {'primary': ''}
-        # 并移除之前为了支持图片而自动加进模型的 image 输入，把模型恢复为
-        # 纯文本——否则若该模型本身不支持视觉（如 deepseek），OpenClaw 仍会
-        # 把图片编码成 image_url 发给它再报 400 错。
+        defaults['imageModel'] = {'primary': dim_ref}
+        # Auto-add image input support for the default image model
         for pid2, pv2 in providers_map.items():
             if not isinstance(pv2, dict):
                 continue
             for m in (pv2.get('models') or []):
                 if not isinstance(m, dict):
                     continue
-                _inp = m.get('input')
-                if isinstance(_inp, list) and 'image' in _inp:
-                    _inp = [x for x in _inp if x != 'image']
-                    if _inp:
-                        m['input'] = _inp
-                    else:
-                        m.pop('input', None)
+                mid = m.get('modelId') or m.get('id') or ''
+                full_ref = (pv2.get('id') or pid2) + '/' + mid
+                if full_ref == dim_ref or mid == dim_ref:
+                    inp = m.setdefault('input', ['text'])
+                    if 'image' not in inp:
+                        inp.append('image')
+                    break
 except Exception:
     pass
 
@@ -4152,7 +4037,7 @@ cat <<'HTML'
             + '    </div>'
             + '    <div class="field"><label>默认图像模型</label>'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认图像模型，留空则无默认图像模型。勾选后自动为该模型添加 image 输入支持。</div>'
-            + '      <select id="dlg_default_image_model" style="width:100%;" onchange="trackImageDefaultClear(this)"><option value="">（无默认图像模型）</option></select>'
+            + '      <select id="dlg_default_image_model" style="width:100%;"><option value="">（无默认图像模型）</option></select>'
             + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
             + '        <input id="dlg_default_image_model_manual" style="flex:1;" placeholder="输入模型名（自动补全 ProviderID）">'
             + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">添加</button>'
@@ -4323,7 +4208,8 @@ cat <<'HTML'
         document.getElementById('dlg_provider_id').value = 'custom-openai';
         document.getElementById('dlg_api').value = 'openai-completions';
         document.getElementById('dlg_base_url').value = 'http://127.0.0.1:8317/v1';
-        // API Key 留空表示“不改/添加时由用户填写”——不要预填示例 key。
+        const keyEl = document.getElementById('dlg_api_key');
+        if (keyEl && !keyEl.value) keyEl.value = 'sk-5XeLS0KyXOc9Tkq4y';
         setModelSelectOptions([], []);
         document.getElementById('dlg_model_ids').value = '';
         setMsg('已切换到 custom-openai 默认模板（已清空已选模型）', 'ok');
@@ -4390,12 +4276,6 @@ cat <<'HTML'
       // Live-sync the default text/image model dropdowns with the available model list.
       refreshDefaultModelDropdownOptions(all);
     }
-    // Track explicit intent to clear the default image model. When the operator
-    // picks '（无默认图像模型）' we set a flag so later option rebuilds keep it
-    // empty instead of resurrecting the previously set default.
-    function trackImageDefaultClear(sel) {
-      window.__imageDefaultCleared = (sel && sel.value === '');
-    }
     function refreshDefaultModelDropdownOptions(modelIds) {
       const textSel = document.getElementById('dlg_default_text_model');
       const imageSel = document.getElementById('dlg_default_image_model');
@@ -4413,18 +4293,11 @@ cat <<'HTML'
         textSel.appendChild(new Option(mid, mid));
         imageSel.appendChild(new Option(mid, mid));
       }
-      // Restore previous selections if the value is still available, unless
-      // the operator explicitly cleared the image default by picking
-      // '（无默认图像模型）' — in that case keep it empty so a subsequent model
-      // refresh cannot resurrect a previously set default image model.
+      // Restore previous selections if the value is still available
       const textVals = Array.prototype.map.call(textSel.options, o => o.value);
       const imageVals = Array.prototype.map.call(imageSel.options, o => o.value);
       if (prevText && textVals.indexOf(prevText) >= 0) textSel.value = prevText;
-      if (window.__imageDefaultCleared === true) {
-        imageSel.value = '';
-      } else if (prevImage && imageVals.indexOf(prevImage) >= 0) {
-        imageSel.value = prevImage;
-      }
+      if (prevImage && imageVals.indexOf(prevImage) >= 0) imageSel.value = prevImage;
     }
     function toggleModelSelection(id, checked) {
       const curr = getSelectedModelIdsFromHidden();
@@ -4514,9 +4387,6 @@ cat <<'HTML'
       setModelDialogHint('默认图像模型已设置为: ' + val, 'ok');
     }
     function populateDefaultModelDialogs(p) {
-      // Reset the "explicitly cleared" intent when a dialog opens; the dropdown
-      // value set below reflects the provider's real current default.
-      window.__imageDefaultCleared = false;
       const textSel = document.getElementById('dlg_default_text_model');
       const imageSel = document.getElementById('dlg_default_image_model');
       if (!textSel || !imageSel) return;
@@ -4536,25 +4406,17 @@ cat <<'HTML'
         textSel.appendChild(new Option(mid, mid));
         imageSel.appendChild(new Option(mid, mid));
       }
-      // Set current defaults from provider data. dtm/dim are full refs like
-      // "deepseek/deepseek-v4-flash" while the dropdown options carry the bare
-      // model id ("deepseek-v4-flash"), so also match the id portion stripped
-      // of the provider prefix. Otherwise an existing default shows as empty
-      // in the edit dialog even though the list page shows it.
+      // Set current defaults from provider data
       const dtm = (p.defaultTextModel || '').trim();
-      const dtmId = dtm.indexOf('/') >= 0 ? dtm.slice(dtm.indexOf('/') + 1) : dtm;
       if (dtm) {
         for (let i = 0; i < textSel.options.length; i++) {
-          const v = textSel.options[i].value;
-          if (v === dtm || v === dtmId) { textSel.selectedIndex = i; break; }
+          if (textSel.options[i].value === dtm) { textSel.selectedIndex = i; break; }
         }
       }
       const dim = (p.defaultImageModel || '').trim();
-      const dimId = dim.indexOf('/') >= 0 ? dim.slice(dim.indexOf('/') + 1) : dim;
       if (dim) {
         for (let i = 0; i < imageSel.options.length; i++) {
-          const v = imageSel.options[i].value;
-          if (v === dim || v === dimId) { imageSel.selectedIndex = i; break; }
+          if (imageSel.options[i].value === dim) { imageSel.selectedIndex = i; break; }
         }
       }
     }
@@ -4677,33 +4539,18 @@ cat <<'HTML'
           api: document.getElementById('dlg_api').value
         };
         const data = await api('models_sync_provider', 'POST', payload);
-        const synced = (data.models || []).filter(m => m && (m.modelId || m.id));
-        const ids = synced.map(m => m.modelId || m.id).filter(Boolean);
+        const ids = (data.models || []).map(m => m.modelId || m.id).filter(Boolean);
         if (!ids.length) {
           const msg = data.error ? ('同步失败：' + data.error) : '未同步到模型';
           setModelDialogHint(msg, data.error ? 'err' : 'ok');
           setMsg(msg, data.error ? 'err' : '');
           return;
         }
-        // Merge synced models with any existing raw metadata so fields like
-        // input:['text','image'] and other provider-specific config the operator
-        // added are NOT dropped by a re-sync (sync response only carries id).
-        let existingRaw = [];
-        try { existingRaw = JSON.parse(document.getElementById('modelModalMask').dataset.rawModels || '[]') || []; } catch (_) { existingRaw = []; }
-        const existingById = {};
-        for (const em of existingRaw) {
-          if (em && typeof em === 'object') existingById[em.id || em.modelId || ''] = em;
-        }
-        const mergedRaw = ids.map(id => {
-          const prev = existingById[id];
-          return prev && typeof prev === 'object' ? prev : { id: id, modelId: id };
-        });
-        document.getElementById('modelModalMask').dataset.rawModels = JSON.stringify(mergedRaw);
         // 按原逻辑：同步后全部选中。setModelSelectOptions 内部会实时刷新
         // 默认文本/图像模型下拉列表，使其与已同步/可用的模型列表保持一致。
         setModelSelectOptions(ids, ids);
-        setModelDialogHint('已同步并写入本地缓存（保留已配置的输入能力），共 ' + ids.length + ' 个', 'ok');
-        setMsg('已同步并写入本地缓存（保留已配置的输入能力），共 ' + ids.length + ' 个', 'ok');
+        setModelDialogHint('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
+        setMsg('已同步并写入本地缓存，共 ' + ids.length + ' 个', 'ok');
       } catch (e) { setModelDialogHint('同步失败：' + (e.message || e), 'err'); setMsg('同步失败：' + (e.message || e), 'err'); }
     }
     async function saveModelDialog() {
