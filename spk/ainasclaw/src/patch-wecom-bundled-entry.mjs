@@ -34,6 +34,13 @@ const patchPluginManifestContract = (file, { id, channels, extensions }) => {
   json.id = id;
   if (Array.isArray(channels) && channels.length) json.channels = channels;
   if (Array.isArray(extensions) && extensions.length) json.extensions = extensions;
+  // These plugins expose a bundled-channel-entry contract (index.js via
+  // defineBundledChannelEntry), not the legacy "channel" kind. A leftover
+  // "kind": "channel" makes the gateway emit
+  //   plugin kind mismatch (manifest uses "channel", export uses
+  //   "bundled-channel-entry")
+  // and can cause a second registration of the WS plugin. Drop it.
+  delete json.kind;
   if (JSON.stringify(json) === prev) return false;
   fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n', 'utf8');
   return true;
