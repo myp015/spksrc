@@ -782,10 +782,24 @@ try:
             image_refs.append(dim)
     if text_refs:
         defaults['model'] = {'primary': text_refs[0]}
+    # Determine the EFFECTIVE default image model: prefer one set in this save,
+    # otherwise keep the existing global default (agents.defaults.imageModel.primary).
+    # "手动同步到本地缓存"/auto-set can make the first model the default image
+    # model without augmenting input, so a model ends up as the image default yet
+    # lacks the image modality and rejects pictures. Always ensure the effective
+    # default image model gets input:["text","image"].
+    _eff_img_ref = ''
     if image_refs:
-        dim_ref = image_refs[0]
-        defaults['imageModel'] = {'primary': dim_ref}
-        # Auto-add image input support for the default image model
+        _eff_img_ref = image_refs[0]
+        defaults['imageModel'] = {'primary': _eff_img_ref}
+    else:
+        _cur_img = defaults.get('imageModel')
+        if isinstance(_cur_img, dict):
+            _eff_img_ref = str(_cur_img.get('primary') or '').strip()
+        elif isinstance(_cur_img, str):
+            _eff_img_ref = _cur_img.strip()
+    if _eff_img_ref:
+        # Auto-add image input support for the effective default image model
         for pid2, pv2 in providers_map.items():
             if not isinstance(pv2, dict):
                 continue
@@ -794,7 +808,7 @@ try:
                     continue
                 mid = m.get('modelId') or m.get('id') or ''
                 full_ref = (pv2.get('id') or pid2) + '/' + mid
-                if full_ref == dim_ref or mid == dim_ref:
+                if full_ref == _eff_img_ref or mid == _eff_img_ref:
                     inp = m.setdefault('input', ['text'])
                     if 'image' not in inp:
                         inp.append('image')
