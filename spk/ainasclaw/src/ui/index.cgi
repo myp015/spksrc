@@ -800,6 +800,25 @@ try:
                     if 'image' not in inp:
                         inp.append('image')
                     break
+    else:
+        # 默认图像模型被清空（改成空）：移除 imageModel 残留，并删除之前为
+        # 支持图片而加进模型（文本模型和图像模型）的 input 里的 'image'，
+        # 恢复纯文本——否则若模型本身不支持视觉，OpenClaw 仍会把图片编码成
+        # image_url 发给它再报 400 'unknown variant image_url'。
+        defaults['imageModel'] = {'primary': ''}
+        for pid2, pv2 in providers_map.items():
+            if not isinstance(pv2, dict):
+                continue
+            for m in (pv2.get('models') or []):
+                if not isinstance(m, dict):
+                    continue
+                _inp = m.get('input')
+                if isinstance(_inp, list) and 'image' in _inp:
+                    _inp2 = [x for x in _inp if x != 'image']
+                    if _inp2:
+                        m['input'] = _inp2
+                    else:
+                        m.pop('input', None)
 except Exception:
     pass
 
