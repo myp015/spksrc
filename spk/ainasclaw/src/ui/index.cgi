@@ -808,6 +808,22 @@ try:
     elif not image_refs:
         # 未手动设置默认图像模型：确保 imageModel 为空（不残留历史默认）
         defaults['imageModel'] = {'primary': ''}
+        # 并移除之前为了支持图片而自动加进模型的 image 输入，把模型恢复为
+        # 纯文本——否则若该模型本身不支持视觉（如 deepseek），OpenClaw 仍会
+        # 把图片编码成 image_url 发给它再报 400 错。
+        for pid2, pv2 in providers_map.items():
+            if not isinstance(pv2, dict):
+                continue
+            for m in (pv2.get('models') or []):
+                if not isinstance(m, dict):
+                    continue
+                _inp = m.get('input')
+                if isinstance(_inp, list) and 'image' in _inp:
+                    _inp = [x for x in _inp if x != 'image']
+                    if _inp:
+                        m['input'] = _inp
+                    else:
+                        m.pop('input', None)
 except Exception:
     pass
 
