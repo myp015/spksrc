@@ -410,6 +410,39 @@ except Exception as e:
     read_error = f"{type(e).__name__}: {e}"
 providers_map = ((cfg.get('models') or {}).get('providers') or {})
 
+# Secrets store for provider SecretRefs ({"source":"file","id":"/models/providers/<pid>/apiKey"}).
+# Resolve it up-front so the edit/sync dialog can show the real current API key
+# when the provider apiKey is stored as a SecretRef (a dict), not only a plain
+# string. Otherwise '手动同步到本地缓存' fires with an empty key and fails.
+_SECRETS = {}
+_state_dir = (((cfg.get('agents') or {}).get('defaults') or {}).get('workspace') or '/volume1/openclaw')
+if _state_dir.endswith('/.openclaw'):
+    _state_dir = _state_dir[:-len('/.openclaw')]
+for _sp_cand in (os.path.join(_state_dir, '.openclaw', 'secrets.json'), os.path.join(_state_dir, 'secrets.json')):
+    if os.path.exists(_sp_cand):
+        try:
+            _SECRETS = json.load(open(_sp_cand, 'r', encoding='utf-8')) or {}
+        except Exception:
+            _SECRETS = {}
+        break
+
+
+def _resolve_secret_ref(ref):
+    """Resolve a file-backed SecretRef dict into its stored string value."""
+    if not isinstance(ref, dict) or not ref.get('id'):
+        return ''
+    try:
+        _seg = [s for s in str(ref.get('id')).split('/') if s]
+        _t = _SECRETS
+        for _k in _seg:
+            if isinstance(_t, dict) and _k in _t:
+                _t = _t[_k]
+            else:
+                return ''
+        return _t if isinstance(_t, str) else ''
+    except Exception:
+        return ''
+
 def default_model_for_provider(pid, cfg, kind):
     """Return the default model ref for a provider. The default text/image
     model is stored globally at agents.defaults.model/.imageModel (primary).
@@ -447,6 +480,15 @@ for pid, p in providers_map.items():
     if isinstance(p.get('apiKey'), str) and p.get('apiKey'):
         item['apiKeyMasked'] = '*' * min(16, max(8, len(p.get('apiKey'))))
         item['apiKeyRaw'] = p.get('apiKey')
+    elif isinstance(p.get('apiKey'), dict):
+        # SecretRef (e.g. {"source":"file","id":"/models/providers/<pid>/apiKey"})
+        # points into the file-backed secrets store. Resolve it so the edit/sync
+        # dialog receives the real key (apiKeyRaw) and a masked placeholder
+        # (apiKeyMasked) — otherwise '手动同步到本地缓存' sends an empty key.
+        _resolved = _resolve_secret_ref(p.get('apiKey'))
+        if _resolved:
+            item['apiKeyMasked'] = '*' * min(16, max(8, len(_resolved)))
+            item['apiKeyRaw'] = _resolved
     for m in (p.get('models') or []):
         if isinstance(m, dict):
             mid = m.get('modelId') or m.get('id') or ''
@@ -4208,8 +4250,7 @@ cat <<'HTML'
         document.getElementById('dlg_provider_id').value = 'custom-openai';
         document.getElementById('dlg_api').value = 'openai-completions';
         document.getElementById('dlg_base_url').value = 'http://127.0.0.1:8317/v1';
-        const keyEl = document.getElementById('dlg_api_key');
-        if (keyEl && !keyEl.value) keyEl.value = 'sk-5XeLS0KyXOc9Tkq4y';
+        // API Key 留空表示“不改/添加时由用户填写”——不预填示例 key。
         setModelSelectOptions([], []);
         document.getElementById('dlg_model_ids').value = '';
         setMsg('已切换到 custom-openai 默认模板（已清空已选模型）', 'ok');
