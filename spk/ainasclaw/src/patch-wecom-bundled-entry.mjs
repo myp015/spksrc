@@ -79,7 +79,15 @@ const writeRegisterFullProxy = ({ file, importPath, exportName = 'default', regi
     `import pluginModule from ${JSON.stringify(importPath)};
 import * as allExports from ${JSON.stringify(importPath)};
 
+// Idempotency guard: the gateway may invoke a bundled channel plugin's
+// registerFull more than once per process (e.g. discovery + real register),
+// and wecom's plugin-api register() logs 'Registering WeCom WS plugin' on
+// every call, which shows up as a duplicated line in doctor output. Run it
+// exactly once.
+let __${registerName}Done = false;
 export function ${registerName}(api) {
+  if (__${registerName}Done) return;
+  __${registerName}Done = true;
   const target = ${exportName === 'default' ? 'pluginModule' : `allExports[${JSON.stringify(exportName)}]`} ?? allExports?.default ?? allExports;
   if (!target || typeof target.register !== 'function') return;
   const proxy = Object.create(api);
@@ -88,6 +96,22 @@ export function ${registerName}(api) {
 }
 `,
   );
+};
+
+const makeWecomRegisterIdempotent = (file) => {
+  if (!fs.existsSync(file)) return;
+  let s = fs.readFileSync(file, 'utf8');
+  if (s.includes('__wecomRegisterDone')) return; // already patched
+  s = s.replace('const plugin = {', 'let __wecomRegisterDone = false;\n\nconst plugin = {', 1);
+  const sig = '  register(api) {\n    logger.info("Registering WeCom WS plugin");';
+  if (s.includes(sig)) {
+    s = s.replace(
+      sig,
+      '  register(api) {\n    if (__wecomRegisterDone) return;\n    __wecomRegisterDone = true;\n    logger.info("Registering WeCom WS plugin");',
+      1,
+    );
+    fs.writeFileSync(file, s, 'utf8');
+  }
 };
 
 const patchFeishu = (dir) => {
@@ -199,6 +223,12 @@ const patchWeCom = (dir) => {
   const pluginApiPath = path.join(dir, 'plugin-api.js');
   if (!fs.existsSync(indexPath)) return 0;
   copyIfMissing(indexPath, pluginApiPath);
+  // The gateway invokes a bundled channel plugin's register() more than once
+  // per process (discovery + real register), and doctor also scans both the
+  // dist/extensions and node_modules copies of wecom. Each call to wecom's
+  // register() logs 'Registering WeCom WS plugin', so the line appears
+  // duplicated in doctor output. Make register() idempotent.
+  makeWecomRegisterIdempotent(pluginApiPath);
   ensureFile(path.join(dir, 'channel-plugin-api.js'), 'export { wecomChannelPlugin } from "./wecom/channel-plugin.js";\n');
   ensureFile(path.join(dir, 'runtime-api.js'), 'export { setRuntime as setWecomRuntime } from "./wecom/state.js";\n');
   ensureFile(path.join(dir, 'account-inspect-api.js'), 'export { describeAccount as inspectWecomReadOnlyAccount } from "./wecom/accounts.js";\n');
