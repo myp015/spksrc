@@ -443,11 +443,15 @@ def _resolve_secret_ref(ref):
         return ''
 
 def default_model_for_provider(pid, cfg, kind):
-    """Return the default model ref for a provider. The default text/image
-    model is stored globally at agents.defaults.model/.imageModel (primary).
-    When present, expose it to the edit dialog so it auto-fills from
-    openclaw.json regardless of which provider owns it. Returns '' only
-    when no default is configured."""
+    """Return the default model ref for a provider, without leaking the global
+    default onto every provider row.
+
+    The text/image default is stored globally at agents.defaults.model/.imageModel
+    (primary). We surface it on a provider row ONLY when that default is actually
+    provided by this provider (ref starts with '<pid>/' or equals a bare model id
+    the provider owns), so a provider the operator never assigned a default shows
+    empty instead of a misleading deepseek ref. Returns '' when unset or owned by
+    another provider."""
     try:
         defaults = (cfg.get('agents') or {}).get('defaults') or {}
         primary = defaults.get(kind)
@@ -457,6 +461,26 @@ def default_model_for_provider(pid, cfg, kind):
             ref = primary.strip()
         else:
             ref = ''
+        if not ref:
+            return ''
+        pid = (pid or '').strip()
+        # ref like "provider/model" or bare "model"
+        slash = ref.find('/')
+        ref_provider = ref[:slash] if slash > 0 else ''
+        ref_model = ref[slash + 1:] if slash > 0 else ref
+        if ref_provider and ref_provider != pid:
+            return ''  # default owned by another provider
+        if not ref_provider:
+            # bare model id: only claim it if this provider actually lists it
+            owned = False
+            for m in ((cfg.get('models') or {}).get('providers') or {}).get(pid, {}).get('models') or []:
+                if isinstance(m, dict):
+                    mid = str(m.get('modelId') or m.get('id') or '').strip()
+                    if mid == ref_model:
+                        owned = True
+                        break
+            if not owned:
+                return ''
         return ref
     except Exception:
         return ''
