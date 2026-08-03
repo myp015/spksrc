@@ -1475,11 +1475,10 @@ if (!cfg.gateway.auth.token) cfg.gateway.auth.token = crypto.randomBytes(16).toS
 if (modelIdInput) {
   cfg.agents.defaults.model = cfg.agents.defaults.model || {};
   cfg.agents.defaults.imageModel = cfg.agents.defaults.imageModel || {};
-  cfg.agents.defaults.model.primary = `default/${modelIdInput}`;
-  cfg.agents.defaults.imageModel.primary = `default/${modelIdInput}`;
+  cfg.agents.defaults.model.primary = "default/" + modelIdInput;
+  cfg.agents.defaults.imageModel.primary = "default/" + modelIdInput;
 } else {
-  if (cfg.agents.defaults.model && typeof cfg.agents.defaults.model === "object") delete cfg.agents.defaults.model.primary;
-  if (cfg.agents.defaults.imageModel && typeof cfg.agents.defaults.imageModel === "object") delete cfg.agents.defaults.imageModel.primary;
+  // Keep existing defaults on UPGRADE; the wizard sends no model id.
 }
 
 cfg.memory = cfg.memory || {};
