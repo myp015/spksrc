@@ -4122,7 +4122,7 @@ cat <<'HTML'
             + '    </div>'
             + '    <div class="field"><label>默认图像模型</label>'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认图像模型，留空则无默认图像模型。勾选后自动为该模型添加 image 输入支持。</div>'
-            + '      <select id="dlg_default_image_model" style="width:100%;"><option value="">（无默认图像模型）</option></select>'
+            + '      <select id="dlg_default_image_model" style="width:100%;" onchange="trackImageDefaultClear(this)"><option value="">（无默认图像模型）</option></select>'
             + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
             + '        <input id="dlg_default_image_model_manual" style="flex:1;" placeholder="输入模型名（自动补全 ProviderID）">'
             + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">添加</button>'
@@ -4360,6 +4360,12 @@ cat <<'HTML'
       // Live-sync the default text/image model dropdowns with the available model list.
       refreshDefaultModelDropdownOptions(all);
     }
+    // Track explicit intent to clear the default image model: picking
+    // '（无默认图像模型）' sets a flag so later option rebuilds keep it empty
+    // instead of resurrecting the previously set default.
+    function trackImageDefaultClear(sel) {
+      window.__imageDefaultCleared = (sel && sel.value === '');
+    }
     function refreshDefaultModelDropdownOptions(modelIds) {
       const textSel = document.getElementById('dlg_default_text_model');
       const imageSel = document.getElementById('dlg_default_image_model');
@@ -4377,11 +4383,18 @@ cat <<'HTML'
         textSel.appendChild(new Option(mid, mid));
         imageSel.appendChild(new Option(mid, mid));
       }
-      // Restore previous selections if the value is still available
+      // Restore previous selections if the value is still available, unless
+      // the operator explicitly cleared the image default by picking
+      // '（无默认图像模型）' — then keep it empty so a later refresh cannot
+      // resurrect a previously set default image model.
       const textVals = Array.prototype.map.call(textSel.options, o => o.value);
       const imageVals = Array.prototype.map.call(imageSel.options, o => o.value);
       if (prevText && textVals.indexOf(prevText) >= 0) textSel.value = prevText;
-      if (prevImage && imageVals.indexOf(prevImage) >= 0) imageSel.value = prevImage;
+      if (window.__imageDefaultCleared === true) {
+        imageSel.value = '';
+      } else if (prevImage && imageVals.indexOf(prevImage) >= 0) {
+        imageSel.value = prevImage;
+      }
     }
     function toggleModelSelection(id, checked) {
       const curr = getSelectedModelIdsFromHidden();
@@ -4471,6 +4484,9 @@ cat <<'HTML'
       setModelDialogHint('默认图像模型已设置为: ' + val, 'ok');
     }
     function populateDefaultModelDialogs(p) {
+      // Reset explicit-clear intent on dialog open; the dropdown value set below
+      // reflects the provider's real current default.
+      window.__imageDefaultCleared = false;
       const textSel = document.getElementById('dlg_default_text_model');
       const imageSel = document.getElementById('dlg_default_image_model');
       if (!textSel || !imageSel) return;
