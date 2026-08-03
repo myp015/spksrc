@@ -4249,8 +4249,7 @@ cat <<'HTML'
         document.getElementById('dlg_provider_id').value = 'custom-openai';
         document.getElementById('dlg_api').value = 'openai-completions';
         document.getElementById('dlg_base_url').value = 'http://127.0.0.1:8317/v1';
-        const keyEl = document.getElementById('dlg_api_key');
-        if (keyEl && !keyEl.value) keyEl.value = 'sk-5XeLS0KyXOc9Tkq4y';
+        // API Key 留空表示“不改/添加时由用户填写”——不要预填示例 key。
         setModelSelectOptions([], []);
         document.getElementById('dlg_model_ids').value = '';
         setMsg('已切换到 custom-openai 默认模板（已清空已选模型）', 'ok');
