@@ -1628,23 +1628,22 @@ try:
     _ch = ch or {}
     _f = _ch.get('feishu')
     if isinstance(_f, dict):
+        # top-level feishu.appSecret
+        if _migr(_f, '/channels/feishu/appSecret', 'appSecret'):
+            _ch_changed = True
         for _aid, _acct in ((_f.get('accounts') or {}).items() or []):
             if isinstance(_acct, dict):
                 _ea = _aid.replace('~','~0').replace('/','~1')
                 if _migr(_acct, '/channels/feishu/accounts/'+_ea+'/appSecret', 'appSecret'):
                     _ch_changed = True
-    _w = _ch.get('wecom')
-    if isinstance(_w, dict):
-        if _migr(_w, '/channels/wecom/secret', 'secret'):
-            _ch_changed = True
+    # dingtalk.clientSecret supports SecretRef (anyOf string|ref)
     _d = _ch.get('dingtalk')
     if isinstance(_d, dict):
         if _migr(_d, '/channels/dingtalk/clientSecret', 'clientSecret'):
             _ch_changed = True
-    _q = _ch.get('qqbot')
-    if isinstance(_q, dict):
-        if _migr(_q, '/channels/qqbot/clientSecret', 'clientSecret'):
-            _ch_changed = True
+    # NOTE: qqbot.clientSecret and wecom.secret are schema type=string ONLY
+    # (no SecretRef variant) — they must stay plaintext, so they are NOT
+    # migrated here.
     if _ch_changed:
         os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
         cfg.setdefault('secrets', {}).setdefault('providers', {})['ainasclaw'] = {
