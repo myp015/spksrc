@@ -764,8 +764,25 @@ try:
             text_refs.append(dtm)
         if dim:
             image_refs.append(dim)
+    # Normalize defaults to OpenClaw's canonical provider/model format (split on
+    # first '/'). A bare model id like "deepseek-v4-flash" is stored without a
+    # provider prefix, while image default may carry it — keep both consistent so
+    # the edit dialog matches them the same way.
+    def _normalize_ref(ref):
+        ref = ref.strip()
+        if not ref:
+            return ref
+        if '/' in ref:
+            return ref
+        # bare id: prepend the provider that owns it (first provider listing it)
+        for _pid, _pv in providers_map.items():
+            for _m in (_pv.get('models') or []):
+                if isinstance(_m, dict) and str(_m.get('modelId') or _m.get('id') or '') == ref:
+                    ref = "%s/%s" % (_pid, ref)
+                    return ref
+        return ref
     if text_refs:
-        defaults['model'] = {'primary': text_refs[0]}
+        defaults['model'] = {'primary': _normalize_ref(text_refs[0])}
     if image_refs:
         dim_ref = image_refs[0]
         defaults['imageModel'] = {'primary': dim_ref}
