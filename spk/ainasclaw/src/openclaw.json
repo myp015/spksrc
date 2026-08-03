@@ -1,7 +1,7 @@
 {
   "meta": {
-    "lastTouchedVersion": "2026.4.1",
-    "lastTouchedAt": "2026-04-15T14:41:38.065Z"
+    "lastTouchedVersion": "2026.7.1",
+    "lastTouchedAt": "2026-08-03T00:00:00.000Z"
   },
   "update": {
     "checkOnStart": false
@@ -29,7 +29,7 @@
       "subagents": {
         "maxConcurrent": 8
       },
-      "workspace": "/volume1/openclaw",
+      "workspace": "/volume1/openclaw/.openclaw",
       "memorySearch": {
         "enabled": false
       }
@@ -119,6 +119,12 @@
           "*"
         ],
         "qqbot": [
+          "*"
+        ],
+        "wecom": [
+          "*"
+        ],
+        "openclaw-weixin": [
           "*"
         ]
       }
@@ -241,7 +247,7 @@
     "bind": "lan",
     "mode": "local",
     "controlUi": {
-      "basePath": "/default",
+      "basePath": "/openclaw-web",
       "allowedOrigins": [
         "*"
       ],
