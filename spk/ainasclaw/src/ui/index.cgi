@@ -4127,6 +4127,7 @@ cat <<'HTML'
             + '    <div class="field"><label>默认图像模型</label>'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认图像模型，留空则无默认图像模型。勾选后自动为该模型添加 image 输入支持。</div>'
             + '      <select id="dlg_default_image_model" style="width:100%;" onchange="trackImageDefaultClear(this)"><option value="">（无默认图像模型）</option></select>'
+            + '      <button type="button" class="btn" style="margin-top:4px;" onclick="clearDefaultImageModel()">清除图像默认</button>'
             + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
             + '        <input id="dlg_default_image_model_manual" style="flex:1;" placeholder="输入模型名（自动补全 ProviderID）">'
             + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">添加</button>'
@@ -4369,6 +4370,14 @@ cat <<'HTML'
     // instead of resurrecting the previously set default.
     function trackImageDefaultClear(sel) {
       window.__imageDefaultCleared = (sel && sel.value === '');
+    }
+    // Explicit '清除图像默认' button: force the placeholder selection and the
+    // clear flag, bypassing select onchange quirks in the DSM web shell.
+    function clearDefaultImageModel() {
+      const sel = document.getElementById('dlg_default_image_model');
+      if (sel) { sel.value = ''; }
+      window.__imageDefaultCleared = true;
+      setModelDialogHint('已清除默认图像模型（保存后生效）', 'ok');
     }
     function refreshDefaultModelDropdownOptions(modelIds) {
       const textSel = document.getElementById('dlg_default_text_model');
@@ -4722,7 +4731,8 @@ cat <<'HTML'
           rawModels: rawModels,
           models: selectedModelIds.map(id => ({ modelId: id, id: id })),
           defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
-          defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
+          // '清除图像默认' or 无 selection must yield an empty image default.
+          defaultImageModel: (window.__imageDefaultCleared === true) ? '' : (document.getElementById('dlg_default_image_model').value || '').trim()
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: false };
