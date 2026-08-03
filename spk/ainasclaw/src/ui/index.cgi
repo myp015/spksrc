@@ -697,20 +697,27 @@ for p in providers_payload:
         '_imageDefault': (p.get('defaultImageModel') or '').strip()
     }
     old_key = ''
-    if isinstance(existing_providers.get(pid), dict) and isinstance(existing_providers.get(pid).get('apiKey'), str):
-        old_key = existing_providers.get(pid).get('apiKey').strip()
+    _existing_pv = existing_providers.get(pid)
+    if isinstance(_existing_pv, dict):
+        _ek = _existing_pv.get('apiKey')
+        if isinstance(_ek, str):
+            old_key = _ek.strip()
+        elif isinstance(_ek, dict):
+            # SecretRef: keep the reference so editing (masked key) does not drop it.
+            old_key = _ek
+    _old_key_ref = old_key if isinstance(old_key, dict) else (old_key if old_key else '')
     api_key = p.get('apiKey')
     if isinstance(api_key, str):
         key_trim = api_key.strip()
         if key_trim and set(key_trim) == {'*'}:
-            if old_key:
-                provider['apiKey'] = old_key
+            if _old_key_ref:
+                provider['apiKey'] = _old_key_ref
         elif key_trim:
             provider['apiKey'] = key_trim
-        elif old_key:
-            provider['apiKey'] = old_key
-    elif old_key:
-        provider['apiKey'] = old_key
+        elif _old_key_ref:
+            provider['apiKey'] = _old_key_ref
+    elif _old_key_ref:
+        provider['apiKey'] = _old_key_ref
     raw_models = p.get('rawModels') if isinstance(p.get('rawModels'), list) else []
     raw_by_id = {}
     for raw_model in raw_models:
