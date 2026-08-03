@@ -848,15 +848,14 @@ seed_agent_provider_auth() {
     eff_user="$(resolve_effective_service_user 2>/dev/null || echo "${EFF_USER:-sc-openclaw}")"
 
     # providerId<TAB>apiKey  -- apiKey resolved from config (SecretRef -> secrets.json).
+    # NOTE: must be POSIX-sh safe. DSM's start-stop-status sources this via
+    # /bin/sh (bash --posix); process substitution < <() is a syntax error there
+    # that aborts sourcing the whole service-setup (all lifecycle functions stay
+    # undefined, gateway never starts). Use a temp file instead.
     local provider_id key out
-    while IFS=$'\t' read -r provider_id key; do
-        [ -n "${provider_id}" ] && [ -n "${key}" ] || continue
-        # pipe the key via stdin so it never appears in argv / shell history
-        out="$(printf '%s\n' "${key}" | su -s /bin/sh "${eff_user}" -c "env HOME='${OPENCLAW_WORKSPACE_DIR}' OPENCLAW_CONFIG_PATH='${cfg_file}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_STATE_DIR}' '${oc_cli}' models auth paste-api-key --provider '${provider_id}' 2>&1" 2>/dev/null || true)"
-        case "${out}" in
-          *"Auth profile: ${provider_id}:manual"*) echo "[openclaw] seeded provider auth: ${provider_id}" 1>&2 ;;
-        esac
-    done < <("${OPENCLAW_NODE}" -e '
+    local _prov_list
+    _prov_list="${SYNOPKG_PKGVAR}/.seed-provider-auth.$$.$RANDOM"
+    "${OPENCLAW_NODE}" -e '
 const fs=require("fs");
 const cfg=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
 let secrets={};
@@ -864,7 +863,16 @@ try { secrets=JSON.parse(fs.readFileSync(process.argv[2],"utf8")); } catch {}
 const resolve=function(v){ if (v && typeof v==="object" && v.id){ const seg=v.id.split("/").filter(Boolean); let t=secrets; for (const p of seg){ t=(t&&typeof t==="object")?t[p]:undefined; } return typeof t==="string"?t:""; } return typeof v==="string"?v:""; };
 const provs=(cfg.models&&cfg.models.providers&&typeof cfg.models.providers==="object")?cfg.models.providers:{};
 for (const [id,p] of Object.entries(provs)){ if (p&&typeof p==="object"){ const k=resolve(p.apiKey); if (k) process.stdout.write(id+"\t"+k+"\n"); } }
-' "${cfg_file}" "${OPENCLAW_STATE_DIR}/secrets.json" 2>/dev/null || true)
+' "${cfg_file}" "${OPENCLAW_STATE_DIR}/secrets.json" > "${_prov_list}" 2>/dev/null || true
+    while IFS=$'\t' read -r provider_id key; do
+        [ -n "${provider_id}" ] && [ -n "${key}" ] || continue
+        # pipe the key via stdin so it never appears in argv / shell history
+        out="$(printf '%s\n' "${key}" | su -s /bin/sh "${eff_user}" -c "env HOME='${OPENCLAW_WORKSPACE_DIR}' OPENCLAW_CONFIG_PATH='${cfg_file}' OPENCLAW_STATE_DIR='${OPENCLAW_STATE_DIR}' OPENCLAW_WORKSPACE_DIR='${OPENCLAW_STATE_DIR}' '${oc_cli}' models auth paste-api-key --provider '${provider_id}' 2>&1" 2>/dev/null || true)"
+        case "${out}" in
+          *"Auth profile: ${provider_id}:manual"*) echo "[openclaw] seeded provider auth: ${provider_id}" 1>&2 ;;
+        esac
+    done < "${_prov_list}"
+    rm -f "${_prov_list}" 2>/dev/null || true
 }
 
 ensure_openclaw_in_path() {
