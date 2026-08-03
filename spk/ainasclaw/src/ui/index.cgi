@@ -753,6 +753,11 @@ for p in providers_payload:
         # of the old incomplete `{id,name}` entry.
         saved = dict(raw_by_id.get(mid) or {})
         saved['id'] = mid
+        # Drop the transient UI-only `modelId` duplicate. OpenClaw's models
+        # provider schema only accepts `id`; persisting both triggers
+        #   Invalid config: models.providers.<p>.models.<i>: Unrecognized key "modelId"
+        # and surfaces as "Config invalid" in openclaw doctor.
+        saved.pop('modelId', None)
         saved['name'] = str(saved.get('name') or (f"{pid} / {mid}"))
         saved.setdefault('contextWindow', 1048576)
         saved.setdefault('maxTokens', 16384)
