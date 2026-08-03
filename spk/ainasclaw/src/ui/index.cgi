@@ -4470,17 +4470,25 @@ cat <<'HTML'
         textSel.appendChild(new Option(mid, mid));
         imageSel.appendChild(new Option(mid, mid));
       }
-      // Set current defaults from provider data
+      // Set current defaults from provider data. dtm/dim are full refs like
+      // "deepseek/deepseek-v4-flash" while the dropdown options carry the bare
+      // model id ("deepseek-v4-flash"), so also match the id portion stripped
+      // of the provider prefix. Otherwise an existing default shows as empty
+      // in the edit dialog even though the list page shows it.
       const dtm = (p.defaultTextModel || '').trim();
+      const dtmId = dtm.indexOf('/') >= 0 ? dtm.slice(dtm.indexOf('/') + 1) : dtm;
       if (dtm) {
         for (let i = 0; i < textSel.options.length; i++) {
-          if (textSel.options[i].value === dtm) { textSel.selectedIndex = i; break; }
+          const v = textSel.options[i].value;
+          if (v === dtm || v === dtmId) { textSel.selectedIndex = i; break; }
         }
       }
       const dim = (p.defaultImageModel || '').trim();
+      const dimId = dim.indexOf('/') >= 0 ? dim.slice(dim.indexOf('/') + 1) : dim;
       if (dim) {
         for (let i = 0; i < imageSel.options.length; i++) {
-          if (imageSel.options[i].value === dim) { imageSel.selectedIndex = i; break; }
+          const v = imageSel.options[i].value;
+          if (v === dim || v === dimId) { imageSel.selectedIndex = i; break; }
         }
       }
     }
