@@ -4147,7 +4147,6 @@ cat <<'HTML'
             + '    <div class="field"><label>默认图像模型</label>'
             + '      <div style="font-size:13px;color:#667085;margin-bottom:4px;">选择默认图像模型，留空则无默认图像模型。勾选后自动为该模型添加 image 输入支持。</div>'
             + '      <select id="dlg_default_image_model" style="width:100%;" onchange="trackImageDefaultClear(this)"><option value="">（无默认图像模型）</option></select>'
-            + '      <button type="button" class="btn" style="margin-top:4px;" onclick="clearDefaultImageModel()">清除图像默认</button>'
             + '      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">'
             + '        <input id="dlg_default_image_model_manual" style="flex:1;" placeholder="输入模型名（自动补全 ProviderID）">'
             + '        <button class="btn" style="white-space:nowrap;" onclick="setDefaultImageModelFromManual()">添加</button>'
@@ -4391,14 +4390,6 @@ cat <<'HTML'
     function trackImageDefaultClear(sel) {
       window.__imageDefaultCleared = (sel && sel.value === '');
     }
-    // Explicit '清除图像默认' button: force the placeholder selection and the
-    // clear flag, bypassing select onchange quirks in the DSM web shell.
-    function clearDefaultImageModel() {
-      const sel = document.getElementById('dlg_default_image_model');
-      if (sel) { sel.value = ''; }
-      window.__imageDefaultCleared = true;
-      setModelDialogHint('已清除默认图像模型（保存后生效）', 'ok');
-    }
     function refreshDefaultModelDropdownOptions(modelIds) {
       const textSel = document.getElementById('dlg_default_text_model');
       const imageSel = document.getElementById('dlg_default_image_model');
@@ -4539,19 +4530,26 @@ cat <<'HTML'
         textSel.appendChild(new Option(mid, mid));
         imageSel.appendChild(new Option(mid, mid));
       }
-      // Set current default TEXT model from provider data (display only).
-      // NOTE: do NOT pre-select the image default here. Editing a provider whose
-      // imageModel is set must NOT echo it back into the dropdown, otherwise
-      // saving without touching the image dropdown re-persists the stale value
-      // (the '删不掉图像模型' loop). The image default is only meaningful when
-      // the operator explicitly selects one (or via 清除图像默认 which keeps it
-      // empty -> backend clears imageModel).
+      // Set current defaults from provider data (display only). Show the CURRENT
+      // value from the config, including the image default. This is safe now:
+      // the auto-refill root cause (valid-ref normalize re-filling an empty/invalid
+      // image default with the first model) is fixed in models_save, so displaying
+      // the existing imageModel never re-persists it on save unless the operator
+      // actively changes it. dtm/dim may be a full ref or bare id; match either.
       const dtm = (p.defaultTextModel || '').trim();
       const dtmId = dtm.indexOf('/') >= 0 ? dtm.slice(dtm.indexOf('/') + 1) : dtm;
       if (dtm) {
         for (let i = 0; i < textSel.options.length; i++) {
           const v = textSel.options[i].value;
           if (v === dtm || v === dtmId) { textSel.selectedIndex = i; break; }
+        }
+      }
+      const dim = (p.defaultImageModel || '').trim();
+      const dimId = dim.indexOf('/') >= 0 ? dim.slice(dim.indexOf('/') + 1) : dim;
+      if (dim) {
+        for (let i = 0; i < imageSel.options.length; i++) {
+          const v = imageSel.options[i].value;
+          if (v === dim || v === dimId) { imageSel.selectedIndex = i; break; }
         }
       }
     }
@@ -4746,8 +4744,9 @@ cat <<'HTML'
           rawModels: rawModels,
           models: selectedModelIds.map(id => ({ modelId: id, id: id })),
           defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
-          // '清除图像默认' or 无 selection must yield an empty image default.
-          defaultImageModel: (window.__imageDefaultCleared === true) ? '' : (document.getElementById('dlg_default_image_model').value || '').trim()
+          // Image default = current dropdown value; selecting （无默认图像模型）
+          // yields empty -> models_save clears imageModel (auto-refill fixed).
+          defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: false };
