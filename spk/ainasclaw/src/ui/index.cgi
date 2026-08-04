@@ -4816,8 +4816,11 @@ cat <<'HTML'
         // 方案 C + 保护：OpenClaw 默认模型全局唯一。非编辑 provider 删除
         // defaultTextModel/defaultImageModel 字段（而非置空），使其完全不参与
         // 默认决策，也不触发误删（空字符串会让 image_refs 为空 -> else 清全局）。
+        // 注意：添加模式 idx=-1，新 provider 在 push 后位于 providers.length-1，
+        // 必须保留它（否则添加时设置的默认文本/图像模型会被误删，导致无法添加）。
+        const __keepIdx = (idx >= 0) ? idx : (providers.length - 1);
         for (let i = 0; i < providers.length; i++) {
-          if (i === idx) continue;
+          if (i === __keepIdx) continue;
           if (providers[i] && typeof providers[i] === 'object') {
             delete providers[i].defaultTextModel;
             delete providers[i].defaultImageModel;
