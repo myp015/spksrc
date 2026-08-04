@@ -4547,6 +4547,20 @@ cat <<'HTML'
         textSel.appendChild(new Option(mid, mid));
         imageSel.appendChild(new Option(mid, mid));
       }
+      // Ensure the current GLOBAL default image model appears as a chooseable
+      // option even when it belongs to another provider. Otherwise editing a
+      // provider whose own model list doesn't contain the global image default
+      // shows （无默认图像模型）and saving clears it (误删其它 provider 的默认)
+      // or cannot change it.
+      const __gDim = (p.defaultImageModel || '').trim();
+      if (__gDim) {
+        const __gDimId = __gDim.indexOf('/') >= 0 ? __gDim.slice(__gDim.indexOf('/') + 1) : __gDim;
+        let has = false;
+        for (let i = 0; i < imageSel.options.length; i++) {
+          if (imageSel.options[i].value === __gDim || imageSel.options[i].value === __gDimId) { has = true; break; }
+        }
+        if (!has && __gDimId) imageSel.appendChild(new Option(__gDim, __gDim));
+      }
       // Set current defaults from provider data (display only). Show the CURRENT
       // value from the config, including the image default. This is safe now:
       // the auto-refill root cause (valid-ref normalize re-filling an empty/invalid
