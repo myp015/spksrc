@@ -772,9 +772,16 @@ try:
         ref = ref.strip()
         if not ref:
             return ref
-        if '/' in ref:
+        # If the leading path segment is an already-configured provider id, the
+        # ref is already fully qualified (provider/id) — keep it. We must NOT
+        # treat 'contains /' as 'already prefixed': a model id may itself contain
+        # '/' (e.g. siliconflow 'Qwen/Qwen3-VL-32B-Instruct'); OpenClaw still
+        # wants provider/model, i.e. siliconflow/Qwen/Qwen3-VL-32B-Instruct.
+        _known = set(str(_p).strip() for _p in providers_map.keys())
+        if ref.split('/')[0] in _known:
             return ref
-        # bare id: prepend the provider that owns it (first provider listing it)
+        # bare/partial id: prepend the provider that owns it (first match, incl.
+        # model ids that contain '/').
         for _pid, _pv in providers_map.items():
             for _m in (_pv.get('models') or []):
                 if isinstance(_m, dict) and str(_m.get('modelId') or _m.get('id') or '') == ref:
@@ -785,11 +792,14 @@ try:
         defaults['model'] = {'primary': _normalize_ref(text_refs[0])}
     if image_refs:
         dim_ref = image_refs[0]
+        # Normalize the image default to provider/model too (a model id may itself
+        # contain '/', e.g. siliconflow Qwen/Qwen3-VL-32B-Instruct => the ref must
+        # become siliconflow/Qwen/Qwen3-VL-32B-Instruct).
         # NOTE: do NOT clear/guard here when image default equals text default.
         # That would break multimodal providers where the same model is used for
         # both text and image defaults. Just persist what the operator set; the
         # frontend __imageDefaultCleared intent handles actual clearing.
-        defaults['imageModel'] = {'primary': dim_ref}
+        defaults['imageModel'] = {'primary': _normalize_ref(dim_ref)}
         # Auto-add image input support for the default image model
         for pid2, pv2 in providers_map.items():
             if not isinstance(pv2, dict):
