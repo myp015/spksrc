@@ -755,15 +755,24 @@ try:
     defaults = cfg.setdefault('agents', {}).setdefault('defaults', {})
     text_refs = []
     image_refs = []
+    img_clear_requested = False
     for pid, pv in providers_map.items():
         if not isinstance(pv, dict):
             continue
-        dtm = (pv.get('_textDefault') or pv.get('defaultTextModel') or '').strip()
-        dim = (pv.get('_imageDefault') or pv.get('defaultImageModel') or '').strip()
-        if dtm:
-            text_refs.append(dtm)
-        if dim:
-            image_refs.append(dim)
+        # 文本默认：只在显式提交（字段存在且非空）时参与。未提交字段（省略）
+        # 不参与默认决策。
+        txt_f = pv.get('defaultTextModel')
+        if isinstance(txt_f, str) and txt_f.strip():
+            text_refs.append(txt_f.strip())
+        # 图像默认：字段存在且非空 -> 候选；字段存在但为空 -> 显式删除请求；
+        # 字段缺失（省略）-> 不参与（保留现有全局图像默认，不误删其它 provider）。
+        img_f = pv.get('defaultImageModel')
+        if img_f is not None:
+            img_v = str(img_f).strip()
+            if img_v:
+                image_refs.append(img_v)
+            else:
+                img_clear_requested = True
     # Normalize defaults to OpenClaw's canonical provider/model format (split on
     # first '/'). A bare model id like "deepseek-v4-flash" is stored without a
     # provider prefix, while image default may carry it — keep both consistent so
@@ -814,11 +823,10 @@ try:
                     if 'image' not in inp:
                         inp.append('image')
                     break
-    else:
-        # 默认图像模型被清空（改成空）：移除 imageModel 残留，并删除之前为
-        # 支持图片而加进模型（文本模型和图像模型）的 input 里的 'image'，
-        # 恢复纯文本——否则若模型本身不支持视觉，OpenClaw 仍会把图片编码成
-        # image_url 发给它再报 400 'unknown variant image_url'。
+    elif img_clear_requested:
+        # 显式清空默认图像模型（用户选'无'并提交空）：
+        # 移除 imageModel 残留，并删除之前为支持图片而加进模型的 input 里的
+        # 'image'，恢复纯文本，避免模型被误标为支持图片而发 image_url 报 400。
         defaults['imageModel'] = {'primary': ''}
         for pid2, pv2 in providers_map.items():
             if not isinstance(pv2, dict):
@@ -833,21 +841,20 @@ try:
                         m['input'] = _inp2
                     else:
                         m.pop('input', None)
+    else:
+        # 没有图像默认提交，且无显式删除请求：保留现有全局 imageModel 不变
+        # （编辑无关 provider 时不会误删其它 provider 的图像默认）。
+        pass
 except Exception:
     pass
 
-# HARD backend guarantee: if NO provider in this save declared an explicit image
-# default, force the image default empty on disk regardless of any prior value or
-# frontend quirk. This is the final safety net — the operator can only retain an
-# image default by actually selecting one in the dialog.
+# Hard backend guarantee: only clear the image default when the operator
+# EXPLICITLY requested deletion in this save (submitted an empty image default).
+# Without that, preserve the existing global image default — editing an unrelated
+# provider must NOT clear another provider's image default.
 try:
     defaults = cfg.setdefault('agents', {}).setdefault('defaults', {})
-    _any_img = False
-    for _pid2, _pv2 in providers_map.items():
-        if isinstance(_pv2, dict) and ((_pv2.get('_imageDefault') or _pv2.get('defaultImageModel') or '').strip()):
-            _any_img = True
-            break
-    if not _any_img:
+    if img_clear_requested:
         defaults['imageModel'] = {'primary': ''}
 except Exception:
     pass
