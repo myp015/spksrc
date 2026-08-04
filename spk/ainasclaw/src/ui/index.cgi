@@ -4753,10 +4753,10 @@ cat <<'HTML'
           // completed by the server-side save path.
           rawModels: rawModels,
           models: selectedModelIds.map(id => ({ modelId: id, id: id })),
-          defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
-          // Image default = current dropdown value; selecting （无默认图像模型）
-          // yields empty -> models_save clears imageModel (auto-refill fixed).
-          defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
+          // The model list has no provider prefix; always prepend the current
+          // provider id to form provider/model (unless already prefixed).
+          defaultTextModel: ((pv => (pv ? (pv.indexOf(providerId + '/') === 0 ? pv : providerId + '/' + pv) : '')) ((document.getElementById('dlg_default_text_model').value || '').trim())),
+          defaultImageModel: ((pv => (pv ? (pv.indexOf(providerId + '/') === 0 ? pv : providerId + '/' + pv) : '')) ((document.getElementById('dlg_default_image_model').value || '').trim()))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: false };
