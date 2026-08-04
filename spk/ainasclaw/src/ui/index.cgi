@@ -4742,35 +4742,32 @@ cat <<'HTML'
           return;
         }
 
+        // 默认模型处理：图像默认只在 显式删除(选无) 或 选了值 时才提交；本来
+        // 就没有（下拉显示无且用户未操作）则不提交该字段，避免误清其它 provider
+        // 的全局图像默认。undefined 字段会被 JSON 省略，后端不收集。
+        const __txtRaw = (document.getElementById('dlg_default_text_model').value || '').trim();
+        const __imgRaw = (document.getElementById('dlg_default_image_model').value || '').trim();
+        const __imgCleared = (window.__imageDefaultCleared === true);
         const provider = {
           id: providerId,
           displayName: providerId,
           api: document.getElementById('dlg_api').value,
           baseUrl: baseUrl,
           apiKey: apiKey,
-          // Keep metadata obtained through "同步到本地缓存" when the user
-          // subsequently edits this provider; manually entered IDs are
-          // completed by the server-side save path.
           rawModels: rawModels,
           models: selectedModelIds.map(id => ({ modelId: id, id: id })),
-          // defaultTextModel/defaultImageModel pass the raw dropdown value (the
-          // model list has no provider prefix). The backend _normalize_ref
-          // resolves the owning provider (incl. model ids containing '/') and
-          // writes provider/model, so cross-provider selections stay correct.
-          defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
-          defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
+          defaultTextModel: __txtRaw || undefined,
+          defaultImageModel: (__imgCleared ? '' : (__imgRaw || undefined))
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
-        // 方案 C：OpenClaw 的默认文本/图像模型是全局唯一的。保存时只让当前
-        // 被编辑的 provider 携带 defaultTextModel/defaultImageModel，其它
-        // provider 置空——否则其它 provider 的 default_model_for_provider 会把
-        // 同一个全局默认也带上来，后端仅取 refs[0]，导致非首个 provider 设置的
-        // 默认永远无法生效。
+        // 方案 C + 保护：OpenClaw 默认模型全局唯一。非编辑 provider 删除
+        // defaultTextModel/defaultImageModel 字段（而非置空），使其完全不参与
+        // 默认决策，也不触发误删（空字符串会让 image_refs 为空 -> else 清全局）。
         for (let i = 0; i < providers.length; i++) {
           if (i === idx) continue;
           if (providers[i] && typeof providers[i] === 'object') {
-            providers[i].defaultTextModel = '';
-            providers[i].defaultImageModel = '';
+            delete providers[i].defaultTextModel;
+            delete providers[i].defaultImageModel;
           }
         }
         const payload = { providers, applyNow: false };
