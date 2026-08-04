@@ -4761,6 +4761,18 @@ cat <<'HTML'
           defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
+        // 方案 C：OpenClaw 的默认文本/图像模型是全局唯一的。保存时只让当前
+        // 被编辑的 provider 携带 defaultTextModel/defaultImageModel，其它
+        // provider 置空——否则其它 provider 的 default_model_for_provider 会把
+        // 同一个全局默认也带上来，后端仅取 refs[0]，导致非首个 provider 设置的
+        // 默认永远无法生效。
+        for (let i = 0; i < providers.length; i++) {
+          if (i === idx) continue;
+          if (providers[i] && typeof providers[i] === 'object') {
+            providers[i].defaultTextModel = '';
+            providers[i].defaultImageModel = '';
+          }
+        }
         const payload = { providers, applyNow: false };
         const ret = await api('models_save', 'POST', payload);
         setModelDialogHint((ret && ret.message) ? ret.message : '保存成功，重启 gateway 后生效', 'ok');
