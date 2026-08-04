@@ -516,6 +516,18 @@ try:
 except Exception:
     payload = {}
 try:
+    _md_diag = '/tmp/ms_defaults_diag.log'
+    _md_lines = []
+    for _p in (payload.get('providers') or []):
+        if isinstance(_p, dict):
+            _md_lines.append('%s txt=%r img=%r' % (
+                _p.get('id'), _p.get('defaultTextModel'), _p.get('defaultImageModel')))
+    with open(_md_diag, 'a', encoding='utf-8') as _f:
+        _f.write('%s SAVE providers:\n%s\n' % (
+            __import__('time').strftime('%H:%M:%S'), '\n'.join(_md_lines) if _md_lines else '(none)'))
+except Exception:
+    pass
+try:
     cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if cfg_path and os.path.exists(cfg_path) else {}
 except Exception:
     cfg = {}
@@ -694,8 +706,20 @@ for p in providers_payload:
         'baseUrl': p.get('baseUrl') or '',
         'models': [],
         '_textDefault': (p.get('defaultTextModel') or '').strip(),
-        '_imageDefault': (p.get('defaultImageModel') or '').strip()
+        '_imageDefault': (p.get('defaultImageModel') or '').strip(),
+        # Keep the RAW default fields untouched so the backend can distinguish
+        # 'omitted' (undefined / missing key) from 'explicit clear' (empty string)
+        # and 'chosen model' (non-empty). The str() coercion below preserves that:
+        # None stays unset, '' signals delete-intent, a value is a chosen model.
+        'defaultTextModel': p.get('defaultTextModel'),
+        'defaultImageModel': p.get('defaultImageModel')
     }
+    # normalize None vs missing consistently: treat a non-string/None leniently so
+    # the collection loop below and the main pipeline agree.
+    _dtm_raw = provider['defaultTextModel']
+    _dim_raw = provider['defaultImageModel']
+    provider['defaultTextModel'] = _dtm_raw if isinstance(_dtm_raw, str) else None
+    provider['defaultImageModel'] = _dim_raw if isinstance(_dim_raw, str) else None
     old_key = ''
     _existing_pv = existing_providers.get(pid)
     if isinstance(_existing_pv, dict):
@@ -1056,6 +1080,14 @@ except Exception:
 with open(cfg_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write('\n')
+
+try:
+    _md_final = (cfg.get('agents') or {}).get('defaults') or {}
+    with open('/tmp/ms_defaults_diag.log', 'a', encoding='utf-8') as _f:
+        _f.write('  -> WRITTEN model=%r imageModel=%r\n' % (
+            _md_final.get('model'), _md_final.get('imageModel')))
+except Exception:
+    pass
 
 # user requirement: after adding/updating model providers, trigger provider-model sync script automatically
 model_sync_triggered = False
