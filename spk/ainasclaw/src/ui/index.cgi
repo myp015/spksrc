@@ -4753,10 +4753,12 @@ cat <<'HTML'
           // completed by the server-side save path.
           rawModels: rawModels,
           models: selectedModelIds.map(id => ({ modelId: id, id: id })),
-          // The model list has no provider prefix; always prepend the current
-          // provider id to form provider/model (unless already prefixed).
-          defaultTextModel: ((pv => (pv ? (pv.indexOf(providerId + '/') === 0 ? pv : providerId + '/' + pv) : '')) ((document.getElementById('dlg_default_text_model').value || '').trim())),
-          defaultImageModel: ((pv => (pv ? (pv.indexOf(providerId + '/') === 0 ? pv : providerId + '/' + pv) : '')) ((document.getElementById('dlg_default_image_model').value || '').trim()))
+          // defaultTextModel/defaultImageModel pass the raw dropdown value (the
+          // model list has no provider prefix). The backend _normalize_ref
+          // resolves the owning provider (incl. model ids containing '/') and
+          // writes provider/model, so cross-provider selections stay correct.
+          defaultTextModel: (document.getElementById('dlg_default_text_model').value || '').trim(),
+          defaultImageModel: (document.getElementById('dlg_default_image_model').value || '').trim()
         };
         if (idx >= 0) providers[idx] = provider; else providers.push(provider);
         const payload = { providers, applyNow: false };
