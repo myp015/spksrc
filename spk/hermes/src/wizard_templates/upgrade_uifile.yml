@@ -1,8 +1,0 @@
-WORKSPACE_DIR_DESCRIPTION: "Hermes Agent 用户目录（默认 /volume1/hermes，运行状态与配置位于该目录下的 .hermes/）"
-WORKSPACE_DIR_LABEL: "用户目录"
-
-GATEWAY_PORT_DESCRIPTION: "Gateway 监听端口（默认 58790）"
-GATEWAY_PORT_LABEL: "端口"
-
-INSTALLATION_NOTES_TITLE: "<b>说明</b><br/>"
-INSTALLATION_NOTES_TEXT1: "仅保留两个参数：用户目录与端口。"

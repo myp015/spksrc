@@ -1,5 +1,0 @@
-bin:bin/hx
-rsc:bin/runtime/tutor
-lib:bin/runtime/grammars/*.so
-rsc:bin/runtime/queries/
-rsc:bin/runtime/themes/

@@ -1,7 +1,0 @@
-bin:bin/filan
-bin:bin/procan
-lnk:bin/socat
-bin:bin/socat1
-rsc:bin/socat-broker.sh
-rsc:bin/socat-chain.sh
-rsc:bin/socat-mux.sh

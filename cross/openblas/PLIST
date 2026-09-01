@@ -1,3 +1,0 @@
-lnk:lib/libopenblas.so
-lnk:lib/libopenblas.so.0
-lib:lib/libopenblas.so.0.3

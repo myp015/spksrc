@@ -1,4 +1,0 @@
-rsc:bin/arp-fingerprint
-bin:bin/arp-scan
-rsc:etc/arp-scan/mac-vendor.txt
-rsc:share/arp-scan
