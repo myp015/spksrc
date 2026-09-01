@@ -9,7 +9,8 @@ SPK_NAME = ainasclaw
 # DSM package INFO versions do not accept npm build suffixes like `-2`, so we
 # derive SPK_VERS from the clean base semver and carry the exact npm version
 # (with suffix, e.g. 2026.7.1-2) in OPENCLAW_NPM_VERS for packaging.
-RESOLVE_VERSIONS := $(CURDIR)/spk/ainasclaw/src/resolve-versions.sh
+# Make is invoked with -C spk/ainasclaw, so CURDIR is already the package root.
+RESOLVE_VERSIONS := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/src/resolve-versions.sh
 RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS)')
 OPENCLAW_NPM_VERSION := $(patsubst OPENCLAW_NPM_VERSION=%,%,$(filter OPENCLAW_NPM_VERSION=%,$(RESOLVED_VERSIONS)))
 OPENCLAW_SPK_VERSION_TMP := $(patsubst OPENCLAW_SPK_VERSION=%,%,$(filter OPENCLAW_SPK_VERSION=%,$(RESOLVED_VERSIONS)))
@@ -136,7 +137,7 @@ openclaw_prepare_bundle:
 		tar -xJf node-v$(NODEJS_RUNTIME_VERS)-linux-$$HOST_NODE_DIST_ARCH.tar.xz -C $(WORK_DIR)/build-node-runtime --strip-components=1
 	@cd $(WORK_DIR) && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack openclaw@$(OPENCLAW_NPM_VERS) --silent
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --save-exact --no-audit --no-fund \
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm_config_legacy_peer_deps=true npm install --omit=dev --legacy-peer-deps --save-exact --no-audit --no-fund \
 		@openclaw/feishu@$(FEISHU_VERSION) \
 		@soimy/dingtalk@$(DINGTALK_VERSION) \
 		@sunnoy/wecom@$(WECOM_VERSION) \
@@ -145,7 +146,7 @@ openclaw_prepare_bundle:
 		acpx@0.5.3 \
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --force --no-audit --no-fund \
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm_config_legacy_peer_deps=true npm install --omit=dev --legacy-peer-deps --force --no-audit --no-fund \
 		@anthropic-ai/sdk@0.93.0 \
 		@anthropic-ai/vertex-sdk@^0.16.0 \
 		@aws-sdk/client-bedrock@3.1034.0 \
@@ -183,7 +184,7 @@ openclaw_prepare_bundle:
 		ws@^8.20.0 \
 		zod@4.3.6
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm dedupe --prefer-dedupe --legacy-peer-deps --no-audit --no-fund || true
-	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm install --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.34
+	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_legacy_peer_deps=true npm install --legacy-peer-deps --no-package-lock --no-save @aws-sdk/credential-provider-node@3.972.34
 	@if [ -d "$(WORK_DIR)/openclaw-bundle/dist/extensions/amazon-bedrock" ]; then \
 		cd $(WORK_DIR)/openclaw-bundle/dist/extensions/amazon-bedrock && \
 		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack @aws-sdk/credential-provider-node@3.972.34 --silent && \
@@ -212,7 +213,7 @@ openclaw_prepare_bundle:
 		mkdir -p .spk-build-state && \
 		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node -e "const fs=require('fs');const path=require('path');const root=process.cwd();const ext=path.join(root,'dist','extensions');const collect=(pkg)=>({...(pkg.dependencies||{}),...(pkg.optionalDependencies||{})});const byName=new Map();for(const e of fs.readdirSync(ext,{withFileTypes:true})){if(!e.isDirectory())continue;const pj=path.join(ext,e.name,'package.json');if(!fs.existsSync(pj))continue;let pkg;try{pkg=JSON.parse(fs.readFileSync(pj,'utf8'));}catch{continue;}for(const [n,v] of Object.entries(collect(pkg))){if(typeof v!=='string'||!v.trim())continue;if(!byName.has(n))byName.set(n,v.trim());}}const out=[...byName.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([n,v])=>n+'@'+v).join('\n')+'\n';fs.writeFileSync(path.join(root,'.spk-build-state','bundled-runtime-specs.txt'),out,'utf8');console.log('Prepared bundled runtime spec count: '+byName.size);" && \
 		specs="$$(tr '\n' ' ' < .spk-build-state/bundled-runtime-specs.txt)" && \
-		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --force --no-audit --no-fund --no-save $$specs
+		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm_config_legacy_peer_deps=true npm install --omit=dev --legacy-peer-deps --force --no-audit --no-fund --no-save $$specs
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node -e "const fs=require('fs');const path=require('path');const semver=require('semver');const root=process.cwd();const ext=path.join(root,'dist','extensions');const collect=(pkg)=>({...(pkg.dependencies||{}),...(pkg.optionalDependencies||{})});const byName=new Map();for(const e of fs.readdirSync(ext,{withFileTypes:true})){if(!e.isDirectory())continue;const pj=path.join(ext,e.name,'package.json');if(!fs.existsSync(pj))continue;let pkg;try{pkg=JSON.parse(fs.readFileSync(pj,'utf8'));}catch{continue;}for(const [n,v] of Object.entries(collect(pkg))){if(typeof v!=='string'||!v.trim())continue;const rec=byName.get(n)||{versions:new Set(),plugins:new Set()};rec.versions.add(v.trim());rec.plugins.add(e.name);byName.set(n,rec);}}const missing=[];for(const [n,rec] of byName){const sentinel=path.join(root,'node_modules',...n.split('/'),'package.json');if(!fs.existsSync(sentinel)){missing.push({name:n,version:[...rec.versions].join(' || '),plugins:[...rec.plugins].sort()});continue;}let installed='';try{installed=JSON.parse(fs.readFileSync(sentinel,'utf8')).version||'';}catch{}const specs=[...rec.versions];const ok=specs.some((spec)=>{const v=semver.valid(installed);const r=semver.validRange(spec);if(v&&r)return semver.satisfies(v,r,{includePrerelease:true});return installed===spec;});if(!ok)missing.push({name:n,version:[...rec.versions].join(' || '),installed:installed||'unknown',plugins:[...rec.plugins].sort()});}if(missing.length){console.error('Bundled plugin runtime deps missing/version-mismatch after build-stage install:');for(const m of missing){console.error('- '+m.name+' required('+m.version+') installed('+(m.installed||'none')+') (used by '+m.plugins.join(', ')+')');}process.exit(1);}console.log('Bundled runtime dependency verification passed ('+byName.size+' deps).');" | tee $(WORK_DIR)/doctor.log
 	@cd $(WORK_DIR)/openclaw-bundle && \
 		mkdir -p .spk-build-state/doctor-state/agents/main/sessions .spk-build-state/doctor-state/credentials .spk-build-state/doctor-home .spk-build-state/doctor-ws && \
