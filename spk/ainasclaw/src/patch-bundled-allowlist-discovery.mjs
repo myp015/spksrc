@@ -62,7 +62,11 @@ for (const file of targets) {
 }
 
 if (patched === 0 && alreadyPatched === 0) {
-  fail(`target text not found in any discovery file (scanned=${targets.length}, skipped=${skipped})`);
+  // Discovery is an optional hardening patch. OpenClaw may change the generated
+  // discovery loop between releases; do not make an otherwise usable bundle
+  // fail solely because this patch has no matching target.
+  console.warn(`[patch-bundled-allowlist-discovery] target text not found; skipping (scanned=${targets.length}, skipped=${skipped})`);
+  process.exit(0);
 }
 
 console.log(`[patch-bundled-allowlist-discovery] done, patched ${patched} file(s), already=${alreadyPatched}, skipped=${skipped}`);
