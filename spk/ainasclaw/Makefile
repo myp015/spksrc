@@ -146,7 +146,7 @@ openclaw_prepare_bundle:
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
-		@anthropic-ai/sdk@0.90.0 \
+		@anthropic-ai/sdk@0.93.0 \
 		@anthropic-ai/vertex-sdk@^0.16.0 \
 		@aws-sdk/client-bedrock@3.1034.0 \
 		@aws-sdk/client-bedrock-runtime@3.1034.0 \
