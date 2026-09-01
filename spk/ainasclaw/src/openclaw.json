@@ -206,7 +206,7 @@
       "openclaw-weixin": {
         "enabled": false
       },
-      "codex": {
+      "device-pair": {
         "enabled": true
       }
     },
@@ -215,10 +215,14 @@
     "allow": [
       "browser",
       "memory-core",
-      "codex"
+      "device-pair"
     ]
   },
   "memory": {
+    "search": {
+      "enabled": false,
+      "rememberAcrossConversations": false
+    },
     "backend": "builtin",
     "citations": "auto",
     "qmd": {

@@ -1596,9 +1596,17 @@ if (wecomBotId && wecomSecret && selectedPluginIds.wecom) {
 }
 
 cfg.agents.defaults.memorySearch = cfg.agents.defaults.memorySearch || {};
-if (typeof cfg.agents.defaults.memorySearch.enabled !== "boolean") cfg.agents.defaults.memorySearch.enabled = false;
-cfg.plugins.entries.codex = { enabled: true };
-for (const pluginId of ["memory-core", "codex"]) if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
+cfg.agents.defaults.memorySearch.enabled = false;
+cfg.memory = cfg.memory || {};
+cfg.memory.search = cfg.memory.search || {};
+cfg.memory.search.enabled = false;
+cfg.memory.search.rememberAcrossConversations = false;
+cfg.browser = cfg.browser || {};
+cfg.browser.extensionRelay = cfg.browser.extensionRelay || {};
+cfg.browser.extensionRelay.allowLegacyAuth = false;
+delete cfg.plugins.entries.codex;
+cfg.plugins.allow = (cfg.plugins.allow || []).filter((pluginId) => pluginId !== "codex");
+for (const pluginId of ["memory-core", "device-pair"]) if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
 
 // Fresh installs must not leave the generated gateway/model/channel credentials
 // in openclaw.json. Move the known SecretRef-capable values into a private
@@ -1978,8 +1986,7 @@ EOF
     "port": 58789,
     "controlUi": {
       "allowedOrigins": ["*"],
-      "allowInsecureAuth": true,
-      "dangerouslyDisableDeviceAuth": true
+      "allowInsecureAuth": true
     },
     "auth": {
       "mode": "token",
@@ -1994,9 +2001,10 @@ EOF
   "plugins": {
     "enabled": true,
     "bundledDiscovery": "allowlist",
-    "allow": ["browser"],
+    "allow": ["browser", "device-pair", "memory-core"],
     "entries": {
       "browser": { "enabled": true },
+      "device-pair": { "enabled": true },
       "openclaw-weixin": { "enabled": false }
     }
   }
@@ -2022,8 +2030,7 @@ EOF
     "port": 58789,
     "controlUi": {
       "allowedOrigins": ["*"],
-      "allowInsecureAuth": true,
-      "dangerouslyDisableDeviceAuth": true
+      "allowInsecureAuth": true
     },
     "auth": {
       "mode": "token",
@@ -2038,9 +2045,10 @@ EOF
   "plugins": {
     "enabled": true,
     "bundledDiscovery": "allowlist",
-    "allow": ["browser"],
+    "allow": ["browser", "device-pair", "memory-core"],
     "entries": {
       "browser": { "enabled": true },
+      "device-pair": { "enabled": true },
       "openclaw-weixin": { "enabled": false }
     }
   }
@@ -2177,9 +2185,10 @@ try {
 
   c.plugins = c.plugins || {};
   c.plugins.entries = c.plugins.entries || {};
-  c.plugins.entries.codex = { enabled: true };
+  delete c.plugins.entries.codex;
   c.plugins.allow = Array.isArray(c.plugins.allow) ? c.plugins.allow : [];
-  for (const pluginId of ["memory-core", "codex"]) if (!c.plugins.allow.includes(pluginId)) c.plugins.allow.push(pluginId);
+  c.plugins.allow = c.plugins.allow.filter((pluginId) => pluginId !== "codex");
+  for (const pluginId of ["memory-core", "device-pair"]) if (!c.plugins.allow.includes(pluginId)) c.plugins.allow.push(pluginId);
   c.plugins.bundledDiscovery = "allowlist";
   if (Object.prototype.hasOwnProperty.call(c.plugins, "installs")) delete c.plugins.installs;
 
