@@ -19,8 +19,18 @@ WECOM_VERSION := $(patsubst WECOM_VERSION=%,%,$(filter WECOM_VERSION=%,$(RESOLVE
 QQ_BOT_VERSION := $(patsubst QQ_BOT_VERSION=%,%,$(filter QQ_BOT_VERSION=%,$(RESOLVED_VERSIONS)))
 WEIXIN_VERSION := $(patsubst WEIXIN_VERSION=%,%,$(filter WEIXIN_VERSION=%,$(RESOLVED_VERSIONS)))
 ifeq ($(strip $(OPENCLAW_NPM_VERSION)),)
-OPENCLAW_NPM_VERSION := 2026.7.1-2
-OPENCLAW_SPK_VERSION_TMP := 2026.7.1
+OPENCLAW_NPM_VERSION := 2026.8.1
+OPENCLAW_SPK_VERSION_TMP := 2026.8.1
+endif
+# Safety: pin FEISHU_VERSION to the core version if resolve-versions failed or
+# returned an incompatible version (e.g. feishu 2026.8.x with core 2026.7.x).
+OPENCLAW_BASE_VER = $(firstword $(subst -, ,$(OPENCLAW_NPM_VERSION)))
+ifeq ($(strip $(FEISHU_VERSION)),)
+FEISHU_VERSION := $(OPENCLAW_BASE_VER)
+endif
+# If feishu major.minor doesn't match core major.minor, override to core version.
+ifneq ($(word 1,$(subst ., ,$(FEISHU_VERSION))).$(word 2,$(subst ., ,$(FEISHU_VERSION))),$(word 1,$(subst ., ,$(OPENCLAW_BASE_VER))).$(word 2,$(subst ., ,$(OPENCLAW_BASE_VER))))
+FEISHU_VERSION := $(OPENCLAW_BASE_VER)
 endif
 OPENCLAW_NPM_VERS := $(OPENCLAW_NPM_VERSION)
 MIN_NODEJS_RUNTIME_VERS := 24.11.1
