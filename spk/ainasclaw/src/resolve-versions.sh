@@ -75,19 +75,19 @@ fetch_matching_or_latest() {
     return
   fi
 
-  # Fetch all versions and check if target exists.
+  # Fetch the full registry JSON and check if _target appears as a version key.
+  # npm registry JSON contains entries like: "2026.8.1": { "version": "2026.8.1", ... }
+  # We grep for the version string in double quotes to confirm it exists.
   _matched=""
   if command -v curl >/dev/null 2>&1; then
-    _matched="$(curl -fsSL --retry 3 --retry-delay 1 --max-time 20 \
-      "${REGISTRY}/${_pkg}" 2>/dev/null \
-      | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-vs=d.get("versions",{})
-target=sys.argv[1]
-if target in vs:
-    print(target)
-' "${_target}" 2>/dev/null)"
+    _body="$(curl -fsSL --retry 3 --retry-delay 1 --max-time 20 \
+      "${REGISTRY}/${_pkg}" 2>/dev/null)"
+    if [ -n "$_body" ]; then
+      # Use a simple fixed-string grep: look for "X.Y.Z" in the JSON body.
+      if printf '%s' "$_body" | grep -F "\"${_target}\"" >/dev/null 2>&1; then
+        _matched="${_target}"
+      fi
+    fi
   fi
 
   if [ -n "$_matched" ]; then
