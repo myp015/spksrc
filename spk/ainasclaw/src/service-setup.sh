@@ -2083,6 +2083,8 @@ try {
   c.agents = c.agents || {};
   c.agents.defaults = c.agents.defaults || {};
   c.agents.defaults.workspace = statePath;
+  if (typeof c.agents.defaults.model === "string" && c.agents.defaults.model.toLowerCase().startsWith("openai/")) delete c.agents.defaults.model;
+  if (c.agents.defaults.model && typeof c.agents.defaults.model === "object" && typeof c.agents.defaults.model.primary === "string" && c.agents.defaults.model.primary.toLowerCase().startsWith("openai/")) delete c.agents.defaults.model;
   const explicitDefaultModelRef = typeof c.agents.defaults.model === "string" ? c.agents.defaults.model : c.agents.defaults.model && typeof c.agents.defaults.model === "object" ? c.agents.defaults.model.primary : "";
   const inferFirstConfiguredModelRef = () => {
     const providers = c.models && typeof c.models === "object" && c.models.providers && typeof c.models.providers === "object" ? c.models.providers : {};
@@ -2631,10 +2633,13 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
     changed = true;
   }
   const allowFrom = Array.isArray(q.allowFrom)
-    ? q.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
+    ? q.allowFrom.filter((x) => typeof x === "string" && x.trim() && x !== "openclaw:approval-disabled").map((x) => x.trim())
     : [];
   if (q.dmPolicy === "open" && !allowFrom.includes("*")) {
-    q.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
+    q.allowFrom = ["*", ...allowFrom];
+    changed = true;
+  } else if (allowFrom.length !== (Array.isArray(q.allowFrom) ? q.allowFrom.length : 0)) {
+    q.allowFrom = allowFrom;
     changed = true;
   }
 }
