@@ -101,7 +101,7 @@ export default dingtalkEntry;
   for (const runtimeFile of [path.join(dir, 'dist', 'index.runtime.js')]) {
     if (exists(runtimeFile)) {
       const source = fs.readFileSync(runtimeFile, 'utf8');
-      const patched = source.replaceAll('openclaw/plugin-sdk/text-runtime', '../text-runtime-compat.js');
+      const patched = source.replaceAll('openclaw/plugin-sdk/text-runtime', '../../text-runtime-compat.js');
       if (patched !== source) fs.writeFileSync(runtimeFile, patched, 'utf8');
     }
   }
