@@ -1798,6 +1798,13 @@ NGINX_EOF
     fi
     write_openclaw_web_proxy
 
+    # Runtime migration must also run on ordinary package restart/reboot, not
+    # only during postinst; otherwise old config and duplicate skill sources
+    # survive and doctor reports them forever.
+    repair_plugin_registry_if_needed
+    sync_skills_to_workspace
+    apply_dsm_skill_defaults
+
     # AiNasClaw bundled terminal (ttyd) integration (no dependency on external terminal package).
     # nginx alias is prepared in service_postinst (root context); here we only ensure ttyd process.
     if [ -x "${SYNOPKG_PKGDEST}/bin/ttyd" ]; then
