@@ -793,28 +793,25 @@ start_gateway_if_needed() {
     fi
     sleep 1
 
-    # Start auto-approve daemon for device pairing
-    # This allows Control UI to open without manual pairing approval
+    # Start auto-approve daemon for device pairing. Resolve the gateway token
+    # from the package SecretRef store, not only from the config JSON.
     local gw_token
-    gw_token="$("${OPENCLAW_NODE:-node}" -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const t=c.gateway?.auth?.token;process.stdout.write(typeof t==="string"?t:"")}catch{}' "${OPENCLAW_CONFIG_FILE}" 2>/dev/null)"
+    gw_token="$(${OPENCLAW_NODE:-node} - "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/secrets.json" <<'NODE' 2>/dev/null
+const fs=require("fs");
+const cfg=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+let secrets={}; try { secrets=JSON.parse(fs.readFileSync(process.argv[2],"utf8")); } catch {}
+const token=cfg.gateway?.auth?.token;
+if(typeof token === "string") process.stdout.write(token);
+else if(token?.id === "/gateway/auth/token") process.stdout.write(secrets.gateway?.auth?.token || "");
+NODE
+)"
     if [ -n "${gw_token}" ]; then
-        nohup /bin/sh -c '
-            TOKEN="${1}"
-            OPENCLAW="${2}"
-            export PATH="$(dirname "${OPENCLAW}"):${PATH}"
-            for i in $(seq 1 30); do
-                "${OPENCLAW}" gateway status >/dev/null 2>&1 && break
-                sleep 2
-            done
-            while true; do
-                "${OPENCLAW}" devices list --token "${TOKEN}" 2>/dev/null | \
-                    grep -oE "[a-f0-9]{8,}" | while read -r reqid; do
-                    "${OPENCLAW}" devices approve --token "${TOKEN}" "${reqid}" 2>/dev/null
-                done
-                sleep 10
-            done
-        ' _ "${gw_token}" "${oc_cli}" >>"${SYNOPKG_PKGVAR}/auto-approve.log" 2>&1 &
+        local approve_script="${SYNOPKG_PKGVAR}/auto-approve-pairing.sh"
+        if [ -x "${approve_script}" ]; then
+            nohup "${approve_script}" "${gw_token}" >>"${SYNOPKG_PKGVAR}/auto-approve.log" 2>&1 &
+        fi
     fi
+
 }
 
 ensure_openclaw_in_path() {
@@ -2161,7 +2158,8 @@ try {
     provider.apiKey = ref(pointer);
   }
   for (const [accountId, account] of Object.entries(c.channels?.feishu?.accounts || {})) {
-    if (typeof account?.appSecret !== "string") continue;
+    if (!account || typeof account !== "object") continue;
+    if (typeof account.appSecret !== "string") continue;
     const id = accountId.replace(/~/g, "~0").replace(/\//g, "~1");
     const pointer = `/channels/feishu/accounts/${id}/appSecret`;
     putSecret(pointer, account.appSecret);

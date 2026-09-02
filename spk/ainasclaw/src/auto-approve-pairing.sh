@@ -22,7 +22,7 @@ done
 # Poll for pending pairing requests and approve them
 while true; do
   # List pending requests and extract request IDs
-  pending=$("$OPENCLAW" devices list --token "$TOKEN" 2>/dev/null | grep -oE '[a-f0-9]{8,}' | head -5)
+  pending=$("$OPENCLAW" devices list --json --token "$TOKEN" 2>/dev/null | "$OPENCLAW" -e 'const fs=require("fs");let x="";process.stdin.on("data",d=>x+=d).on("end",()=>{try{const j=JSON.parse(x);for(const r of (j.pending||j.requests||[]))if(r.requestId)console.log(r.requestId)}catch{}})' | head -5)
   for reqid in $pending; do
     "$OPENCLAW" devices approve --token "$TOKEN" "$reqid" >/dev/null 2>&1 && \
       echo "[auto-approve] approved device pairing: $reqid" >> /var/packages/ainasclaw/var/ainasclaw.log
