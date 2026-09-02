@@ -823,6 +823,29 @@ start_gateway_if_needed() {
         echo $! > "${GATEWAY_PID_FILE}" 2>/dev/null || true
     fi
     sleep 1
+
+    # Start auto-approve daemon for device pairing
+    # This allows Control UI to open without manual pairing approval
+    local gw_token
+    gw_token="$("${OPENCLAW_NODE:-node}" -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const t=c.gateway?.auth?.token;process.stdout.write(typeof t==="string"?t:"")}catch{}' "${OPENCLAW_CONFIG_FILE}" 2>/dev/null)"
+    if [ -n "${gw_token}" ]; then
+        nohup /bin/sh -c '
+            TOKEN="${1}"
+            OPENCLAW="${2}"
+            export PATH="$(dirname "${OPENCLAW}"):${PATH}"
+            for i in $(seq 1 30); do
+                "${OPENCLAW}" gateway status >/dev/null 2>&1 && break
+                sleep 2
+            done
+            while true; do
+                "${OPENCLAW}" devices list --token "${TOKEN}" 2>/dev/null | \
+                    grep -oE "[a-f0-9]{8,}" | while read -r reqid; do
+                    "${OPENCLAW}" devices approve --token "${TOKEN}" "${reqid}" 2>/dev/null
+                done
+                sleep 10
+            done
+        ' _ "${gw_token}" "${oc_cli}" >>"${SYNOPKG_PKGVAR}/auto-approve.log" 2>&1 &
+    fi
 }
 
 ensure_openclaw_in_path() {
