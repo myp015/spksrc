@@ -50,9 +50,13 @@ for (const file of files) {
 }
 
 if (patched === 0) {
-  fail(
-    `[patch-control-ui-update-banner] update banner marker not found in any control-ui index asset under ${assetsDir}`,
+  // Optional UI patch: generated asset names and minified layout can change
+  // between OpenClaw releases. Do not fail packaging when the banner marker
+  // is absent; the stock UI remains usable.
+  console.warn(
+    `[patch-control-ui-update-banner] update banner marker not found; skipping under ${assetsDir}`,
   );
+  process.exit(0);
 }
 
 console.log(`[patch-control-ui-update-banner] done, patched files: ${patched}`);
