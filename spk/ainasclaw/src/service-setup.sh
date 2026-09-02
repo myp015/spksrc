@@ -500,10 +500,15 @@ for(const d of roots){
     pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="qqbot";o.channels=["qqbot"];o.extensions=["./index.js"];});
     pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="qqbot";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="qqbot";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
   }
-  if(d.endsWith("dingtalk") && fs.existsSync(path.join(d,"dist","index.js"))){
-    w(path.join(d,"channel-plugin-api.js"),"export { dingtalkPlugin } from \"./dist/index.js\";\n");
-    w(path.join(d,"runtime-api.js"),"export { setDingTalkRuntime } from \"./dist/index.js\";\n");
-    w(path.join(d,"full-api.js"),"import e from \"./dist/index.js\";\nexport function registerDingTalkPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
+  if(d.endsWith("dingtalk") && (fs.existsSync(path.join(d,"dist","index.js")) || fs.existsSync(path.join(d,"dist","index.runtime.js")))){
+    const legacy=path.join(d,"dist","index.js"), runtime=path.join(d,"dist","index.runtime.js");
+    if(fs.existsSync(legacy) && !fs.existsSync(runtime)) fs.copyFileSync(legacy,runtime);
+    fs.rmSync(legacy,{force:true});
+    if(fs.existsSync(runtime)){ const rr=fs.readFileSync(runtime,"utf8").replaceAll("openclaw/plugin-sdk/text-runtime","../text-runtime-compat.js"); fs.writeFileSync(runtime,rr,"utf8"); }
+    w(path.join(d,"text-runtime-compat.js"),`export function parseInlineDirectives(i,o={}){let t=String(i??""),c=false,e,a=false;if(/^\[\[reply_to_current\]\]/i.test(t)){c=true;t=t.replace(/^\[\[reply_to_current\]\]\s*/i,"")}const m=t.match(/^\[\[reply_to:([^\]]+)\]\]\s*/i);m&&(e=m[1],t=t.slice(m[0].length));if(/^\[\[audio_as_voice\]\]/i.test(t)){a=true;t=t.replace(/^\[\[audio_as_voice\]\]\s*/i,"")}return{text:o.stripReplyTags===false?String(i??""):t,replyToCurrent:c,replyToExplicitId:e,replyToId:e,audioAsVoice:a,hasReplyTag:c||!!e,hasAudioTag:a}}\n`);
+    w(path.join(d,"channel-plugin-api.js"),"export { dingtalkPlugin } from \"./dist/index.runtime.js\";\n");
+    w(path.join(d,"runtime-api.js"),"export { setDingTalkRuntime } from \"./dist/index.runtime.js\";\n");
+    w(path.join(d,"full-api.js"),"import e from \"./dist/index.runtime.js\";\nexport function registerDingTalkPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
     w(path.join(d,"index.js"),"import { defineBundledChannelEntry } from \"openclaw/plugin-sdk/channel-entry-contract\";\nexport default defineBundledChannelEntry({id:\"dingtalk\",name:\"DingTalk\",description:\"DingTalk channel plugin\",importMetaUrl:import.meta.url,plugin:{specifier:\"./channel-plugin-api.js\",exportName:\"dingtalkPlugin\"},runtime:{specifier:\"./runtime-api.js\",exportName:\"setDingTalkRuntime\"},registerFull(api){return import(\"./full-api.js\").then(m=>m.registerDingTalkPluginFull(api));}});\n");
     pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="dingtalk";o.channels=["dingtalk"];o.extensions=["./index.js"];});
     pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="dingtalk";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="dingtalk";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
@@ -2025,7 +2030,6 @@ EOF
     "port": 58789,
     "controlUi": {
       "allowedOrigins": ["*"],
-      "allowInsecureAuth": true
     },
     "auth": {
       "mode": "token",
@@ -2068,7 +2072,6 @@ EOF
     "port": 58789,
     "controlUi": {
       "allowedOrigins": ["*"],
-      "allowInsecureAuth": true
     },
     "auth": {
       "mode": "token",

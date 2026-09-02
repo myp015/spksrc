@@ -3169,8 +3169,6 @@ if action in ('start','restart'):
     gw['port'] = gw_port
     cu = gw.setdefault('controlUi', {})
     cu['basePath'] = '/openclaw-web'
-    cu['allowInsecureAuth'] = True
-    cu['dangerouslyDisableDeviceAuth'] = True
     cu['allowedOrigins'] = ['*']
     # 兼容清理：移除当前版本不支持的键，避免启动时报 Invalid config
     defs = c.setdefault('agents', {}).setdefault('defaults', {})
