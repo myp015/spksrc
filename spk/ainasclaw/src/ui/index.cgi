@@ -1162,7 +1162,7 @@ except Exception:
 
 # keep workspace/extensions free of channel plugin copies (DSM trust checks may block uid!=0).
 # channel plugins are staged under app/dist/extensions by service script.
-for pkg_name in ['feishu', 'feishu-openclaw-plugin', 'wecom', 'qqbot', 'openclaw-qqbot', 'openclaw-weixin']:
+for pkg_name in ['feishu', 'feishu-openclaw-plugin', 'wecom', 'qqbot', 'openclaw-qqbot']:
     try:
         dst = os.path.join(ext_dir, pkg_name)
         import shutil
@@ -1660,7 +1660,7 @@ if isinstance(payload.get('wecom'), dict):
     else:
         # Empty/partial WeCom input should not leave a half-configured shell behind.
         ch.pop('wecom', None)
-if isinstance(payload.get('dingtalk'), dict):
+if False and isinstance(payload.get('dingtalk'), dict):
     cid = (payload['dingtalk'].get('clientId') or '').strip()
     csec = (payload['dingtalk'].get('clientSecret') or '').strip()
     has_cred = bool(cid and csec)
@@ -1684,7 +1684,7 @@ if isinstance(payload.get('qqbot'), dict):
     else:
         # Empty/partial QQBot input should not leave a half-configured shell behind.
         ch.pop('qqbot', None)
-wx_payload = payload.get('openclaw-weixin') if isinstance(payload.get('openclaw-weixin'), dict) else payload.get('weixin')
+wx_payload = None
 if isinstance(wx_payload, dict):
     w = ch.setdefault('openclaw-weixin', {})
     w['enabled'] = bool(wx_payload.get('enabled', True))
@@ -2033,40 +2033,7 @@ try:
 except Exception:
     pass
 
-# 关键：ainasclaw 内部有并发流程会覆写 openclaw.json，导致 weixin 插件配置丢失。
-# 每次开始登录前都做一次强制修正，确保 allowlist/entries/channels 包含 openclaw-weixin。
-try:
-    cfg = json.load(open(cfg_path, 'r', encoding='utf-8')) if os.path.exists(cfg_path) else {}
-except Exception:
-    cfg = {}
-plugins = cfg.setdefault('plugins', {})
-plugins['enabled'] = True
-allow = plugins.get('allow')
-if not isinstance(allow, list):
-    allow = []
-if 'openclaw-weixin' not in allow:
-    allow.append('openclaw-weixin')
-plugins['allow'] = allow
-entries = plugins.get('entries')
-if not isinstance(entries, dict):
-    entries = {}
-entry = entries.get('openclaw-weixin')
-if not isinstance(entry, dict):
-    entry = {}
-entry['enabled'] = True
-entries['openclaw-weixin'] = entry
-plugins['entries'] = entries
-# 注意：扫码“开始”阶段不自动创建 channels.openclaw-weixin，
-# 避免用户取消后配置里残留微信通道。
-os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-with open(cfg_path, 'w', encoding='utf-8') as f:
-    json.dump(cfg, f, ensure_ascii=False, indent=2)
-    f.write('\n')
-log('openclaw_weixin_config_repaired=1')
-# 提速：不再每次执行 plugins enable（该操作经常阻塞 15s+），仅在配置层保证可用。
-bootstrap_log = 'openclaw-weixin config repaired (fast path)'
-log('openclaw_weixin_ensure_enabled=1 fast_path=1')
-
+# Weixin is intentionally disabled until its plugin is compatible with OpenClaw 2026.8.2.
 # 直接调用微信二维码接口（对齐 sc-openclaw_v0.0.10 的“秒出码”路径），避免走 CLI login 阻塞。
 import urllib.request, urllib.error
 base_url = 'https://ilinkai.weixin.qq.com'

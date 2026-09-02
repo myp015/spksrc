@@ -378,43 +378,22 @@ ensure_self_package_link() {
 }
 
 sync_skills_to_workspace() {
-    OPENCLAW_BUNDLED_SKILLS_DIR="${OPENCLAW_STATE_DIR}/skills/_bundled"
-    mkdir -p "${OPENCLAW_BUNDLED_SKILLS_DIR}"
-
-    # Sync built-in extension skills from OpenClaw core bundle.
+    local skills_root="${OPENCLAW_STATE_DIR}/skills"
+    local bundled_root="${skills_root}/_bundled"
+    # OpenClaw 2026.8.2 discovers both plugin-skills and skills/_bundled;
+    # retain exactly one managed source and rebuild it from packaged extensions.
+    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${bundled_root}"
+    mkdir -p "${bundled_root}"
     if [ -d "${OPENCLAW_APP_DIR}/dist/extensions" ]; then
         find "${OPENCLAW_APP_DIR}/dist/extensions" -mindepth 2 -maxdepth 2 -type d -name skills | while read -r skills_dir; do
-            plugin_id="$(basename "$(dirname "${skills_dir}")")"
-            target_dir="${OPENCLAW_BUNDLED_SKILLS_DIR}/${plugin_id}"
-            rm -rf "${target_dir}"
-            mkdir -p "${target_dir}"
-            cp -a "${skills_dir}/." "${target_dir}/"
+            find "${skills_dir}" -mindepth 1 -maxdepth 1 -type d | while read -r skill_dir; do
+                skill_id="$(basename "${skill_dir}")"
+                target="${bundled_root}/${skill_id}"
+                [ -e "${target}" ] && continue
+                cp -a "${skill_dir}" "${target}"
+            done
         done
     fi
-
-    # Sync plugin skills from bundled npm plugins.
-    if [ -d "${OPENCLAW_APP_DIR}/node_modules" ]; then
-        find "${OPENCLAW_APP_DIR}/node_modules" -mindepth 2 -maxdepth 4 -type d -name skills | while read -r skills_dir; do
-            rel_pkg="${skills_dir#${OPENCLAW_APP_DIR}/node_modules/}"
-            rel_pkg="${rel_pkg%/skills}"
-            plugin_id="$(echo "${rel_pkg}" | tr '/' '_')"
-            target_dir="${OPENCLAW_BUNDLED_SKILLS_DIR}/${plugin_id}"
-            rm -rf "${target_dir}"
-            mkdir -p "${target_dir}"
-            cp -a "${skills_dir}/." "${target_dir}/"
-        done
-    fi
-
-    # Remove old-style unscoped skill dirs that duplicate scoped npm plugin skills.
-    # This prevents "Skill precedence collision" warnings from doctor/runtime.
-    for scoped in "${OPENCLAW_BUNDLED_SKILLS_DIR}"/@*; do
-        [ -d "${scoped}" ] || continue
-        base="$(basename "${scoped}" | sed 's/^@[^_]*_//')"
-        old="${OPENCLAW_BUNDLED_SKILLS_DIR}/${base}"
-        if [ -d "${old}" ]; then
-            rm -rf "${old}"
-        fi
-    done
 }
 
 sync_bundled_channel_plugins_to_extensions() {
@@ -1449,7 +1428,6 @@ const selectedPluginIds = {
   // Prefer canonical channel ids after SPK bundled-entry patching. Legacy ids are
   // only fallback aliases for older package contents.
   feishu: pickPluginId("feishu", ["openclaw-lark"]),
-  dingtalk: pickPluginId("dingtalk"),
   wecom: pickPluginId("wecom", ["openclaw-wecom"]),
   qqbot: pickPluginId("qqbot"),
 };
@@ -2398,6 +2376,17 @@ cfg.channels = cfg.channels || {};
 
 let changed = false;
 
+const disabledPluginIds = new Set(["dingtalk", "openclaw-weixin", "weixin"]);
+for (const id of disabledPluginIds) {
+  if (Object.prototype.hasOwnProperty.call(cfg.channels, id)) { delete cfg.channels[id]; changed = true; }
+  if (Object.prototype.hasOwnProperty.call(cfg.plugins.entries, id)) { delete cfg.plugins.entries[id]; changed = true; }
+}
+{
+  const before = cfg.plugins.allow.length;
+  cfg.plugins.allow = cfg.plugins.allow.filter((id) => !disabledPluginIds.has(id));
+  if (cfg.plugins.allow.length !== before) changed = true;
+}
+
 const stalePluginIds = new Set([
   "feishu-openclaw-plugin",
   "openclaw-qqbot",
@@ -2698,10 +2687,8 @@ try {
 
 const channelDefaultAgentId = {
   feishu: "main",
-  dingtalk: "main",
   wecom: "main",
   qqbot: "main",
-  "openclaw-weixin": "main"
 };
 for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId)) {
   const ch = cfg.channels[channelId];
@@ -2756,18 +2743,14 @@ for (const [channelId, defaultAgentId] of Object.entries(channelDefaultAgentId))
 
 const legacyAliases = {
   feishu: ["feishu"],
-  dingtalk: ["dingtalk"],
   wecom: ["wecom", "openclaw-wecom"],
   qqbot: ["qqbot"],
-  "openclaw-weixin": ["openclaw-weixin"]
 };
 
 const preferredPluginIdByChannel = {
   feishu: "feishu",
-  dingtalk: "dingtalk",
   wecom: "wecom",
   qqbot: "qqbot",
-  "openclaw-weixin": "openclaw-weixin"
 };
 
 const resolvePluginsForChannel = (channelId) => {
@@ -2786,30 +2769,6 @@ for (const [channelId, channelCfg] of Object.entries(cfg.channels)) {
   if (!channelCfg || typeof channelCfg !== "object") continue;
   const available = resolvePluginsForChannel(channelId);
   const aliases = legacyAliases[channelId] || [channelId];
-
-  // 微信渠道兜底保留：即使自动发现偶发失败，也不要把 openclaw-weixin 从配置里删掉。
-  if (channelId === "openclaw-weixin") {
-    const selectedId = "openclaw-weixin";
-    cfg.plugins.entries[selectedId] = cfg.plugins.entries[selectedId] || {};
-    if (cfg.plugins.entries[selectedId].enabled !== true) {
-      cfg.plugins.entries[selectedId].enabled = true;
-      changed = true;
-    }
-    if (!cfg.plugins.allow.includes(selectedId)) {
-      cfg.plugins.allow.push(selectedId);
-      changed = true;
-    }
-    if (cfg.plugins.entries.weixin) {
-      delete cfg.plugins.entries.weixin;
-      changed = true;
-    }
-    {
-      const before = cfg.plugins.allow.length;
-      cfg.plugins.allow = cfg.plugins.allow.filter((id) => id !== "weixin");
-      if (cfg.plugins.allow.length !== before) changed = true;
-    }
-    continue;
-  }
 
   const preferred = preferredPluginIdByChannel[channelId];
   const selectedId = (preferred && available.includes(preferred)) ? preferred : (available[0] || channelId);

@@ -118,16 +118,10 @@
         "feishu": [
           "*"
         ],
-        "dingtalk": [
-          "*"
-        ],
         "qqbot": [
           "*"
         ],
         "wecom": [
-          "*"
-        ],
-        "openclaw-weixin": [
           "*"
         ]
       }
