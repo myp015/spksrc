@@ -5365,7 +5365,9 @@ cat <<'HTML'
       }
       load(btn.dataset.tab);
     }));
-    refreshTerminalHealth().finally(() => load('status'));
+    // AiNasClaw app entry opens the OpenClaw conversation view by default.
+    // The local management tabs remain available from the parent app page.
+    refreshTerminalHealth().finally(() => { load('status'); setTimeout(() => openOpenclawWeb(), 0); });
   </script>
 </body>
 </html>
