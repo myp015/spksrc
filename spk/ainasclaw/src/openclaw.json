@@ -197,9 +197,6 @@
       "qqbot": {
         "enabled": false
       },
-      "dingtalk": {
-        "enabled": false
-      },
       "wecom": {
         "enabled": true
       },

@@ -343,7 +343,7 @@ resolve_bundled_plugin_dir_allowlist() {
     "${OPENCLAW_NODE:-node}" - "$OPENCLAW_CONFIG_FILE" <<'NODE' 2>/dev/null || true
 const fs = require("fs");
 const cfgPath = process.argv[1];
-const always = ["browser", "feishu", "qqbot", "dingtalk", "wecom", "openclaw-weixin", "active-memory", "memory-core", "memory-wiki"];
+const always = ["browser", "feishu", "qqbot", "wecom", "openclaw-weixin", "active-memory", "memory-core", "memory-wiki"];
 const ids = [];
 function add(id) {
   if (typeof id === "string" && id.trim() && !ids.includes(id.trim())) ids.push(id.trim());
