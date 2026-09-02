@@ -408,6 +408,17 @@ sync_skills_to_workspace() {
             cp -a "${skills_dir}/." "${target_dir}/"
         done
     fi
+
+    # Remove old-style unscoped skill dirs that duplicate scoped npm plugin skills.
+    # This prevents "Skill precedence collision" warnings from doctor/runtime.
+    for scoped in "${OPENCLAW_BUNDLED_SKILLS_DIR}"/@*; do
+        [ -d "${scoped}" ] || continue
+        base="$(basename "${scoped}" | sed 's/^@[^_]*_//')"
+        old="${OPENCLAW_BUNDLED_SKILLS_DIR}/${base}"
+        if [ -d "${old}" ]; then
+            rm -rf "${old}"
+        fi
+    done
 }
 
 sync_bundled_channel_plugins_to_extensions() {
@@ -1627,6 +1638,10 @@ cfg.memory.search.rememberAcrossConversations = false;
 cfg.browser = cfg.browser || {};
 cfg.browser.extensionRelay = cfg.browser.extensionRelay || {};
 cfg.browser.extensionRelay.allowLegacyAuth = false;
+// Ensure command owner is configured (prevents doctor warning)
+cfg.commands = cfg.commands || {};
+cfg.commands.ownerAllowFrom = cfg.commands.ownerAllowFrom || ["webchat:*"];
+
 delete cfg.plugins.entries.codex;
 cfg.plugins.allow = (cfg.plugins.allow || []).filter((pluginId) => pluginId !== "codex");
 for (const pluginId of ["memory-core", "device-pair"]) if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
@@ -2210,6 +2225,8 @@ try {
 
   c.plugins = c.plugins || {};
   c.plugins.entries = c.plugins.entries || {};
+  c.commands = c.commands || {};
+  c.commands.ownerAllowFrom = c.commands.ownerAllowFrom || ["webchat:*"];
   delete c.plugins.entries.codex;
   c.plugins.allow = Array.isArray(c.plugins.allow) ? c.plugins.allow : [];
   c.plugins.allow = c.plugins.allow.filter((pluginId) => pluginId !== "codex");
