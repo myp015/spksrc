@@ -32,12 +32,6 @@
       "workspace": "/volume1/openclaw/.openclaw",
       "memorySearch": {
         "enabled": false
-      },
-      "model": {
-        "primary": "openai/gpt-5.6-sol",
-        "agentRuntime": {
-          "id": "codex"
-        }
       }
     }
   },
@@ -191,9 +185,6 @@
       },
       "device-pair": {
         "enabled": true
-      },
-      "codex": {
-        "enabled": true
       }
     },
     "enabled": true,
@@ -202,8 +193,7 @@
       "memory-core",
       "device-pair",
       "feishu",
-      "wecom",
-      "codex"
+      "wecom"
     ]
   },
   "memory": {

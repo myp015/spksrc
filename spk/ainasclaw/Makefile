@@ -137,7 +137,6 @@ openclaw_prepare_bundle:
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm_config_legacy_peer_deps=true npm install --omit=dev --legacy-peer-deps --save-exact --no-audit --no-fund \
 		@openclaw/feishu@$(FEISHU_VERSION) \
-		@openclaw/codex@$(OPENCLAW_NPM_VERS) \
 		@sunnoy/wecom@$(WECOM_VERSION) \
 		@tencent-connect/openclaw-qqbot@$(QQ_BOT_VERSION) \
 		acpx@0.5.3 \
@@ -212,7 +211,7 @@ openclaw_prepare_bundle:
 	@cd $(WORK_DIR)/openclaw-bundle && \
 		mkdir -p .spk-build-state/doctor-state/agents/main/sessions .spk-build-state/doctor-state/credentials .spk-build-state/doctor-home .spk-build-state/doctor-ws && \
 		chmod 700 .spk-build-state/doctor-state .spk-build-state/doctor-home && \
-		printf '{"gateway":{"mode":"local","bind":"lan","port":58789,"controlUi":{"allowedOrigins":["*"]},"auth":{"mode":"token","token":"123456"}},"commands":{"ownerAllowFrom":["build:owner"]},"agents":{"defaults":{"workspace":"%s","model":{"primary":"anthropic/claude-sonnet-4-6"}}},"skills":{"enabled":false,"entries":{}}, "plugins":{"enabled":true,"allow":["browser","device-pair","memory-core","codex"],"deny":[],"entries":{"browser":{"enabled":true},"device-pair":{"enabled":true},"memory-core":{"enabled":true}}},"browser":{"extensionRelay":{"allowLegacyAuth":false}},"memory":{"search":{"enabled":false,"rememberAcrossConversations":false}}}\n' "$(WORK_DIR)/openclaw-bundle/.spk-build-state/doctor-ws" > .spk-build-state/doctor-config.json && \
+		printf '{"gateway":{"mode":"local","bind":"lan","port":58789,"controlUi":{"allowedOrigins":["*"]},"auth":{"mode":"token","token":"123456"}},"commands":{"ownerAllowFrom":["build:owner"]},"agents":{"defaults":{"workspace":"%s","model":{"primary":"anthropic/claude-sonnet-4-6"}}},"skills":{"enabled":false,"entries":{}}, "plugins":{"enabled":true,"allow":["browser","device-pair","memory-core"],"deny":["codex"],"entries":{"browser":{"enabled":true},"device-pair":{"enabled":true},"memory-core":{"enabled":true}}},"browser":{"extensionRelay":{"allowLegacyAuth":false}},"memory":{"search":{"enabled":false,"rememberAcrossConversations":false}}}\n' "$(WORK_DIR)/openclaw-bundle/.spk-build-state/doctor-ws" > .spk-build-state/doctor-config.json && \
 		printf '# Memory\n\nMemory search is disabled in the package build environment.\n' > .spk-build-state/doctor-ws/MEMORY.md && \
 		chmod 600 .spk-build-state/doctor-config.json && \
 		OPENCLAW_STATE_DIR="$(WORK_DIR)/openclaw-bundle/.spk-build-state/doctor-state" \
