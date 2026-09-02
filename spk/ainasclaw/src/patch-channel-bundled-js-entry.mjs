@@ -37,6 +37,35 @@ function patchDingtalk(dir) {
 
   write(path.join(dir, 'channel-plugin-api.js'), 'export { dingtalkPlugin } from "./dist/index.runtime.js";\n');
   write(path.join(dir, 'runtime-api.js'), 'export { setDingTalkRuntime } from "./dist/index.runtime.js";\n');
+  // OpenClaw 2026.8.2 removed the legacy text-runtime SDK facade. The
+  // published DingTalk runtime still imports parseInlineDirectives from that
+  // facade, so provide the small compatibility function locally and rewrite
+  // the import to a package-local module. This keeps the plugin loadable while
+  // preserving reply/audio directive parsing used by the inbound handler.
+  write(path.join(dir, 'text-runtime-compat.js'), `
+const REPLY_CURRENT = /^\\[\\[reply_to_current\\]\\]\\s*/i;
+const REPLY_EXPLICIT = /^\\[\\[reply_to:([^\\]]+)\\]\\]\\s*/i;
+const AUDIO = /^\\[\\[audio_as_voice\\]\\]\\s*/i;
+export function parseInlineDirectives(input, options = {}) {
+  let text = String(input ?? "");
+  let replyToCurrent = false;
+  let replyToExplicitId;
+  let audioAsVoice = false;
+  if (REPLY_CURRENT.test(text)) { replyToCurrent = true; text = text.replace(REPLY_CURRENT, ""); }
+  const explicit = text.match(REPLY_EXPLICIT);
+  if (explicit) { replyToExplicitId = explicit[1]; text = text.slice(explicit[0].length); }
+  if (AUDIO.test(text)) { audioAsVoice = true; text = text.replace(AUDIO, ""); }
+  return {
+    text: options.stripReplyTags === false ? String(input ?? "") : text,
+    replyToCurrent,
+    replyToExplicitId,
+    replyToId: replyToExplicitId,
+    audioAsVoice,
+    hasReplyTag: replyToCurrent || Boolean(replyToExplicitId),
+    hasAudioTag: audioAsVoice
+  };
+}
+`);
   write(path.join(dir, 'full-api.js'),
 `import dingtalkEntry from "./dist/index.runtime.js";
 
@@ -69,6 +98,13 @@ export default dingtalkEntry;
   // same pattern as the qqbot/wecom plugins. The runtime stays under
   // dist/index.runtime.js, referenced by the api files above.
   fs.rmSync(distIndex, { force: true });
+  for (const runtimeFile of [path.join(dir, 'dist', 'index.runtime.js')]) {
+    if (exists(runtimeFile)) {
+      const source = fs.readFileSync(runtimeFile, 'utf8');
+      const patched = source.replaceAll('openclaw/plugin-sdk/text-runtime', '../text-runtime-compat.js');
+      if (patched !== source) fs.writeFileSync(runtimeFile, patched, 'utf8');
+    }
+  }
 
 
   let changed = 1;

@@ -1606,7 +1606,7 @@ ch = cfg.setdefault('channels', {})
 # 保存渠道时，自动补齐插件 allow/entries（完整权限），避免插件未加载导致渠道不可用。
 plugins = cfg.setdefault('plugins', {})
 plugins['enabled'] = True
-plugins['bundledDiscovery'] = 'allowlist'
+plugins.pop('bundledDiscovery', None)
 allow = plugins.get('allow')
 if not isinstance(allow, list):
     allow = []
@@ -3211,7 +3211,7 @@ if action in ('start','restart'):
     try:
         plugins = c.setdefault('plugins', {})
         plugins['enabled'] = True
-        plugins['bundledDiscovery'] = 'allowlist'
+        plugins.pop('bundledDiscovery', None)
         allow = plugins.get('allow')
         if not isinstance(allow, list):
             allow = []

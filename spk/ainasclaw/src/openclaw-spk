@@ -214,7 +214,7 @@ try:
 except Exception:
     raise SystemExit
 plugins = c.get('plugins') if isinstance(c, dict) else {}
-if not isinstance(plugins, dict) or plugins.get('bundledDiscovery') != 'allowlist':
+if not isinstance(plugins, dict):
     raise SystemExit
 ids = []
 for value in plugins.get('allow') or []:

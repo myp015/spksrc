@@ -1777,7 +1777,6 @@ fs.chmodSync(p, 0o600);
   },
   "plugins": {
     "enabled": true,
-    "bundledDiscovery": "allowlist",
     "allow": ["browser"],
     "entries": {
       "browser": { "enabled": true }
@@ -2040,7 +2039,6 @@ EOF
   },
   "plugins": {
     "enabled": true,
-    "bundledDiscovery": "allowlist",
     "allow": ["browser", "device-pair", "memory-core"],
     "entries": {
       "browser": { "enabled": true },
@@ -2084,7 +2082,6 @@ EOF
   },
   "plugins": {
     "enabled": true,
-    "bundledDiscovery": "allowlist",
     "allow": ["browser", "device-pair", "memory-core"],
     "entries": {
       "browser": { "enabled": true },
@@ -2231,7 +2228,7 @@ try {
   c.plugins.allow = Array.isArray(c.plugins.allow) ? c.plugins.allow : [];
   c.plugins.allow = c.plugins.allow.filter((pluginId) => pluginId !== "codex");
   for (const pluginId of ["memory-core", "device-pair"]) if (!c.plugins.allow.includes(pluginId)) c.plugins.allow.push(pluginId);
-  c.plugins.bundledDiscovery = "allowlist";
+  delete c.plugins.bundledDiscovery;
   if (Object.prototype.hasOwnProperty.call(c.plugins, "installs")) delete c.plugins.installs;
 
   c.memory = c.memory || {};
@@ -2873,7 +2870,8 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     [ -n "${PID_FILE}" ] && rm -f "${PID_FILE}" 2>/dev/null || true
 
     # Auto-start only after channel/plugin config has been repaired, otherwise
-    # bundledDiscovery=allowlist can launch with browser-only discovery.
+    # Plugin discovery is controlled by the 2026.8.x state migration, not a
+    # removed config key; start only after config repair.
     if [ -d "${OPENCLAW_STATE_DIR}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
         start_gateway_if_needed
         # The gateway may create a main-session placeholder (sessions.json index)

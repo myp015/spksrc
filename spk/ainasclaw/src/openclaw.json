@@ -211,7 +211,6 @@
       }
     },
     "enabled": true,
-    "bundledDiscovery": "allowlist",
     "allow": [
       "browser",
       "memory-core",
