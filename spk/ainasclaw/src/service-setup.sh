@@ -1590,8 +1590,8 @@ cfg.browser.extensionRelay.allowLegacyAuth = false;
 cfg.commands = cfg.commands || {};
 cfg.commands.ownerAllowFrom = cfg.commands.ownerAllowFrom || ["webchat:*"];
 
-delete cfg.plugins.entries.codex;
-cfg.plugins.allow = (cfg.plugins.allow || []).filter((pluginId) => pluginId !== "codex");
+cfg.plugins.entries.codex = Object.assign({}, cfg.plugins.entries.codex || {}, { enabled: true });
+cfg.plugins.allow = Array.from(new Set([...(cfg.plugins.allow || []), "codex"]));
 for (const pluginId of ["memory-core", "device-pair"]) if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
 // Remove any agentRuntime that references codex (prevents "codex runtime unavailable" errors)
 delete cfg.agents.defaults.agentRuntime;
@@ -1758,8 +1758,8 @@ try {
   c.plugins.entries=c.plugins.entries&&typeof c.plugins.entries==="object"?c.plugins.entries:{};
   // These plugins are not bundled for the current OpenClaw release.
   for(const id of ["dingtalk","openclaw-weixin","weixin"]){delete c.channels[id];delete c.plugins.entries[id];}
-  if(Array.isArray(c.plugins.allow))c.plugins.allow=c.plugins.allow.filter(id=>!["dingtalk","openclaw-weixin","weixin","codex"].includes(id));
-  delete c.plugins.entries.codex;
+  if(Array.isArray(c.plugins.allow))c.plugins.allow=c.plugins.allow.filter(id=>!["dingtalk","openclaw-weixin","weixin"].includes(id));
+  c.plugins.entries.codex = Object.assign({}, c.plugins.entries.codex || {}, { enabled: true });
   // QQBot 2.x reserves wildcard/approval markers; pairing is the valid safe
   // default for an existing account and avoids doctor rejecting allowFrom.
   if(c.channels.qqbot&&typeof c.channels.qqbot==="object"){
@@ -1771,8 +1771,7 @@ try {
   if(!Array.isArray(c.commands.ownerAllowFrom)||!c.commands.ownerAllowFrom.length)c.commands.ownerAllowFrom=["webchat:*"];
   delete c.owner;
   const model=c.agents?.defaults?.model;
-  if(typeof model==="string"&&model.toLowerCase().startsWith("openai/")) delete c.agents.defaults.model;
-  if(model&&typeof model==="object"&&typeof model.primary==="string"&&model.primary.toLowerCase().startsWith("openai/")) delete c.agents.defaults.model;
+
   fs.writeFileSync(p,JSON.stringify(c,null,2)+"\n");
 } catch {}
 NODE
@@ -2214,9 +2213,9 @@ try {
   c.plugins.entries = c.plugins.entries || {};
   c.commands = c.commands || {};
   c.commands.ownerAllowFrom = c.commands.ownerAllowFrom || ["webchat:*"];
-  delete c.plugins.entries.codex;
+  c.plugins.entries.codex = Object.assign({}, c.plugins.entries.codex || {}, { enabled: true });
   c.plugins.allow = Array.isArray(c.plugins.allow) ? c.plugins.allow : [];
-  c.plugins.allow = c.plugins.allow.filter((pluginId) => pluginId !== "codex");
+  c.plugins.allow = Array.from(new Set([...c.plugins.allow, "codex"]));
   for (const pluginId of ["memory-core", "device-pair"]) if (!c.plugins.allow.includes(pluginId)) c.plugins.allow.push(pluginId);
   delete c.plugins.bundledDiscovery;
   if (Object.prototype.hasOwnProperty.call(c.plugins, "installs")) delete c.plugins.installs;
