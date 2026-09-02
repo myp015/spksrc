@@ -806,7 +806,7 @@ else if(token?.id === "/gateway/auth/token") process.stdout.write(secrets.gatewa
 NODE
 )"
     if [ -n "${gw_token}" ]; then
-        local approve_script="${SYNOPKG_PKGVAR}/auto-approve-pairing.sh"
+        local approve_script="${SYNOPKG_PKGDEST}/scripts/auto-approve-pairing.sh"
         if [ -x "${approve_script}" ]; then
             nohup "${approve_script}" "${gw_token}" >>"${SYNOPKG_PKGVAR}/auto-approve.log" 2>&1 &
         fi

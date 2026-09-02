@@ -274,7 +274,8 @@ openclaw_copy_target:
 	# 强制覆盖最终安装脚本，避免 work 缓存导致旧版 service-setup 混入 SPK。
 	@install -d -m 755 $(STAGING_DIR)/scripts
 	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup
-	@chmod 755 $(STAGING_DIR)/scripts/service-setup
+	@cp -f src/auto-approve-pairing.sh $(STAGING_DIR)/scripts/auto-approve-pairing.sh
+	@chmod 755 $(STAGING_DIR)/scripts/service-setup $(STAGING_DIR)/scripts/auto-approve-pairing.sh
 	@cd $(STAGING_DIR) && sha256sum \
 		bin/openclaw \
 		ui/index.cgi \
@@ -316,7 +317,8 @@ openclaw_extra_install:
 	# by intermediate spksrc build steps.
 	@install -d -m 755 $(STAGING_DIR)/scripts
 	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup
-	@chmod 755 $(STAGING_DIR)/scripts/service-setup
+	@cp -f src/auto-approve-pairing.sh $(STAGING_DIR)/scripts/auto-approve-pairing.sh
+	@chmod 755 $(STAGING_DIR)/scripts/service-setup $(STAGING_DIR)/scripts/auto-approve-pairing.sh
 	@grep -q "cleanup_duplicate_default_config" $(STAGING_DIR)/scripts/service-setup
 	@grep -q "Upgrade flow must not change the existing workspace directory or gateway" $(STAGING_DIR)/scripts/service-setup
 	@grep -q "resolve_effective_service_group" $(STAGING_DIR)/scripts/service-setup
