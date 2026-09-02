@@ -1746,9 +1746,36 @@ EOF
         cleanup_duplicate_default_config
 }
 
+normalize_runtime_state_for_current_release() {
+    [ -f "${OPENCLAW_CONFIG_FILE}" ] || return 0
+    "${OPENCLAW_NODE}" - "${OPENCLAW_CONFIG_FILE}" <<'NODE' >/dev/null 2>&1 || true
+const fs=require("fs");
+const p=process.argv[2];
+try {
+  const c=JSON.parse(fs.readFileSync(p,"utf8"));
+  c.channels=c.channels&&typeof c.channels==="object"?c.channels:{};
+  c.plugins=c.plugins&&typeof c.plugins==="object"?c.plugins:{};
+  c.plugins.entries=c.plugins.entries&&typeof c.plugins.entries==="object"?c.plugins.entries:{};
+  for(const id of ["dingtalk","openclaw-weixin","weixin"]){delete c.channels[id];delete c.plugins.entries[id];}
+  if(Array.isArray(c.plugins.allow))c.plugins.allow=c.plugins.allow.filter(id=>!["dingtalk","openclaw-weixin","weixin","codex"].includes(id));
+  delete c.plugins.entries.codex;
+  if(c.channels.qqbot&&typeof c.channels.qqbot==="object"){
+    const q=c.channels.qqbot; const a=Array.isArray(q.allowFrom)?q.allowFrom.filter(x=>typeof x==="string"&&x.trim()&&x!=="openclaw:approval-disabled"):[];
+    if(q.dmPolicy==="open"&&!a.includes("*"))a.unshift("*"); q.allowFrom=a;
+  }
+  c.commands=c.commands&&typeof c.commands==="object"?c.commands:{};
+  if(!Array.isArray(c.commands.ownerAllowFrom)||!c.commands.ownerAllowFrom.length)c.commands.ownerAllowFrom=["webchat:*"];
+  delete c.owner;
+  fs.writeFileSync(p,JSON.stringify(c,null,2)+"\n");
+} catch {}
+NODE
+    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" 2>/dev/null || true
+}
+
 service_prestart() {
     disable_external_gateway_supervisors
     stop_gateway_processes
+    normalize_runtime_state_for_current_release
 
     # Ensure nginx alias survives DSM reboot/service start (postinst is not called on reboot).
     mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
