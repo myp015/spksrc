@@ -195,7 +195,7 @@
         "enabled": true
       },
       "qqbot": {
-        "enabled": true
+        "enabled": false
       },
       "dingtalk": {
         "enabled": false
@@ -217,7 +217,6 @@
       "memory-core",
       "device-pair",
       "feishu",
-      "qqbot",
       "wecom",
       "openclaw-weixin"
     ]
