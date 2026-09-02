@@ -1630,6 +1630,8 @@ cfg.browser.extensionRelay.allowLegacyAuth = false;
 delete cfg.plugins.entries.codex;
 cfg.plugins.allow = (cfg.plugins.allow || []).filter((pluginId) => pluginId !== "codex");
 for (const pluginId of ["memory-core", "device-pair"]) if (!cfg.plugins.allow.includes(pluginId)) cfg.plugins.allow.push(pluginId);
+// Remove any agentRuntime that references codex (prevents "codex runtime unavailable" errors)
+delete cfg.agents.defaults.agentRuntime;
 
 // Fresh installs must not leave the generated gateway/model/channel credentials
 // in openclaw.json. Move the known SecretRef-capable values into a private
