@@ -147,8 +147,6 @@ const appDir=process.argv[1];
 const targets=[
   ["dist/extensions/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
   ["node_modules/@sunnoy/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
-  ["dist/extensions/dingtalk/package.json", { zod: "^4.4.3", axios: "^1.13.6" }],
-  ["node_modules/@soimy/dingtalk/package.json", { zod: "^4.4.3", axios: "^1.13.6" }],
   ["dist/extensions/qqbot/package.json", { zod: "4.3.6" }],
   ["node_modules/@tencent-connect/openclaw-qqbot/package.json", { zod: "4.3.6" }],
   ["dist/extensions/openclaw-weixin/package.json", { zod: "4.3.6" }],
@@ -435,7 +433,6 @@ sync_bundled_channel_plugins_to_extensions() {
     rm -rf \
         "${ext_dir}/openclaw-lark" \
         "${ext_dir}/feishu" \
-        "${ext_dir}/dingtalk" \
         "${ext_dir}/wecom" \
         "${ext_dir}/openclaw-qqbot" \
         "${ext_dir}/qqbot" \
@@ -454,8 +451,6 @@ sync_bundled_channel_plugins_to_stock_extensions() {
     rm -rf \
         "${stock_ext_dir}/feishu" \
         "${stock_ext_dir}/openclaw-lark" \
-        "${stock_ext_dir}/dingtalk" \
-        "${stock_ext_dir}/openclaw-dingtalk" \
         "${stock_ext_dir}/wecom" \
         "${stock_ext_dir}/wecom-openclaw-plugin" \
         "${stock_ext_dir}/qqbot" \
@@ -465,7 +460,6 @@ sync_bundled_channel_plugins_to_stock_extensions() {
     local src dst
     for pair in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu:feishu" \
-        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk:dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom:wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot:qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin:openclaw-weixin"
@@ -487,7 +481,7 @@ force_js_channel_entries() {
     "${OPENCLAW_NODE}" -e '
 const fs=require("fs"),path=require("path");
 const app=process.argv[1];
-const roots=[path.join(app,"node_modules","@tencent-connect","openclaw-qqbot"),path.join(app,"node_modules","@soimy","dingtalk"),path.join(app,"node_modules","@tencent-weixin","openclaw-weixin"),path.join(app,"dist","extensions","qqbot"),path.join(app,"dist","extensions","dingtalk"),path.join(app,"dist","extensions","openclaw-weixin")];
+const roots=[path.join(app,"node_modules","@tencent-connect","openclaw-qqbot"),path.join(app,"node_modules","@tencent-weixin","openclaw-weixin"),path.join(app,"dist","extensions","qqbot"),path.join(app,"dist","extensions","openclaw-weixin")];
 const w=(f,c)=>fs.writeFileSync(f,c,"utf8");
 const pj=(f,fn)=>{if(!fs.existsSync(f))return;const o=JSON.parse(fs.readFileSync(f,"utf8"));fn(o);fs.writeFileSync(f,JSON.stringify(o,null,2)+"\n","utf8");};
 for(const d of roots){
@@ -500,19 +494,7 @@ for(const d of roots){
     pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="qqbot";o.channels=["qqbot"];o.extensions=["./index.js"];});
     pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="qqbot";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="qqbot";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
   }
-  if(d.endsWith("dingtalk") && (fs.existsSync(path.join(d,"dist","index.js")) || fs.existsSync(path.join(d,"dist","index.runtime.js")))){
-    const legacy=path.join(d,"dist","index.js"), runtime=path.join(d,"dist","index.runtime.js");
-    if(fs.existsSync(legacy) && !fs.existsSync(runtime)) fs.copyFileSync(legacy,runtime);
-    fs.rmSync(legacy,{force:true});
-    if(fs.existsSync(runtime)){ const rr=fs.readFileSync(runtime,"utf8").replaceAll("openclaw/plugin-sdk/text-runtime","../text-runtime-compat.js"); fs.writeFileSync(runtime,rr,"utf8"); }
-    w(path.join(d,"text-runtime-compat.js"),`export function parseInlineDirectives(i,o={}){let t=String(i??""),c=false,e,a=false;if(/^\[\[reply_to_current\]\]/i.test(t)){c=true;t=t.replace(/^\[\[reply_to_current\]\]\s*/i,"")}const m=t.match(/^\[\[reply_to:([^\]]+)\]\]\s*/i);m&&(e=m[1],t=t.slice(m[0].length));if(/^\[\[audio_as_voice\]\]/i.test(t)){a=true;t=t.replace(/^\[\[audio_as_voice\]\]\s*/i,"")}return{text:o.stripReplyTags===false?String(i??""):t,replyToCurrent:c,replyToExplicitId:e,replyToId:e,audioAsVoice:a,hasReplyTag:c||!!e,hasAudioTag:a}}\n`);
-    w(path.join(d,"channel-plugin-api.js"),"export { dingtalkPlugin } from \"./dist/index.runtime.js\";\n");
-    w(path.join(d,"runtime-api.js"),"export { setDingTalkRuntime } from \"./dist/index.runtime.js\";\n");
-    w(path.join(d,"full-api.js"),"import e from \"./dist/index.runtime.js\";\nexport function registerDingTalkPluginFull(api){ if(!e||typeof e.register!==\"function\") return; const p=Object.create(api); p.registerChannel=()=>{}; return e.register(p); }\n");
-    w(path.join(d,"index.js"),"import { defineBundledChannelEntry } from \"openclaw/plugin-sdk/channel-entry-contract\";\nexport default defineBundledChannelEntry({id:\"dingtalk\",name:\"DingTalk\",description:\"DingTalk channel plugin\",importMetaUrl:import.meta.url,plugin:{specifier:\"./channel-plugin-api.js\",exportName:\"dingtalkPlugin\"},runtime:{specifier:\"./runtime-api.js\",exportName:\"setDingTalkRuntime\"},registerFull(api){return import(\"./full-api.js\").then(m=>m.registerDingTalkPluginFull(api));}});\n");
-    pj(path.join(d,"openclaw.plugin.json"),o=>{o.id="dingtalk";o.channels=["dingtalk"];o.extensions=["./index.js"];});
-    pj(path.join(d,"package.json"),o=>{o.openclaw=o.openclaw&&typeof o.openclaw==="object"?o.openclaw:{};o.openclaw.id="dingtalk";o.openclaw.channel=o.openclaw.channel&&typeof o.openclaw.channel==="object"?o.openclaw.channel:{};o.openclaw.channel.id="dingtalk";o.openclaw.extensions=["./index.js"];o.openclaw.runtimeExtensions=["./index.js"];});
-  }
+
   if(d.endsWith("openclaw-weixin") && fs.existsSync(path.join(d,"dist","src","channel.js"))){
     w(path.join(d,"channel-plugin-api.js"),"export { weixinPlugin } from \"./dist/src/channel.js\";\n");
     // @tencent-weixin/openclaw-weixin 2.x has no ./dist/src/runtime.js (it
@@ -558,7 +540,6 @@ harden_extension_permissions() {
     # caused by suspicious ownership checks on direct load-path candidates.
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
-        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
@@ -1236,7 +1217,6 @@ service_postinst() {
     # Normalize bundled channel plugin ownership to root:root so OpenClaw trust checks pass.
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
-        "${OPENCLAW_APP_DIR}/node_modules/@soimy/dingtalk" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"

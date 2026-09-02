@@ -1162,7 +1162,7 @@ except Exception:
 
 # keep workspace/extensions free of channel plugin copies (DSM trust checks may block uid!=0).
 # channel plugins are staged under app/dist/extensions by service script.
-for pkg_name in ['feishu', 'feishu-openclaw-plugin', 'dingtalk', 'wecom', 'qqbot', 'openclaw-qqbot', 'openclaw-weixin']:
+for pkg_name in ['feishu', 'feishu-openclaw-plugin', 'wecom', 'qqbot', 'openclaw-qqbot', 'openclaw-weixin']:
     try:
         dst = os.path.join(ext_dir, pkg_name)
         import shutil
@@ -1732,7 +1732,7 @@ for cid, cv in (ch or {}).items():
             e.pop('config', None)
         entries[pid] = e
 
-stale_plugin_ids = {'feishu-openclaw-plugin', 'openclaw-qqbot', 'openclaw-dingtalk', 'wecom-openclaw-plugin'}
+stale_plugin_ids = {'feishu-openclaw-plugin', 'openclaw-qqbot', 'wecom-openclaw-plugin'}
 allow = [pid for pid in allow if pid not in stale_plugin_ids]
 for pid in stale_plugin_ids:
     entries.pop(pid, None)
@@ -3194,7 +3194,7 @@ if action in ('start','restart'):
     allow_from = elev.get('allowFrom')
     if not isinstance(allow_from, dict):
         allow_from = {}
-    for k in ['webchat', 'feishu', 'dingtalk', 'qqbot', 'wecom', 'telegram', 'discord', 'slack']:
+    for k in ['webchat', 'feishu', 'qqbot', 'wecom', 'telegram', 'discord', 'slack']:
         v = allow_from.get(k)
         if not isinstance(v, list) or not v:
             allow_from[k] = ['*']
@@ -3260,7 +3260,7 @@ if action in ('start','restart'):
                 ent['enabled'] = True
                 entries[pid] = ent
 
-        stale_plugin_ids = {'feishu-openclaw-plugin', 'openclaw-qqbot', 'openclaw-dingtalk', 'wecom-openclaw-plugin'}
+        stale_plugin_ids = {'feishu-openclaw-plugin', 'openclaw-qqbot', 'wecom-openclaw-plugin'}
         allow = [pid for pid in allow if pid not in stale_plugin_ids]
         for pid in stale_plugin_ids:
             entries.pop(pid, None)

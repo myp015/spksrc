@@ -15,7 +15,6 @@ RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS)')
 OPENCLAW_NPM_VERSION := $(patsubst OPENCLAW_NPM_VERSION=%,%,$(filter OPENCLAW_NPM_VERSION=%,$(RESOLVED_VERSIONS)))
 OPENCLAW_SPK_VERSION_TMP := $(patsubst OPENCLAW_SPK_VERSION=%,%,$(filter OPENCLAW_SPK_VERSION=%,$(RESOLVED_VERSIONS)))
 FEISHU_VERSION := $(patsubst FEISHU_VERSION=%,%,$(filter FEISHU_VERSION=%,$(RESOLVED_VERSIONS)))
-DINGTALK_VERSION := $(patsubst DINGTALK_VERSION=%,%,$(filter DINGTALK_VERSION=%,$(RESOLVED_VERSIONS)))
 WECOM_VERSION := $(patsubst WECOM_VERSION=%,%,$(filter WECOM_VERSION=%,$(RESOLVED_VERSIONS)))
 QQ_BOT_VERSION := $(patsubst QQ_BOT_VERSION=%,%,$(filter QQ_BOT_VERSION=%,$(RESOLVED_VERSIONS)))
 WEIXIN_VERSION := $(patsubst WEIXIN_VERSION=%,%,$(filter WEIXIN_VERSION=%,$(RESOLVED_VERSIONS)))
@@ -139,7 +138,6 @@ openclaw_prepare_bundle:
 	@tar -xzf $(WORK_DIR)/openclaw-$(OPENCLAW_NPM_VERS).tgz -C $(WORK_DIR)/openclaw-bundle --strip-components=1
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm_config_platform=linux npm_config_arch=$(NODE_DIST_ARCH) npm_config_ignore_scripts=true npm_config_legacy_peer_deps=true npm install --omit=dev --legacy-peer-deps --save-exact --no-audit --no-fund \
 		@openclaw/feishu@$(FEISHU_VERSION) \
-		@soimy/dingtalk@$(DINGTALK_VERSION) \
 		@sunnoy/wecom@$(WECOM_VERSION) \
 		@tencent-connect/openclaw-qqbot@$(QQ_BOT_VERSION) \
 		@tencent-weixin/openclaw-weixin@$(WEIXIN_VERSION) \
@@ -166,7 +164,6 @@ openclaw_prepare_bundle:
 		@wecom/aibot-node-sdk@^1.0.3 \
 		acpx@0.5.3 \
 		commander@^14.0.3 \
-		dingtalk-stream@^2.1.4 \
 		express@^5.2.1 \
 		file-type@^21.3.0 \
 		form-data@^4.0.0 \
@@ -197,11 +194,6 @@ openclaw_prepare_bundle:
 	else \
 		echo "[ainasclaw] skip amazon-bedrock runtime patch: dist/extensions/amazon-bedrock not found"; \
 	fi
-	@cd $(WORK_DIR)/openclaw-bundle/node_modules/@soimy/dingtalk && \
-		PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" npm pack axios@^1.13.6 --silent && \
-		install -d node_modules/axios && \
-		tar -xzf axios-*.tgz -C node_modules/axios --strip-components=1 && \
-		rm -f axios-*.tgz
 	@cd $(WORK_DIR)/openclaw-bundle && \
 		if [ "$(NODE_DIST_ARCH)" = "x64" ]; then \
 			find node_modules -type d \( -name '*linux-arm64*' -o -name '*arm64-musl*' -o -name '*arm64-gnu*' -o -name '*-arm64' -o -name '*aarch64*' \) -prune -exec rm -rf {} + 2>/dev/null || true; \
@@ -235,7 +227,6 @@ openclaw_prepare_bundle:
 	# Keep official OpenClaw Feishu extension as-is (no local compatibility rewrites).
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-jiti-loader-try-native.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-bundled-allowlist-discovery.mjs $(WORK_DIR)/openclaw-bundle
-	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-channel-bundled-js-entry.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-control-ui-update-banner.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-startup-sidecars.mjs $(WORK_DIR)/openclaw-bundle
 	@PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node src/patch-wecom-bundled-entry.mjs $(WORK_DIR)/openclaw-bundle

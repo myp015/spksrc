@@ -13,8 +13,7 @@
 #   OPENCLAW_NPM_VERSION=2026.7.1-2
 #   OPENCLAW_SPK_VERSION=2026.7.1
 #   FEISHU_VERSION=2026.7.1
-#   DINGTALK_VERSION=3.6.10
-#   WECOM_VERSION=3.4.0
+   WECOM_VERSION=3.4.0
 #   QQ_BOT_VERSION=2.0.0
 #   WEIXIN_VERSION=2.4.6
 #
@@ -33,7 +32,6 @@ set -u
 # ---------------------------------------------------------------------------
 DEFAULT_OPENCLAW=2026.8.1-2
 DEFAULT_FEISHU=2026.8.1
-DEFAULT_DINGTALK=3.7.1
 DEFAULT_WECOM=3.5.0
 DEFAULT_QQBOT=2.1.0
 DEFAULT_WEIXIN=2.5.1
@@ -115,9 +113,6 @@ OPENCLAW_BASE="$(strip_build_suffix "$OPENCLAW")"
 FEISHU="$(fetch_matching_or_latest "@openclaw%2Ffeishu" "$OPENCLAW_BASE")"
 [ -z "$FEISHU" ] && FEISHU="$DEFAULT_FEISHU"
 
-DINGTALK="$(fetch_matching_or_latest "@soimy%2Fdingtalk" "$OPENCLAW_BASE")"
-[ -z "$DINGTALK" ] && DINGTALK="$DEFAULT_DINGTALK"
-
 WECOM="$(fetch_matching_or_latest "@sunnoy%2Fwecom" "$OPENCLAW_BASE")"
 [ -z "$WECOM" ] && WECOM="$DEFAULT_WECOM"
 
@@ -131,13 +126,12 @@ SPK_VERSION="$(strip_build_suffix "$OPENCLAW")"
 [ -z "$SPK_VERSION" ] && SPK_VERSION="$(strip_build_suffix "$DEFAULT_OPENCLAW")"
 
 if [ "${1:-}" = "--json" ]; then
-  printf '{"openclaw":"%s","spkVersion":"%s","feishu":"%s","dingtalk":"%s","wecom":"%s","qqbot":"%s","weixin":"%s"}\n' \
-    "$OPENCLAW" "$SPK_VERSION" "$FEISHU" "$DINGTALK" "$WECOM" "$QQBOT" "$WEIXIN"
+  printf '{"openclaw":"%s","spkVersion":"%s","feishu":"%s","wecom":"%s","qqbot":"%s","weixin":"%s"}\n' \
+    "$OPENCLAW" "$SPK_VERSION" "$FEISHU" "$WECOM" "$QQBOT" "$WEIXIN"
 else
   printf 'OPENCLAW_NPM_VERSION=%s\n' "$OPENCLAW"
   printf 'OPENCLAW_SPK_VERSION=%s\n' "$SPK_VERSION"
   printf 'FEISHU_VERSION=%s\n' "$FEISHU"
-  printf 'DINGTALK_VERSION=%s\n' "$DINGTALK"
   printf 'WECOM_VERSION=%s\n' "$WECOM"
   printf 'QQ_BOT_VERSION=%s\n' "$QQBOT"
   printf 'WEIXIN_VERSION=%s\n' "$WEIXIN"
