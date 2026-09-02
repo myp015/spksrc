@@ -793,25 +793,13 @@ start_gateway_if_needed() {
     fi
     sleep 1
 
-    # Start auto-approve daemon for device pairing. Resolve the gateway token
-    # from the package SecretRef store, not only from the config JSON.
-    local gw_token
-    gw_token="$(${OPENCLAW_NODE:-node} - "${OPENCLAW_CONFIG_FILE}" "${OPENCLAW_STATE_DIR}/secrets.json" <<'NODE' 2>/dev/null
-const fs=require("fs");
-const cfg=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
-let secrets={}; try { secrets=JSON.parse(fs.readFileSync(process.argv[2],"utf8")); } catch {}
-const token=cfg.gateway?.auth?.token;
-if(typeof token === "string") process.stdout.write(token);
-else if(token?.id === "/gateway/auth/token") process.stdout.write(secrets.gateway?.auth?.token || "");
-NODE
-)"
-    if [ -n "${gw_token}" ]; then
-        local approve_script="${SYNOPKG_PKGDEST}/scripts/auto-approve-pairing.sh"
-        if [ -x "${approve_script}" ]; then
-            nohup "${approve_script}" "${gw_token}" >>"${SYNOPKG_PKGVAR}/auto-approve.log" 2>&1 &
-        fi
+    # Start auto-approve daemon for device pairing using the packaged worker.
+    # The worker resolves the SecretRef itself and must be started even when the
+    # gateway token is not present as plaintext in openclaw.json.
+    local approve_script="${SYNOPKG_PKGDEST}/scripts/auto-approve-pairing.sh"
+    if [ -x "${approve_script}" ]; then
+        nohup "${approve_script}" >>"${SYNOPKG_PKGVAR}/auto-approve.log" 2>&1 &
     fi
-
 }
 
 ensure_openclaw_in_path() {
