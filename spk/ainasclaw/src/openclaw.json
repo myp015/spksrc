@@ -150,13 +150,7 @@
       "enabled": false,
       "dmPolicy": "pairing",
       "groupPolicy": "open",
-      "allowFrom": [],
-      "execApprovals": {
-        "enabled": true,
-        "approvers": [
-          "*"
-        ]
-      }
+      "allowFrom": []
     },
     "wecom": {
       "enabled": false,

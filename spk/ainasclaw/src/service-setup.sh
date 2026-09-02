@@ -1766,9 +1766,6 @@ try {
     const q=c.channels.qqbot;
     if(q.dmPolicy==="open") q.dmPolicy="pairing";
     if(Array.isArray(q.allowFrom)) q.allowFrom=q.allowFrom.filter(x=>typeof x==="string"&&x.trim()&&x!=="*"&&x!=="openclaw:approval-disabled");
-    q.execApprovals=q.execApprovals&&typeof q.execApprovals==="object"?q.execApprovals:{};
-    q.execApprovals.enabled=true;
-    if(!Array.isArray(q.execApprovals.approvers)||!q.execApprovals.approvers.length) q.execApprovals.approvers=["*"];
   }
   c.commands=c.commands&&typeof c.commands==="object"?c.commands:{};
   if(!Array.isArray(c.commands.ownerAllowFrom)||!c.commands.ownerAllowFrom.length)c.commands.ownerAllowFrom=["webchat:*"];
