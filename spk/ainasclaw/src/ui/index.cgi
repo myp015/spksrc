@@ -1134,30 +1134,14 @@ try:
 except Exception:
     pass
 
-# Initialize workspace runtime assets immediately after workspace switch/save
+# OpenClaw owns skill publication. The UI only cleans obsolete workspace plugin
+# copies and never creates a competing skills/_bundled tree.
 state_dir = os.path.dirname(cfg_path) if cfg_path else os.path.join(workspace or '/volume1/openclaw', '.openclaw')
-skills_dir = os.path.join(state_dir, 'skills', '_bundled')
 ext_dir = os.path.join(state_dir, 'extensions')
-os.makedirs(skills_dir, exist_ok=True)
 os.makedirs(ext_dir, exist_ok=True)
-
-app_dir = '/var/packages/ainasclaw/target/app/openclaw'
-
-# Sync each packaged skill once into the canonical flat _bundled root.
-try:
-    dist_ext = os.path.join(app_dir, 'dist', 'extensions')
-    import shutil
-    if os.path.isdir(dist_ext):
-        for plugin_id in os.listdir(dist_ext):
-            src = os.path.join(dist_ext, plugin_id, 'skills')
-            if not os.path.isdir(src): continue
-            for skill_id in os.listdir(src):
-                source = os.path.join(src, skill_id)
-                target = os.path.join(skills_dir, skill_id)
-                if os.path.isdir(source) and not os.path.exists(target):
-                    shutil.copytree(source, target)
-except Exception:
-    pass
+import shutil
+shutil.rmtree(os.path.join(state_dir, 'plugin-skills'), ignore_errors=True)
+shutil.rmtree(os.path.join(state_dir, 'skills', 'plugin-skills'), ignore_errors=True)
 
 # keep workspace/extensions free of channel plugin copies (DSM trust checks may block uid!=0).
 # channel plugins are staged under app/dist/extensions by service script.
@@ -5364,9 +5348,7 @@ cat <<'HTML'
       }
       load(btn.dataset.tab);
     }));
-    // AiNasClaw app entry opens the OpenClaw conversation view by default.
-    // The local management tabs remain available from the parent app page.
-    refreshTerminalHealth().finally(() => { load('status'); setTimeout(() => openOpenclawWeb(), 0); });
+    refreshTerminalHealth().finally(() => load('status'));
   </script>
 </body>
 </html>

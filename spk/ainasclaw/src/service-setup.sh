@@ -378,22 +378,10 @@ ensure_self_package_link() {
 }
 
 sync_skills_to_workspace() {
-    local skills_root="${OPENCLAW_STATE_DIR}/skills"
-    local bundled_root="${skills_root}/_bundled"
-    # OpenClaw 2026.8.2 discovers both plugin-skills and skills/_bundled;
-    # retain exactly one managed source and rebuild it from packaged extensions.
-    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${bundled_root}"
-    mkdir -p "${bundled_root}"
-    if [ -d "${OPENCLAW_APP_DIR}/dist/extensions" ]; then
-        find "${OPENCLAW_APP_DIR}/dist/extensions" -mindepth 2 -maxdepth 2 -type d -name skills | while read -r skills_dir; do
-            find "${skills_dir}" -mindepth 1 -maxdepth 1 -type d | while read -r skill_dir; do
-                skill_id="$(basename "${skill_dir}")"
-                target="${bundled_root}/${skill_id}"
-                [ -e "${target}" ] && continue
-                cp -a "${skill_dir}" "${target}"
-            done
-        done
-    fi
+    # Skill publication is owned by OpenClaw 2026.8.2. Do not copy packaged
+    # extension skills into a second workspace tree: OpenClaw publishes its
+    # managed plugin-skills links during startup and would report collisions.
+    return 0
 }
 
 sync_bundled_channel_plugins_to_extensions() {
@@ -1776,7 +1764,7 @@ try {
 } catch {}
 NODE
     # OpenClaw scans these as extra skill roots. Keep only packaged _bundled.
-    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${OPENCLAW_WORKSPACE}/plugin-skills" 2>/dev/null || true
+    rm -rf "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${OPENCLAW_WORKSPACE}/plugin-skills" 2>/dev/null || true
 }
 
 service_prestart() {
@@ -2849,7 +2837,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # Plugin discovery is controlled by the 2026.8.x state migration, not a
     # removed config key; start only after config repair.
     normalize_runtime_state_for_current_release
-    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${OPENCLAW_WORKSPACE}/plugin-skills" 2>/dev/null || true
+    rm -rf "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${OPENCLAW_WORKSPACE}/plugin-skills" 2>/dev/null || true
     if [ -d "${OPENCLAW_STATE_DIR}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
         start_gateway_if_needed
         # The gateway may create a main-session placeholder (sessions.json index)
