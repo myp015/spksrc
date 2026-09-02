@@ -3757,7 +3757,7 @@ cat <<'HTML'
       xai: { label: 'xAI', baseUrl: 'https://api.x.ai/v1', api: 'openai-completions', models: ['grok-4','grok-3-mini'] },
       zai: { label: 'Z.AI', baseUrl: 'https://api.z.ai/api/paas/v4', api: 'openai-completions', models: ['glm-4.5','glm-4.5-air'] }
     };
-    const BUILTIN_CHANNEL_PLUGINS = ['feishu','qqbot','dingtalk','wecom','openclaw-weixin'];
+    const BUILTIN_CHANNEL_PLUGINS = ['feishu','qqbot','wecom'];
     let currentTab = 'status';
     let statusLine = '';
     let logsTimer = null;
@@ -4843,8 +4843,7 @@ cat <<'HTML'
         ['feishu','飞书'],
         ['qqbot','QQ Bot'],
         ['wecom','企业微信'],
-        ['dingtalk','钉钉'],
-        ['openclaw-weixin','微信']
+        
       ];
       const options = allOptions.filter(([id]) => editId ? (id === editId) : !configured.has(id));
       if (!options.length) { setMsg('可添加渠道为空（已全部配置）', 'ok'); return; }

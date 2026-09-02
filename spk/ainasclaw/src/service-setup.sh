@@ -1531,9 +1531,9 @@ if (feishuAppId && feishuAppSecret && selectedPluginIds.feishu) {
   // This avoids wiping user-configured channels on restart/reinstall flows.
 }
 
-const dingtalkClientId = trim(process.env.WIZARD_DINGTALK_CLIENT_ID);
-const dingtalkClientSecret = trim(process.env.WIZARD_DINGTALK_CLIENT_SECRET);
-if (dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
+const dingtalkClientId = "";
+const dingtalkClientSecret = "";
+if (false && dingtalkClientId && dingtalkClientSecret && selectedPluginIds.dingtalk) {
   cfg.channels.dingtalk = cfg.channels.dingtalk || {};
   cfg.channels.dingtalk.clientId = dingtalkClientId;
   cfg.channels.dingtalk.clientSecret = dingtalkClientSecret;
@@ -2033,7 +2033,6 @@ EOF
     "entries": {
       "browser": { "enabled": true },
       "device-pair": { "enabled": true },
-      "openclaw-weixin": { "enabled": false }
     }
   }
 }
@@ -2075,7 +2074,6 @@ EOF
     "entries": {
       "browser": { "enabled": true },
       "device-pair": { "enabled": true },
-      "openclaw-weixin": { "enabled": false }
     }
   }
 }
