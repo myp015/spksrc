@@ -1756,20 +1756,28 @@ try {
   c.channels=c.channels&&typeof c.channels==="object"?c.channels:{};
   c.plugins=c.plugins&&typeof c.plugins==="object"?c.plugins:{};
   c.plugins.entries=c.plugins.entries&&typeof c.plugins.entries==="object"?c.plugins.entries:{};
+  // These plugins are not bundled for the current OpenClaw release.
   for(const id of ["dingtalk","openclaw-weixin","weixin"]){delete c.channels[id];delete c.plugins.entries[id];}
   if(Array.isArray(c.plugins.allow))c.plugins.allow=c.plugins.allow.filter(id=>!["dingtalk","openclaw-weixin","weixin","codex"].includes(id));
   delete c.plugins.entries.codex;
+  // QQBot 2.x reserves wildcard/approval markers; pairing is the valid safe
+  // default for an existing account and avoids doctor rejecting allowFrom.
   if(c.channels.qqbot&&typeof c.channels.qqbot==="object"){
-    const q=c.channels.qqbot; const a=Array.isArray(q.allowFrom)?q.allowFrom.filter(x=>typeof x==="string"&&x.trim()&&x!=="openclaw:approval-disabled"):[];
-    if(q.dmPolicy==="open"&&!a.includes("*"))a.unshift("*"); q.allowFrom=a;
+    const q=c.channels.qqbot;
+    if(q.dmPolicy==="open") q.dmPolicy="pairing";
+    if(Array.isArray(q.allowFrom)) q.allowFrom=q.allowFrom.filter(x=>typeof x==="string"&&x.trim()&&x!=="*"&&x!=="openclaw:approval-disabled");
   }
   c.commands=c.commands&&typeof c.commands==="object"?c.commands:{};
   if(!Array.isArray(c.commands.ownerAllowFrom)||!c.commands.ownerAllowFrom.length)c.commands.ownerAllowFrom=["webchat:*"];
   delete c.owner;
+  const model=c.agents?.defaults?.model;
+  if(typeof model==="string"&&model.toLowerCase().startsWith("openai/")) delete c.agents.defaults.model;
+  if(model&&typeof model==="object"&&typeof model.primary==="string"&&model.primary.toLowerCase().startsWith("openai/")) delete c.agents.defaults.model;
   fs.writeFileSync(p,JSON.stringify(c,null,2)+"\n");
 } catch {}
 NODE
-    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" 2>/dev/null || true
+    # OpenClaw scans these as extra skill roots. Keep only packaged _bundled.
+    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${OPENCLAW_WORKSPACE}/plugin-skills" 2>/dev/null || true
 }
 
 service_prestart() {
@@ -1831,6 +1839,7 @@ NGINX_EOF
     repair_plugin_registry_if_needed
     sync_skills_to_workspace
     apply_dsm_skill_defaults
+    normalize_runtime_state_for_current_release
 
     # AiNasClaw bundled terminal (ttyd) integration (no dependency on external terminal package).
     # nginx alias is prepared in service_postinst (root context); here we only ensure ttyd process.
@@ -2831,6 +2840,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     sync_provider_models_from_upstream
     sync_skills_to_workspace
     apply_dsm_skill_defaults
+    normalize_runtime_state_for_current_release
     validate_or_rollback_config
 
     # Clear stale pid marker before a fresh start.
