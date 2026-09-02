@@ -382,7 +382,7 @@ sync_skills_to_workspace() {
     local bundled_root="${skills_root}/_bundled"
     # OpenClaw 2026.8.2 discovers both plugin-skills and skills/_bundled;
     # retain exactly one managed source and rebuild it from packaged extensions.
-    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${bundled_root}"
+    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${bundled_root}"
     mkdir -p "${bundled_root}"
     if [ -d "${OPENCLAW_APP_DIR}/dist/extensions" ]; then
         find "${OPENCLAW_APP_DIR}/dist/extensions" -mindepth 2 -maxdepth 2 -type d -name skills | while read -r skills_dir; do
@@ -1766,6 +1766,9 @@ try {
     const q=c.channels.qqbot;
     if(q.dmPolicy==="open") q.dmPolicy="pairing";
     if(Array.isArray(q.allowFrom)) q.allowFrom=q.allowFrom.filter(x=>typeof x==="string"&&x.trim()&&x!=="*"&&x!=="openclaw:approval-disabled");
+    q.execApprovals=q.execApprovals&&typeof q.execApprovals==="object"?q.execApprovals:{};
+    q.execApprovals.enabled=true;
+    if(!Array.isArray(q.execApprovals.approvers)||!q.execApprovals.approvers.length) q.execApprovals.approvers=["*"];
   }
   c.commands=c.commands&&typeof c.commands==="object"?c.commands:{};
   if(!Array.isArray(c.commands.ownerAllowFrom)||!c.commands.ownerAllowFrom.length)c.commands.ownerAllowFrom=["webchat:*"];
@@ -2849,6 +2852,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # Plugin discovery is controlled by the 2026.8.x state migration, not a
     # removed config key; start only after config repair.
     normalize_runtime_state_for_current_release
+    rm -rf "${OPENCLAW_STATE_DIR}/plugin-skills" "${OPENCLAW_STATE_DIR}/skills/plugin-skills" "${OPENCLAW_WORKSPACE}/plugin-skills" 2>/dev/null || true
     if [ -d "${OPENCLAW_STATE_DIR}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
         start_gateway_if_needed
         # The gateway may create a main-session placeholder (sessions.json index)

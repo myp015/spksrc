@@ -148,11 +148,15 @@
     },
     "qqbot": {
       "enabled": false,
-      "dmPolicy": "open",
+      "dmPolicy": "pairing",
       "groupPolicy": "open",
-      "allowFrom": [
-        "*"
-      ]
+      "allowFrom": [],
+      "execApprovals": {
+        "enabled": true,
+        "approvers": [
+          "*"
+        ]
+      }
     },
     "wecom": {
       "enabled": false,
