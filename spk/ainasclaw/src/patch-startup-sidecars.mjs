@@ -19,7 +19,10 @@ if (!fs.existsSync(distDir)) {
 
 const targets = fs.readdirSync(distDir).filter((name) => /^server\.impl-.*\.js$/.test(name));
 if (targets.length === 0) {
-  fail(`no server.impl-*.js found under ${distDir}`);
+  // Optional startup optimization; OpenClaw may rename or remove this chunk.
+  // Keep packaging successful when the target is absent.
+  console.warn(`[patch-startup-sidecars] no server.impl-*.js found under ${distDir}; skipping`);
+  process.exit(0);
 }
 
 let patched = 0;
@@ -29,7 +32,8 @@ for (const name of targets) {
   const reSidecars = /let startupSidecarsReady = minimalTestGateway;|let startupSidecarsReady = minimalTestGateway \|\| opts\.deferStartupSidecars !== false;/;
   const reUnavailable = /const unavailableGatewayMethods = new Set\(minimalTestGateway \? \[\] : STARTUP_UNAVAILABLE_GATEWAY_METHODS\);|const unavailableGatewayMethods = new Set\(minimalTestGateway \|\| opts\.deferStartupSidecars !== false \? \[\] : STARTUP_UNAVAILABLE_GATEWAY_METHODS\);/;
   if (!reSidecars.test(src) || !reUnavailable.test(src)) {
-    fail(`target text not found in ${file}`);
+    console.warn(`[patch-startup-sidecars] target text not found in ${file}; skipping`);
+    continue;
   }
   let out = src.replace(
     /let startupSidecarsReady = minimalTestGateway(?: \|\| opts\.deferStartupSidecars !== false)?;/,
@@ -46,7 +50,8 @@ for (const name of targets) {
 }
 
 if (patched === 0) {
-  fail('no file patched');
+  console.warn('[patch-startup-sidecars] no matching target; skipping');
+  process.exit(0);
 }
 
 console.log(`[patch-startup-sidecars] done, patched ${patched} file(s)`);
