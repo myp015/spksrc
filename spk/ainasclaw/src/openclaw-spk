@@ -231,7 +231,7 @@ for item in ids:
     if item not in seen:
         seen.add(item)
         out.append(item)
-for item in ('browser', 'feishu', 'qqbot', 'dingtalk', 'wecom', 'openclaw-weixin', 'active-memory', 'memory-core', 'memory-wiki'):
+for item in ('browser', 'feishu', 'qqbot', 'dingtalk', 'wecom', 'active-memory', 'memory-core', 'memory-wiki'):
     if item not in seen:
         seen.add(item)
         out.append(item)

@@ -15,8 +15,7 @@
 #   FEISHU_VERSION=2026.7.1
    WECOM_VERSION=3.4.0
 #   QQ_BOT_VERSION=2.0.0
-#   WEIXIN_VERSION=2.4.6
-#
+##
 # With --json it prints a single JSON object of the same data.
 #
 # Robustness: uses curl against the public npm registry (no npm binary needed,
@@ -34,7 +33,6 @@ DEFAULT_OPENCLAW=2026.8.1-2
 DEFAULT_FEISHU=2026.8.1
 DEFAULT_WECOM=3.5.0
 DEFAULT_QQBOT=2.1.0
-DEFAULT_WEIXIN=2.5.1
 
 REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
 
@@ -119,20 +117,16 @@ WECOM="$(fetch_matching_or_latest "@sunnoy%2Fwecom" "$OPENCLAW_BASE")"
 QQBOT="$(fetch_matching_or_latest "@tencent-connect%2Fopenclaw-qqbot" "$OPENCLAW_BASE")"
 [ -z "$QQBOT" ] && QQBOT="$DEFAULT_QQBOT"
 
-WEIXIN="$(fetch_matching_or_latest "@tencent-weixin%2Fopenclaw-weixin" "$OPENCLAW_BASE")"
-[ -z "$WEIXIN" ] && WEIXIN="$DEFAULT_WEIXIN"
-
 SPK_VERSION="$(strip_build_suffix "$OPENCLAW")"
 [ -z "$SPK_VERSION" ] && SPK_VERSION="$(strip_build_suffix "$DEFAULT_OPENCLAW")"
 
 if [ "${1:-}" = "--json" ]; then
-  printf '{"openclaw":"%s","spkVersion":"%s","feishu":"%s","wecom":"%s","qqbot":"%s","weixin":"%s"}\n' \
-    "$OPENCLAW" "$SPK_VERSION" "$FEISHU" "$WECOM" "$QQBOT" "$WEIXIN"
+  printf '{"openclaw":"%s","spkVersion":"%s","feishu":"%s","wecom":"%s","qqbot":"%s","weixin":"disabled"}\n' \
+    "$OPENCLAW" "$SPK_VERSION" "$FEISHU" "$WECOM" "$QQBOT"
 else
   printf 'OPENCLAW_NPM_VERSION=%s\n' "$OPENCLAW"
   printf 'OPENCLAW_SPK_VERSION=%s\n' "$SPK_VERSION"
   printf 'FEISHU_VERSION=%s\n' "$FEISHU"
   printf 'WECOM_VERSION=%s\n' "$WECOM"
   printf 'QQ_BOT_VERSION=%s\n' "$QQBOT"
-  printf 'WEIXIN_VERSION=%s\n' "$WEIXIN"
 fi

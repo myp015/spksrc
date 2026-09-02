@@ -149,8 +149,6 @@ const targets=[
   ["node_modules/@sunnoy/wecom/package.json", { undici: "8.1.0", "file-type": "^21.3.0" }],
   ["dist/extensions/qqbot/package.json", { zod: "4.3.6" }],
   ["node_modules/@tencent-connect/openclaw-qqbot/package.json", { zod: "4.3.6" }],
-  ["dist/extensions/openclaw-weixin/package.json", { zod: "4.3.6" }],
-  ["node_modules/@tencent-weixin/openclaw-weixin/package.json", { zod: "4.3.6" }],
 ];
 for (const [rel, depsPatch] of targets) {
   const p=path.join(appDir, rel);
@@ -343,7 +341,7 @@ resolve_bundled_plugin_dir_allowlist() {
     "${OPENCLAW_NODE:-node}" - "$OPENCLAW_CONFIG_FILE" <<'NODE' 2>/dev/null || true
 const fs = require("fs");
 const cfgPath = process.argv[1];
-const always = ["browser", "feishu", "qqbot", "wecom", "openclaw-weixin", "active-memory", "memory-core", "memory-wiki"];
+const always = ["browser", "feishu", "qqbot", "wecom", "active-memory", "memory-core", "memory-wiki"];
 const ids = [];
 function add(id) {
   if (typeof id === "string" && id.trim() && !ids.includes(id.trim())) ids.push(id.trim());
@@ -435,8 +433,7 @@ sync_bundled_channel_plugins_to_extensions() {
         "${ext_dir}/feishu" \
         "${ext_dir}/wecom" \
         "${ext_dir}/openclaw-qqbot" \
-        "${ext_dir}/qqbot" \
-        "${ext_dir}/openclaw-weixin" 2>/dev/null || true
+        "${ext_dir}/qqbot"
 }
 
 sync_bundled_channel_plugins_to_stock_extensions() {
@@ -454,15 +451,12 @@ sync_bundled_channel_plugins_to_stock_extensions() {
         "${stock_ext_dir}/wecom" \
         "${stock_ext_dir}/wecom-openclaw-plugin" \
         "${stock_ext_dir}/qqbot" \
-        "${stock_ext_dir}/openclaw-qqbot" \
-        "${stock_ext_dir}/openclaw-weixin" \
-        "${stock_ext_dir}/weixin" 2>/dev/null || true
+        "${stock_ext_dir}/openclaw-qqbot" 2>/dev/null || true
     local src dst
     for pair in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu:feishu" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom:wecom" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot:qqbot" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin:openclaw-weixin"
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot:qqbot"
     do
         src="${pair%%:*}"
         dst="${stock_ext_dir}/${pair##*:}"
@@ -481,7 +475,7 @@ force_js_channel_entries() {
     "${OPENCLAW_NODE}" -e '
 const fs=require("fs"),path=require("path");
 const app=process.argv[1];
-const roots=[path.join(app,"node_modules","@tencent-connect","openclaw-qqbot"),path.join(app,"node_modules","@tencent-weixin","openclaw-weixin"),path.join(app,"dist","extensions","qqbot"),path.join(app,"dist","extensions","openclaw-weixin")];
+const roots=[path.join(app,"node_modules","@tencent-connect","openclaw-qqbot"),path.join(app,"dist","extensions","qqbot")];
 const w=(f,c)=>fs.writeFileSync(f,c,"utf8");
 const pj=(f,fn)=>{if(!fs.existsSync(f))return;const o=JSON.parse(fs.readFileSync(f,"utf8"));fn(o);fs.writeFileSync(f,JSON.stringify(o,null,2)+"\n","utf8");};
 for(const d of roots){
@@ -543,8 +537,7 @@ harden_extension_permissions() {
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/qqbot" \
         "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/qqbot-connector" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/qqbot-connector"
     do
         [ -d "${path}" ] || continue
         chown -R root:root "${path}" 2>/dev/null || true
@@ -1218,8 +1211,7 @@ service_postinst() {
     for path in \
         "${OPENCLAW_APP_DIR}/node_modules/@openclaw/feishu" \
         "${OPENCLAW_APP_DIR}/node_modules/@sunnoy/wecom" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot" \
-        "${OPENCLAW_APP_DIR}/node_modules/@tencent-weixin/openclaw-weixin"
+        "${OPENCLAW_APP_DIR}/node_modules/@tencent-connect/openclaw-qqbot"
     do
         [ -d "${path}" ] || continue
         chown -R root:root "${path}" 2>/dev/null || true
@@ -1440,6 +1432,15 @@ function collectAvailablePluginIds(appDirPath) {
 }
 
 const availablePluginIds = collectAvailablePluginIds(appDir);
+// Channels whose packages are intentionally not bundled must not survive an
+// upgrade in the user config. OpenClaw otherwise reports them as stale.
+for (const channelId of ["dingtalk", "openclaw-weixin", "weixin"]) {
+  if (!availablePluginIds.has(channelId)) {
+    if (cfg.channels && Object.prototype.hasOwnProperty.call(cfg.channels, channelId)) delete cfg.channels[channelId];
+    if (cfg.plugins?.entries && Object.prototype.hasOwnProperty.call(cfg.plugins.entries, channelId)) delete cfg.plugins.entries[channelId];
+    if (Array.isArray(cfg.plugins?.allow)) cfg.plugins.allow = cfg.plugins.allow.filter((id) => id !== channelId);
+  }
+}
 const pickPluginId = (preferred, aliases = []) => {
   const ordered = [preferred, ...aliases];
   return ordered.find((id) => availablePluginIds.has(id)) || null;
@@ -1451,7 +1452,6 @@ const selectedPluginIds = {
   dingtalk: pickPluginId("dingtalk"),
   wecom: pickPluginId("wecom", ["openclaw-wecom"]),
   qqbot: pickPluginId("qqbot"),
-  weixin: pickPluginId("openclaw-weixin", ["weixin"])
 };
 
 const workspaceInput = trim(process.env.WIZARD_WORKSPACE_DIR);
@@ -2646,7 +2646,7 @@ if (cfg.channels.qqbot && typeof cfg.channels.qqbot === "object") {
   const allowFrom = Array.isArray(q.allowFrom)
     ? q.allowFrom.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())
     : [];
-  if (!allowFrom.includes("*")) {
+  if (q.dmPolicy === "open" && !allowFrom.includes("*")) {
     q.allowFrom = ["*", ...allowFrom.filter((x) => x !== "*")];
     changed = true;
   }

@@ -17,7 +17,6 @@ OPENCLAW_SPK_VERSION_TMP := $(patsubst OPENCLAW_SPK_VERSION=%,%,$(filter OPENCLA
 FEISHU_VERSION := $(patsubst FEISHU_VERSION=%,%,$(filter FEISHU_VERSION=%,$(RESOLVED_VERSIONS)))
 WECOM_VERSION := $(patsubst WECOM_VERSION=%,%,$(filter WECOM_VERSION=%,$(RESOLVED_VERSIONS)))
 QQ_BOT_VERSION := $(patsubst QQ_BOT_VERSION=%,%,$(filter QQ_BOT_VERSION=%,$(RESOLVED_VERSIONS)))
-WEIXIN_VERSION := $(patsubst WEIXIN_VERSION=%,%,$(filter WEIXIN_VERSION=%,$(RESOLVED_VERSIONS)))
 ifeq ($(strip $(OPENCLAW_NPM_VERSION)),)
 OPENCLAW_NPM_VERSION := 2026.8.1
 OPENCLAW_SPK_VERSION_TMP := 2026.8.1
@@ -140,7 +139,6 @@ openclaw_prepare_bundle:
 		@openclaw/feishu@$(FEISHU_VERSION) \
 		@sunnoy/wecom@$(WECOM_VERSION) \
 		@tencent-connect/openclaw-qqbot@$(QQ_BOT_VERSION) \
-		@tencent-weixin/openclaw-weixin@$(WEIXIN_VERSION) \
 		acpx@0.5.3 \
 		node-edge-tts@1.2.10
 	@cd $(WORK_DIR)/openclaw-bundle && PATH="$(WORK_DIR)/build-node-runtime/bin:$$PATH" node scripts/postinstall-bundled-plugins.mjs

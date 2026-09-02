@@ -160,14 +160,6 @@
         "*"
       ]
     },
-    "dingtalk": {
-      "enabled": false,
-      "dmPolicy": "open",
-      "groupPolicy": "open",
-      "allowFrom": [
-        "*"
-      ]
-    },
     "wecom": {
       "enabled": false,
       "dmPolicy": "open",
@@ -181,9 +173,6 @@
       "dm": {
         "createAgentOnFirstMessage": false
       }
-    },
-    "openclaw-weixin": {
-      "enabled": false
     }
   },
   "plugins": {
@@ -200,9 +189,6 @@
       "wecom": {
         "enabled": true
       },
-      "openclaw-weixin": {
-        "enabled": true
-      },
       "device-pair": {
         "enabled": true
       }
@@ -213,8 +199,7 @@
       "memory-core",
       "device-pair",
       "feishu",
-      "wecom",
-      "openclaw-weixin"
+      "wecom"
     ]
   },
   "memory": {
