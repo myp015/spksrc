@@ -1143,20 +1143,19 @@ os.makedirs(ext_dir, exist_ok=True)
 
 app_dir = '/var/packages/ainasclaw/target/app/openclaw'
 
-# sync extension skills from app dist/extensions/*/skills
+# Sync each packaged skill once into the canonical flat _bundled root.
 try:
     dist_ext = os.path.join(app_dir, 'dist', 'extensions')
+    import shutil
     if os.path.isdir(dist_ext):
         for plugin_id in os.listdir(dist_ext):
             src = os.path.join(dist_ext, plugin_id, 'skills')
-            if not os.path.isdir(src):
-                continue
-            dst = os.path.join(skills_dir, plugin_id)
-            if os.path.exists(dst):
-                import shutil
-                shutil.rmtree(dst, ignore_errors=True)
-            import shutil
-            shutil.copytree(src, dst, dirs_exist_ok=True)
+            if not os.path.isdir(src): continue
+            for skill_id in os.listdir(src):
+                source = os.path.join(src, skill_id)
+                target = os.path.join(skills_dir, skill_id)
+                if os.path.isdir(source) and not os.path.exists(target):
+                    shutil.copytree(source, target)
 except Exception:
     pass
 

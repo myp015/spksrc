@@ -1783,6 +1783,8 @@ service_prestart() {
     disable_external_gateway_supervisors
     stop_gateway_processes
     normalize_runtime_state_for_current_release
+    # Some legacy initialization paths write the user config later in prestart;
+    # normalize again immediately before gateway launch.
 
     # Ensure nginx alias survives DSM reboot/service start (postinst is not called on reboot).
     mkdir -p "${SYNOPKG_PKGVAR}" 2>/dev/null || true
@@ -2846,6 +2848,7 @@ if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf
     # Auto-start only after channel/plugin config has been repaired, otherwise
     # Plugin discovery is controlled by the 2026.8.x state migration, not a
     # removed config key; start only after config repair.
+    normalize_runtime_state_for_current_release
     if [ -d "${OPENCLAW_STATE_DIR}" ] && [ -w "${OPENCLAW_STATE_DIR}" ]; then
         start_gateway_if_needed
         # The gateway may create a main-session placeholder (sessions.json index)
