@@ -1,0 +1,10 @@
+CONFIGURATION_TITLE: "OpenClaw 安装参数（容器版）"
+
+DATA_DIR_DESCRIPTION: "数据目录（默认 /volume1/docker/openclaw，容器卷与 OpenClaw 运行时/配置/工作区都存于此，建议选空间充足的存储卷）"
+DATA_DIR_LABEL: "数据目录"
+
+GATEWAY_PORT_DESCRIPTION: "Gateway 监听端口（默认 58789，容器将映射到此端口）"
+GATEWAY_PORT_LABEL: "端口"
+
+INSTALLATION_NOTES_TITLE: "<b>说明</b><br/>"
+INSTALLATION_NOTES_TEXT1: "OpenClaw 以 Docker 容器方式运行（需已安装 Docker/Container Manager 套件）。镜像固定，OpenClaw 本体在容器内自动在线更新，无需重新编译本套件。"

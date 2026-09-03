@@ -1,0 +1,75 @@
+name: Build OpenClaw SPK (container mode)
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'spk/openclaw/**'
+      - '.github/workflows/build-openclaw.yml'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build (branch/tag/SHA)'
+        required: false
+        default: ''
+
+jobs:
+  build-openclaw:
+    name: Build openclaw (${{ matrix.arch }}-7.2)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            spk_arch: x64
+            image_platform: linux/amd64
+            image_suffix: amd64
+          - arch: aarch64
+            spk_arch: aarch64
+            image_platform: linux/arm64
+            image_suffix: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref != '' && github.event.inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      # Stage 1 (runner layer, has Docker daemon): pull + save the FULL image
+      # for the target architecture. No install-time download on the NAS.
+      - name: Pull and save OpenClaw container image (${{ matrix.image_platform }})
+        run: |
+          set -e
+          IMG="openclaw/openclaw:2026.8.2"
+          echo "Pulling ${IMG} for ${{ matrix.image_platform }}"
+          docker pull --platform ${{ matrix.image_platform }} "$IMG"
+          docker save "$IMG" -o "openclaw-image-${{ matrix.image_suffix }}.tar"
+          ls -lh "openclaw-image-${{ matrix.image_suffix }}.tar"
+
+      # Stage 2 (spksrc build container): package the SPK with the image bundled.
+      - name: Build openclaw package (${{ matrix.spk_arch }}-7.2)
+        uses: docker://ghcr.io/synocommunity/spksrc:latest
+        with:
+          entrypoint: /bin/bash
+          args: -lc "set -e; cd /github/workspace/spk/openclaw && OPENCLAW_IMAGE_TAR=/github/workspace/openclaw-image-${{ matrix.image_suffix }}.tar make V=s arch-${{ matrix.spk_arch }}-7.2"
+
+      - name: Upload SPK artifact (${{ matrix.spk_arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-${{ matrix.spk_arch }}-7.2
+          path: packages/openclaw_${{ matrix.spk_arch }}-7.2_*.spk
+          if-no-files-found: error
+
+      - name: Upload build logs (${{ matrix.spk_arch }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-${{ matrix.spk_arch }}-7.2-logs
+          path: |
+            spk/openclaw/work-*/doctor.log
+            spk/openclaw/status-build.log
+            spk/openclaw/build-*.log
+          if-no-files-found: warn

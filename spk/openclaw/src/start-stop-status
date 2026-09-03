@@ -1,0 +1,161 @@
+#!/bin/sh
+# OpenClaw (container mode) start/stop/status.
+# Drives a fixed Docker image container. The OpenClaw app payload lives in a
+# persistent volume and self-updates in place (image is never replaced).
+#
+# Usage: start-stop-status {start|stop|status}
+set -u
+
+DNAME="OpenClaw"
+
+# --- resolve package paths (spksrc sets these for scripts) ---
+SYNOPKG_PKGNAME="${SYNOPKG_PKGNAME:-openclaw}"
+SYNOPKG_PKGDEST="${SYNOPKG_PKGDEST:-/var/packages/${SYNOPKG_PKGNAME}/target}"
+SYNOPKG_PKGVAR="${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
+
+CONTAINER_NAME="openclaw"
+
+# --- container settings (overridable via ${SYNOPKG_PKGVAR}/container.env) ---
+IMAGE="openclaw/openclaw"
+IMAGE_TAG="2026.8.2"
+GATEWAY_PORT="58789"
+DATA_DIR="${SYNOPKG_PKGVAR}/data"
+CONTAINER_USER="root"
+EXTRA_ARGS=""
+
+if [ -r "${SYNOPKG_PKGVAR}/container.env" ]; then
+    . "${SYNOPKG_PKGVAR}/container.env"
+fi
+
+FULL_IMAGE="${IMAGE}:${IMAGE_TAG}"
+LOG_FILE="${SYNOPKG_PKGVAR}/openclaw.log"
+IMAGE_TAR="${SYNOPKG_PKGDEST}/etc/openclaw-image.tar"
+
+log() { echo "[$(date '+%F %T')] $*" >> "${LOG_FILE}"; }
+
+# --- docker binary ---
+find_docker() {
+    for c in docker /usr/local/bin/docker /usr/bin/docker; do
+        if [ -x "$c" ]; then echo "$c"; return; fi
+    done
+    # container manager on DSM7 provides docker in /usr/local/bin
+    if command -v synodocker >/dev/null 2>&1; then echo "docker"; return; fi
+    echo ""
+}
+
+DOCKER="$(find_docker)"
+if [ -z "${DOCKER}" ]; then
+    echo "${DNAME}: Docker runtime not found. Please install the Docker package first." >&2
+    exit 1
+fi
+
+container_exists() { "${DOCKER}" inspect "${CONTAINER_NAME}" >/dev/null 2>&1; }
+container_running() { "${DOCKER}" inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -q '^true$'; }
+
+# Build the container if it does not exist yet.
+ensure_container() {
+    if container_exists; then
+        return 0
+    fi
+    # Ensure the (bundled) image is available locally before creating.
+    if ! "${DOCKER}" image inspect "${FULL_IMAGE}" >/dev/null 2>&1; then
+        if [ -f "${IMAGE_TAR}" ]; then
+            log "loading bundled image ${FULL_IMAGE}"
+            "${DOCKER}" load -i "${IMAGE_TAR}" >>"${LOG_FILE}" 2>&1 || {
+                log "failed to load bundled image"
+            }
+        else
+            log "image ${FULL_IMAGE} not present and no bundled tar; will pull"
+            "${DOCKER}" pull "${FULL_IMAGE}" >>"${LOG_FILE}" 2>&1 || true
+        fi
+    fi
+    log "creating container ${CONTAINER_NAME} from ${FULL_IMAGE}"
+    mkdir -p "${DATA_DIR}/runtime" "${DATA_DIR}/conf" "${DATA_DIR}/workspace" "${DATA_DIR}/scripts"
+    # container-facing scripts come from the package target/etc
+    if [ -d "${SYNOPKG_PKGDEST}/etc" ]; then
+        cp -f "${SYNOPKG_PKGDEST}/etc/entrypoint.sh" "${DATA_DIR}/scripts/entrypoint.sh"
+        cp -f "${SYNOPKG_PKGDEST}/etc/update-openclaw.sh" "${DATA_DIR}/scripts/update-openclaw.sh"
+        chmod 755 "${DATA_DIR}/scripts/entrypoint.sh" "${DATA_DIR}/scripts/update-openclaw.sh"
+    fi
+
+    # shellcheck disable=SC2086
+    "${DOCKER}" create \
+        --name "${CONTAINER_NAME}" \
+        --restart unless-stopped \
+        -p "${GATEWAY_PORT}:${GATEWAY_PORT}" \
+        -v "${DATA_DIR}/runtime:/data/runtime" \
+        -v "${DATA_DIR}/conf:/home/node/.openclaw" \
+        -v "${DATA_DIR}/workspace:/home/node/.openclaw/workspace" \
+        -v "${DATA_DIR}/scripts:/data/scripts" \
+        -v /etc/localtime:/etc/localtime:ro \
+        -e HOME=/home/node \
+        -e TERM=xterm-256color \
+        -e OPENCLAW_DISABLE_BONJOUR=1 \
+        -e OPENCLAW_RUNTIME_DIR=/data/runtime \
+        -e OPENCLAW_CONF_DIR=/home/node/.openclaw \
+        -u "${CONTAINER_USER}" \
+        --entrypoint /data/scripts/entrypoint.sh \
+        ${EXTRA_ARGS} \
+        "${FULL_IMAGE}" >/dev/null 2>>"${LOG_FILE}" || {
+            log "failed to create container (docker create)"
+            return 1
+        }
+    log "container created"
+}
+
+start() {
+    if container_running; then
+        echo "${DNAME} is already running"
+        return 0
+    fi
+    if ! ensure_container; then
+        echo "${DNAME}: failed to create container" >&2
+        return 1
+    fi
+    log "starting container ${CONTAINER_NAME}"
+    if ! "${DOCKER}" start "${CONTAINER_NAME}" >>"${LOG_FILE}" 2>&1; then
+        echo "${DNAME}: failed to start container" >&2
+        return 1
+    fi
+    # wait for the gateway port to come up
+    i=0
+    while [ ${i} -lt 60 ]; do
+        if "${DOCKER}" inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -q '^true$'; then
+            echo "${DNAME} started"
+            return 0
+        fi
+        i=$((i+1)); sleep 1
+    done
+    echo "${DNAME}: container did not stay running" >&2
+    return 1
+}
+
+stop() {
+    if ! container_running; then
+        echo "${DNAME} is not running"
+        return 0
+    fi
+    log "stopping container ${CONTAINER_NAME}"
+    "${DOCKER}" stop -t 15 "${CONTAINER_NAME}" >>"${LOG_FILE}" 2>&1
+    echo "${DNAME} stopped"
+}
+
+status() {
+    if container_running; then
+        echo "${DNAME} is running"
+        return 0
+    fi
+    echo "${DNAME} is not running"
+    return 3
+}
+
+case "${1:-}" in
+    start) start ;;
+    stop) stop ;;
+    status) status ;;
+    restart) stop; start ;;
+    *)
+        echo "Usage: $0 {start|stop|status|restart}" >&2
+        exit 1
+        ;;
+esac

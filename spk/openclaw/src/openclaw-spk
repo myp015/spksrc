@@ -1,0 +1,107 @@
+#!/bin/sh
+# OpenClaw host-side CLI wrapper (container mode).
+#
+# `openclaw <cmd>` runs the command against the OpenClaw gateway inside the
+# fixed Docker container. Container-facing commands (doctor, update, ...) are
+# executed via `docker exec`. The app payload lives in the persistent volume
+# /data/runtime and self-updates in place.
+set -eu
+
+SYNOPKG_PKGNAME="${SYNOPKG_PKGNAME:-openclaw}"
+SYNOPKG_PKGVAR="${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
+
+CONTAINER_NAME="openclaw"
+CONTAINER_RUNTIME="/data/runtime"
+
+if [ -r "${SYNOPKG_PKGVAR}/container.env" ]; then
+    . "${SYNOPKG_PKGVAR}/container.env"
+fi
+CONTAINER_NAME="${CONTAINER_NAME:-openclaw}"
+
+find_docker() {
+    for c in docker /usr/local/bin/docker /usr/bin/docker; do
+        [ -x "$c" ] && { echo "$c"; return; }
+    done
+    echo ""
+}
+DOCKER="$(find_docker)"
+if [ -z "${DOCKER}" ]; then
+    echo "OpenClaw: Docker runtime not found. Please install the Docker package first." >&2
+    exit 1
+fi
+
+if ! "${DOCKER}" inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+    echo "OpenClaw: container ${CONTAINER_NAME} not found. Please start the package first." >&2
+    exit 1
+fi
+
+usage() {
+    cat <<'EOF'
+openclaw — OpenClaw (container mode) command line
+
+Usage:
+  openclaw status                 Show container/gateway status + OpenClaw version
+  openclaw update [version]       Update OpenClaw inside the container (default: latest)
+  openclaw check-update           Report installed vs. latest available version
+  openclaw restart                Restart the container (gateway)
+  openclaw logs [tail]            Show container logs
+  openclaw <openclaw-cli-args>    Run any openclaw CLI command inside the container
+EOF
+}
+
+inspect() {
+    "${DOCKER}" inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -q '^true$'
+}
+
+run_in_container() {
+    # shellcheck disable=SC2086
+    "${DOCKER}" exec -i -u root "${CONTAINER_NAME}" env \
+        OPENCLAW_RUNTIME_DIR="${CONTAINER_RUNTIME}" \
+        HOME=/home/node \
+        "$@"
+}
+
+case "${1:-}" in
+    status)
+        if inspect; then
+            echo "container: running"
+            ver="$("${DOCKER}" exec "${CONTAINER_NAME}" sh -c 'grep -m1 "\"version\"" /data/runtime/package.json 2>/dev/null | sed -E "s/.*\"version\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/"')"
+            echo "openclaw: ${ver:-unknown}"
+        else
+            echo "container: stopped"
+        fi
+        ;;
+    update)
+        shift
+        if ! inspect; then
+            echo "OpenClaw: container not running; start it first." >&2
+            exit 1
+        fi
+        "${DOCKER}" exec -i -u root "${CONTAINER_NAME}" /data/scripts/update-openclaw.sh "${1:-latest}"
+        ;;
+    check-update)
+        if inspect; then
+            "${DOCKER}" exec -i -u root "${CONTAINER_NAME}" sh -c '
+                cur=$(grep -m1 "\"version\"" /data/runtime/package.json 2>/dev/null | sed -E "s/.*\"version\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/")
+                latest=$(npm view openclaw version 2>/dev/null || echo unknown)
+                echo "installed=${cur:-unknown} latest=${latest}"
+            '
+        else
+            echo "container stopped"
+        fi
+        ;;
+    restart)
+        "${DOCKER}" restart "${CONTAINER_NAME}" >&2
+        ;;
+    logs)
+        "${DOCKER}" logs --tail "${2:-100}" "${CONTAINER_NAME}" 2>&1 || true
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        # Run any openclaw CLI command inside the container using the persisted
+        # runtime payload.
+        run_in_container node "${CONTAINER_RUNTIME}/openclaw.mjs" "$@"
+        ;;
+esac

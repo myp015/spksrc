@@ -1,0 +1,242 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.8.2",
+    "lastTouchedAt": "2026-09-03T00:00:00.000Z"
+  },
+  "update": {
+    "checkOnStart": false
+  },
+  "browser": {
+    "headless": true,
+    "noSandbox": true
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {}
+  },
+  "agents": {
+    "defaults": {
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "sandbox": {
+        "mode": "off",
+        "workspaceAccess": "none",
+        "scope": "agent"
+      },
+      "elevatedDefault": "full",
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      },
+      "workspace": "/home/node/.openclaw",
+      "memorySearch": {
+        "enabled": false
+      }
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions",
+    "groupChat": {
+      "visibleReplies": "message_tool"
+    },
+    "tts": {
+      "auto": "off",
+      "mode": "final",
+      "provider": "microsoft",
+      "providers": {
+        "microsoft": {
+          "lang": "zh-CN",
+          "outputFormat": "ogg-24khz-16bit-mono-opus",
+          "pitch": "+0Hz",
+          "rate": "+0%",
+          "volume": "+0%",
+          "timeoutMs": 30000,
+          "speakerVoice": "zh-CN-XiaoxiaoNeural"
+        }
+      }
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "ownerAllowFrom": [
+      "webchat:*"
+    ]
+  },
+  "skills": {
+    "entries": {
+      "browser-automation": {
+        "enabled": true
+      },
+      "brave-search": {
+        "enabled": true
+      },
+      "weather": {
+        "enabled": true
+      },
+      "news-summary": {
+        "enabled": true
+      },
+      "taskflow": {
+        "enabled": true
+      },
+      "session-logs": {
+        "enabled": false
+      },
+      "tmux": {
+        "enabled": false
+      },
+      "slack": {
+        "enabled": false
+      },
+      "discord": {
+        "enabled": false
+      },
+      "notion": {
+        "enabled": false
+      },
+      "sag": {
+        "enabled": false
+      },
+      "openai-whisper": {
+        "enabled": false
+      },
+      "openai-whisper-api": {
+        "enabled": false
+      }
+    }
+  },
+  "tools": {
+    "profile": "full",
+    "elevated": {
+      "enabled": true,
+      "allowFrom": {
+        "webchat": [
+          "*"
+        ],
+        "feishu": [
+          "*"
+        ],
+        "qqbot": [
+          "*"
+        ],
+        "wecom": [
+          "*"
+        ]
+      }
+    },
+    "sessions": {
+      "visibility": "all"
+    },
+    "fs": {
+      "workspaceOnly": true
+    }
+  },
+  "channels": {
+    "feishu": {
+      "enabled": false,
+      "defaultAccount": "default",
+      "accounts": {
+        "default": {}
+      },
+      "dmPolicy": "open",
+      "groupPolicy": "open",
+      "allowFrom": [
+        "*"
+      ]
+    },
+    "qqbot": {
+      "enabled": false,
+      "dmPolicy": "pairing",
+      "groupPolicy": "open",
+      "allowFrom": []
+    },
+    "wecom": {
+      "enabled": false,
+      "dmPolicy": "open",
+      "groupPolicy": "open",
+      "allowFrom": [
+        "*"
+      ],
+      "dynamicAgents": {
+        "enabled": false
+      },
+      "dm": {
+        "createAgentOnFirstMessage": false
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "browser": {
+        "enabled": true
+      },
+      "feishu": {
+        "enabled": true
+      },
+      "qqbot": {
+        "enabled": false
+      },
+      "wecom": {
+        "enabled": true
+      },
+      "device-pair": {
+        "enabled": true
+      }
+    },
+    "enabled": true,
+    "allow": [
+      "browser",
+      "memory-core",
+      "device-pair",
+      "feishu",
+      "wecom"
+    ]
+  },
+  "memory": {
+    "search": {
+      "enabled": false,
+      "rememberAcrossConversations": false
+    },
+    "backend": "builtin",
+    "citations": "auto",
+    "qmd": {
+      "includeDefaultMemory": true,
+      "sessions": {
+        "enabled": true
+      },
+      "limits": {
+        "timeoutMs": 8000,
+        "maxResults": 16
+      },
+      "update": {
+        "onBoot": true,
+        "interval": "5m",
+        "debounceMs": 15000
+      },
+      "paths": [
+        {
+          "path": "/home/node/.openclaw",
+          "name": "workspace",
+          "pattern": "**/*.md"
+        }
+      ]
+    }
+  },
+  "gateway": {
+    "port": 58789,
+    "bind": "lan",
+    "mode": "local",
+    "controlUi": {
+      "basePath": "/openclaw-web",
+      "allowedOrigins": [
+        "*"
+      ]
+    },
+    "auth": {
+      "mode": "token",
+      "token": "123456"
+    }
+  }
+}

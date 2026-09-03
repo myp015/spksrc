@@ -1,0 +1,10 @@
+CONFIGURATION_TITLE: "OpenClaw 升级参数（容器版）"
+
+DATA_DIR_DESCRIPTION: "数据目录（保持与安装时一致，容器卷所在路径）"
+DATA_DIR_LABEL: "数据目录"
+
+GATEWAY_PORT_DESCRIPTION: "Gateway 监听端口（保持与安装时一致）"
+GATEWAY_PORT_LABEL: "端口"
+
+INSTALLATION_NOTES_TITLE: "<b>说明</b><br/>"
+INSTALLATION_NOTES_TEXT1: "升级仅更新套件外壳（UI/脚本），OpenClaw 本体仍由容器内在线更新机制管理，数据目录保持不变。"

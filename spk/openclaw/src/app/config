@@ -1,0 +1,22 @@
+{
+    "openclaw.js": {
+        "SYNOCOMMUNITY.OpenClaw.AppInstance": {
+            "type": "app",
+            "title": "OpenClaw",
+            "version": "1.0.0",
+            "icon": "images/openclaw-{0}.png",
+            "texts": "texts",
+            "allowMultiInstance": false,
+            "allUsers": true,
+            "appWindow": "SYNOCOMMUNITY.OpenClaw.AppWindow",
+            "depend": ["SYNOCOMMUNITY.OpenClaw.AppWindow"]
+        },
+        "SYNOCOMMUNITY.OpenClaw.AppWindow": {
+            "type": "lib",
+            "title": "OpenClaw",
+            "icon": "images/openclaw-{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
+    }
+}
