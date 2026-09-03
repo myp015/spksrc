@@ -237,7 +237,7 @@ a { text-decoration: none; }
     <span class="status-pid" id="statusPid">${STATUS_PID_HTML}</span>
   </div>
   <div class="msg" id="statusMsg">$SAVED_MSG</div>
-  <form method="post" action="index.cgi?$QUERY">
+  <form method="post" action="index.cgi?$QUERY" id="configForm" onsubmit="return saveConfig()">
     <textarea name="textcontent">$CFG_CONTENT</textarea>
     <div class="actions">
       <button type="submit">保存并重启</button>
@@ -294,6 +294,57 @@ function refreshStatus() {
     })
     .catch(function(){});
 }
+
+// 点击保存：立即（同步）显示“检测状态...”，再异步 AJAX 保存，完成后刷新真实状态
+function showChecking() {
+  var bar = document.getElementById('statusBar');
+  var dot = document.getElementById('statusDot');
+  var txt = document.getElementById('statusText');
+  var pidEl = document.getElementById('statusPid');
+  bar.className = 'status-bar checking';
+  dot.className = 'status-dot checking';
+  txt.textContent = '检测状态...';
+  pidEl.textContent = '';
+}
+
+function saveConfig() {
+  // 1) 点击瞬间立即显示“检测状态...”（同步，无延迟）
+  showChecking();
+
+  var textarea = document.getElementById('textcontent');
+  var action = document.querySelector('#configForm').getAttribute('action') || 'index.cgi';
+  var body = new URLSearchParams();
+  body.append('textcontent', textarea ? textarea.value : '');
+
+  // 2) 异步 AJAX 保存（不刷新页面，避免等待往返后才出检测状态）
+  if (window.fetch) {
+    fetch(action, { method: 'POST', body: body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+      .then(function(){
+        // 稍等 frpc 启动并连上 frps，再查真实状态
+        return new Promise(function(res){ setTimeout(res, 800); });
+      })
+      .then(function(){ return fetch(buildUrl('status'), { cache: 'no-store' }); })
+      .then(function(r){ return r.text(); })
+      .then(function(s){
+        s = (s || '').trim();
+        var running = (s.split('|')[0] === 'running');
+        var pid = s.split('|')[1] || '';
+        var bar = document.getElementById('statusBar');
+        var dot = document.getElementById('statusDot');
+        var txt = document.getElementById('statusText');
+        var pidEl = document.getElementById('statusPid');
+        bar.className = 'status-bar ' + (running ? 'running' : 'stopped');
+        dot.className = 'status-dot ' + (running ? 'running' : 'stopped');
+        txt.textContent = running ? '运行中' : '已停止';
+        pidEl.textContent = running ? ('PID: ' + pid) : '';
+      })
+      .catch(function(){});
+    return false; // 阻止原生表单导航
+  }
+  // 3) 无 fetch 兜底：走原生表单提交，由服务端渲染“检测状态...
+  return true;
+}
+
 
 function toggleLog() {
   var box = document.getElementById('logBox');
