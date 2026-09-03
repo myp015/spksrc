@@ -73,14 +73,24 @@ frpc_status() {
 }
 
 restart_frpc() {
-    # 1) 优先走 synopkg（若 CGI 权限足够）
-    if command -v synopkg >/dev/null 2>&1; then
-        if synopkg restart frpc >/dev/null 2>&1; then
-            return 0
-        fi
+    # 快速路径（与 .spk 的 index.cgi 一致）：SIGKILL 强制终止 + nohup 直接拉起
+    # frpc 是 Go 程序，SIGTERM 会触发优雅退出并等待连接清理，可能耗时数秒；
+    # 用 -9 强制立即终止即可跳过 wait_for_status 的秒级轮询等待，实现点击保存秒级重启。
+    if command -v pkill >/dev/null 2>&1; then
+        pkill -9 -f "${APP_TARGET_DIR}/bin/frpc" >/dev/null 2>&1 || true
+    else
+        killall -9 frpc >/dev/null 2>&1 || true
+    fi
+    : > "${PID_FILE}" 2>/dev/null || true
+    nohup "${APP_TARGET_DIR}/bin/frpc" -c "${CFG_FILE}" >> "${LOG_FILE}" 2>&1 &
+    echo $! > "${PID_FILE}" 2>/dev/null || true
+    # 短等后确认进程存活（进程起来即算启动成功，不等 frps 连接）
+    sleep 0.5
+    if kill -0 $! 2>/dev/null; then
+        return 0
     fi
 
-    # 2) 走标准脚本
+    # 兜底：快速路径未能拉起（权限/环境异常）时，回退标准脚本
     if [ -x /var/packages/frpc/scripts/start-stop-status ]; then
         /var/packages/frpc/scripts/start-stop-status stop >/dev/null 2>&1 || true
         /var/packages/frpc/scripts/start-stop-status start >/dev/null 2>&1 || true
@@ -89,13 +99,7 @@ restart_frpc() {
             return 0
         fi
     fi
-
-    # 3) 最后兜底：直接拉起进程（兼容权限/状态异常场景）
-    pkill -f "${APP_TARGET_DIR}/bin/frpc -c ${CFG_FILE}" >/dev/null 2>&1 || true
-    nohup "${APP_TARGET_DIR}/bin/frpc" -c "${CFG_FILE}" >> "${LOG_FILE}" 2>&1 &
-    echo $! > "${PID_FILE}" 2>/dev/null || true
-    sleep 1
-    kill -0 $! >/dev/null 2>&1
+    return 1
 }
 
 METHOD="${REQUEST_METHOD:-GET}"
@@ -149,10 +153,18 @@ CFG_CONTENT=$(cat "$CFG_FILE" 2>/dev/null | html_escape)
 STATUS="$(frpc_status)"
 STATUS_STATE="${STATUS%%|*}"
 STATUS_PID="${STATUS#*|}"
-case "$STATUS_STATE" in
-    running) STATUS_HTML="<span class=\"status-dot running\"></span>运行中<span class=\"status-pid\">PID: ${STATUS_PID}</span>"; STATUS_CLASS="running" ;;
-    *)       STATUS_HTML="<span class=\"status-dot stopped\"></span>未运行<span class=\"status-pid\"></span>"; STATUS_CLASS="stopped" ;;
-esac
+# 刚保存过（POST 成功）：先显示“检测状态...”，由 JS 异步刷新真实状态
+if [ -n "$SAVED_MSG" ]; then
+    STATUS_HTML="<span class=\"status-dot checking\"></span>检测状态...<span class=\"status-pid\"></span>"
+    STATUS_CLASS="checking"
+    SAVED_FLAG=1
+else
+    SAVED_FLAG=0
+    case "$STATUS_STATE" in
+        running) STATUS_HTML="<span class=\"status-dot running\"></span>运行中<span class=\"status-pid\">PID: ${STATUS_PID}</span>"; STATUS_CLASS="running" ;;
+        *)       STATUS_HTML="<span class=\"status-dot stopped\"></span>未运行<span class=\"status-pid\"></span>"; STATUS_CLASS="stopped" ;;
+    esac
+fi
 
 printf 'Content-type: text/html\r\n\r\n'
 cat <<HTML
@@ -173,8 +185,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Ping
 .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .status-dot.running { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
 .status-dot.stopped { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
+.status-dot.checking { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.2); animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: .35; } }
 .status-bar.running { color: #15803d; }
 .status-bar.stopped { color: #b91c1c; }
+.status-bar.checking { color: #b45309; }
 .status-pid { margin-left: 8px; color: #6b7280; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .msg { margin: 10px 0; color: #0a7a0a; font-weight: 600; min-height: 20px; }
 form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -199,7 +214,6 @@ a { text-decoration: none; }
     </div>
   </div>
   <div class="status-bar ${STATUS_CLASS}" id="statusBar">
-    <span class="status-dot ${STATUS_CLASS}"></span>
     <span id="statusText">$STATUS_HTML</span>
   </div>
   <div class="msg" id="statusMsg">$SAVED_MSG</div>
@@ -252,8 +266,6 @@ function refreshStatus() {
       var pid = s.split('|')[1] || '';
       var running = (state === 'running');
       bar.className = 'status-bar ' + (running ? 'running' : 'stopped');
-      var dot = bar.querySelector('.status-dot');
-      dot.className = 'status-dot ' + (running ? 'running' : 'stopped');
       txt.innerHTML = running
         ? '<span class="status-dot running"></span>运行中<span class="status-pid">PID: ' + pid + '</span>'
         : '<span class="status-dot stopped"></span>未运行<span class="status-pid"></span>';
@@ -289,6 +301,11 @@ window.addEventListener('beforeunload', function(){
   if ((msg.textContent || '').trim().length === 0) return;
   setTimeout(function(){ msg.textContent = ''; }, 3500);
 })();
+
+// 刚保存过：延迟一点等 frpc 起来，再异步刷新真实运行状态（未连接成功则显示已停止）
+if (${SAVED_FLAG} === 1) {
+  setTimeout(refreshStatus, 1200);
+}
 </script>
 </body>
 </html>
