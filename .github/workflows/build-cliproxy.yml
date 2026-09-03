@@ -14,48 +14,18 @@ on:
         required: false
         default: ''
       target_arch:
-        description: 'Build only this arch (e.g. x64-7.2 / x64-6.2.4 / noarch-7.2 / auto)'
+        description: 'Build only this arch (e.g. x64-7.2 / x64-6.2.4 / auto)'
         required: false
         default: 'auto'
-      add_noarch_builds:
-        description: 'Include noarch packages'
-        required: false
-        default: true
-        type: boolean
-      add_noarch_dsm72_builds:
-        description: 'Include noarch DSM 7.2 packages'
-        required: false
-        default: false
-        type: boolean
       add_dsm72_builds:
         description: 'Include DSM 7.2 archs'
         required: false
         default: true
         type: boolean
-      add_dsm71_builds:
-        description: 'Include DSM 7.1 archs'
-        required: false
-        default: false
-        type: boolean
       add_dsm62_builds:
         description: 'Include DSM 6.2 archs'
         required: false
         default: true
-        type: boolean
-      add_dsm52_builds:
-        description: 'Include DSM 5.2 archs'
-        required: false
-        default: false
-        type: boolean
-      add_srm13_builds:
-        description: 'Include SRM 1.3 archs'
-        required: false
-        default: false
-        type: boolean
-      add_srm12_builds:
-        description: 'Include SRM 1.2 archs'
-        required: false
-        default: false
         type: boolean
 
 jobs:
@@ -65,7 +35,6 @@ jobs:
     outputs:
       arch_packages: ${{ steps.dependencies.outputs.arch_packages }}
       noarch_packages: ${{ steps.dependencies.outputs.noarch_packages }}
-      has_min_dsm72_packages: ${{ steps.dependencies.outputs.has_min_dsm72_packages }}
       distrib_hash: ${{ steps.distrib-hash.outputs.hash }}
     steps:
       - name: Checkout repository
@@ -169,33 +138,14 @@ jobs:
       - id: defaults
         run: |
           # Retrieve inputs and package availability
-          add_noarch_builds=${{ github.event.inputs.add_noarch_builds || 'false' }}
-          add_noarch_dsm72_builds=${{ github.event.inputs.add_noarch_dsm72_builds || 'false' }}
           add_dsm72_builds=${{ github.event.inputs.add_dsm72_builds || 'false' }}
-          add_dsm71_builds=${{ github.event.inputs.add_dsm71_builds || 'false' }}
           add_dsm62_builds=${{ github.event.inputs.add_dsm62_builds || 'false' }}
-          add_dsm52_builds=${{ github.event.inputs.add_dsm52_builds || 'false' }}
-          add_srm13_builds=${{ github.event.inputs.add_srm13_builds || 'false' }}
-          add_srm12_builds=${{ github.event.inputs.add_srm12_builds || 'false' }}
-          has_noarch_packages=$([ -n "${{ needs.prepare.outputs.noarch_packages }}" ] && echo "true" || echo "false")
           has_arch_packages=$([ -n "${{ needs.prepare.outputs.arch_packages }}" ] && echo "true" || echo "false")
-          has_min_dsm72_packages=${{ needs.prepare.outputs.has_min_dsm72_packages || 'false' }}
 
-          # Dynamic logic for automatic builds
+          # Dynamic logic for automatic builds (push / schedule)
           if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            # Enable noarch builds if noarch packages exist
-            add_noarch_builds=$([ "$has_noarch_packages" == "true" ] && echo "true" || echo "false")
-
-            # Enable noarch DSM 7.2 builds if noarch packages exist and minimum DSM 7.2 requirements are met
-            add_noarch_dsm72_builds=$([ "$has_noarch_packages" == "true" ] && [ "$has_min_dsm72_packages" == "true" ] && echo "true" || echo "false")
-
-            # Enable DSM 7.2 builds if arch packages exist
+            # Enable DSM 7.2 and 6.2 builds when arch packages exist
             add_dsm72_builds=$([ "$has_arch_packages" == "true" ] && echo "true" || echo "false")
-
-            # Enable DSM 7.1 builds if arch packages exist
-            add_dsm71_builds=false
-
-            # Enable DSM 6.2 builds if arch packages exist
             add_dsm62_builds=$([ "$has_arch_packages" == "true" ] && echo "true" || echo "false")
           fi
 
@@ -208,26 +158,13 @@ jobs:
             matrix=$(echo "$matrix" | jq --arg arch "$1" '.include += [{"arch": $arch}]')
           }
 
-          # Add noarch builds
-          if [ "$add_noarch_builds" == "true" ] && [ "$has_noarch_packages" == "true" ]; then
-            add_to_matrix "noarch-1.1"
-            add_to_matrix "noarch-3.1"
-            add_to_matrix "noarch-6.1"
-            add_to_matrix "noarch-7.0"
-          fi
-
-          # Add noarch DSM 7.2 builds
-          if [ "$add_noarch_dsm72_builds" == "true" ] && [ "$has_noarch_packages" == "true" ]; then
-            add_to_matrix "noarch-7.2"
-          fi
-
-          # Add DSM 7.2 builds
+          # Add DSM 7.2 builds (amd64 + arm64)
           if [ "$add_dsm72_builds" == "true" ] && [ "$has_arch_packages" == "true" ]; then
             add_to_matrix "x64-7.2"
             add_to_matrix "aarch64-7.2"
           fi
 
-          # Add DSM 6.2 builds
+          # Add DSM 6.2 builds (amd64 + arm64)
           if [ "$add_dsm62_builds" == "true" ] && [ "$has_arch_packages" == "true" ]; then
             add_to_matrix "x64-6.2.4"
             add_to_matrix "aarch64-6.2.4"
