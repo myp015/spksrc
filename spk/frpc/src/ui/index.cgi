@@ -318,38 +318,9 @@ function showChecking() {
 function saveConfig() {
   // 1) 点击瞬间立即显示“检测状态...”（同步，无延迟）
   showChecking();
-
-  var textarea = document.getElementById('textcontent');
-  var action = document.querySelector('#configForm').getAttribute('action') || 'index.cgi';
-  var body = new URLSearchParams();
-  body.append('textcontent', textarea ? textarea.value : '');
-
-  // 2) 异步 AJAX 保存（不刷新页面，避免等待往返后才出检测状态）
-  if (window.fetch) {
-    fetch(action, { method: 'POST', body: body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
-      .then(function(){
-        // 稍等 frpc 启动并连上 frps，再查真实状态
-        return new Promise(function(res){ setTimeout(res, 800); });
-      })
-      .then(function(){ return fetch(buildUrl('status'), { cache: 'no-store' }); })
-      .then(function(r){ return r.text(); })
-      .then(function(s){
-        s = (s || '').trim();
-        var running = (s.split('|')[0] === 'running');
-        var pid = s.split('|')[1] || '';
-        var bar = document.getElementById('statusBar');
-        var dot = document.getElementById('statusDot');
-        var txt = document.getElementById('statusText');
-        var pidEl = document.getElementById('statusPid');
-        bar.className = 'status-bar ' + (running ? 'running' : 'stopped');
-        dot.className = 'status-dot ' + (running ? 'running' : 'stopped');
-        txt.textContent = running ? '运行中' : '已停止';
-        pidEl.textContent = running ? ('PID: ' + pid) : '';
-      })
-      .catch(function(){});
-    return false; // 阻止原生表单导航
-  }
-  // 3) 无 fetch 兜底：走原生表单提交，由服务端渲染“检测状态...
+  // 2) 走原生表单 POST 提交（与旧版一致的可靠保存路径，不依赖 fetch）。
+  //    AJAX fetch 在 DSM webman 环境下相对 URL 可能解析错误且错误被静默吞掉，
+  //    导致配置写不进、无反馈。原生表单提交由浏览器直接 POST，服务端照常写配置并重启。
   return true;
 }
 
