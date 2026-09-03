@@ -16,7 +16,7 @@ on:
       target_arch:
         description: 'Build only this arch (e.g. x64-7.2 / x64-6.2.4 / noarch-7.2 / auto)'
         required: false
-        default: 'x64-7.2'
+        default: 'auto'
       add_noarch_builds:
         description: 'Include noarch packages'
         required: false
@@ -35,7 +35,7 @@ on:
       add_dsm71_builds:
         description: 'Include DSM 7.1 archs'
         required: false
-        default: true
+        default: false
         type: boolean
       add_dsm62_builds:
         description: 'Include DSM 6.2 archs'
@@ -193,7 +193,7 @@ jobs:
             add_dsm72_builds=$([ "$has_arch_packages" == "true" ] && [ "$has_min_dsm72_packages" == "true" ] && echo "true" || echo "false")
 
             # Enable DSM 7.1 builds if arch packages exist
-            add_dsm71_builds=$([ "$has_arch_packages" == "true" ] && echo "true" || echo "false")
+            add_dsm71_builds=false
 
             # Enable DSM 6.2 builds if arch packages exist
             add_dsm62_builds=$([ "$has_arch_packages" == "true" ] && echo "true" || echo "false")
@@ -201,7 +201,7 @@ jobs:
 
           # Build matrix
           matrix=$(jq -n '{"include": []}')
-          target_arch="${{ github.event.inputs.target_arch || 'x64-7.2' }}"
+          target_arch="${{ github.event.inputs.target_arch || 'auto' }}"
 
           # Helper function to add entries to the matrix
           add_to_matrix() {
