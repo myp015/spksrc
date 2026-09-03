@@ -245,7 +245,7 @@ a { text-decoration: none; }
     <span class="status-pid" id="statusPid">${STATUS_PID_HTML}</span>
   </div>
   <div class="msg" id="statusMsg">$SAVED_MSG</div>
-  <form method="post" action="index.cgi?$QUERY" id="configForm" onsubmit="return saveConfig()">
+  <form method="post" action="index.cgi?$QUERY" id="configForm" target="saveFrame" onsubmit="return saveConfig()">
     <textarea name="textcontent">$CFG_CONTENT</textarea>
     <div class="actions">
       <button type="submit">保存并重启</button>
@@ -257,6 +257,8 @@ a { text-decoration: none; }
     <small>提示：若 frps 地址不可达，frpc 可能会退出（日志见 $LOG_FILE）。</small>
     <div id="logBox">点击“查看当前日志”加载。</div>
   </form>
+  <!-- 隐藏 iframe：表单提交到此处，主页面不刷新，日志窗口保持打开，只刷新状态 -->
+  <iframe name="saveFrame" style="display:none" aria-hidden="true"></iframe>
 </div>
 <script>
 var autoTimer = null;
@@ -318,10 +320,11 @@ function showChecking() {
 function saveConfig() {
   // 1) 点击瞬间立即显示“检测状态...”（同步，无延迟）
   showChecking();
-  // 2) 走原生表单 POST 提交（与旧版一致的可靠保存路径，不依赖 fetch）。
-  //    AJAX fetch 在 DSM webman 环境下相对 URL 可能解析错误且错误被静默吞掉，
-  //    导致配置写不进、无反馈。原生表单提交由浏览器直接 POST，服务端照常写配置并重启。
-  return true;
+  // 2) 表单提交到隐藏 iframe（target=saveFrame），主页面不刷新，日志窗口保持打开。
+  //    采用原生表单 POST（可靠，能正常写入配置），不依赖 fetch。
+  // 3) 稍等 frpc 重启并连上 frps 后，只刷新状态（不刷新整个页面）。
+  setTimeout(refreshStatus, 1200);
+  return true; // 提交到 iframe
 }
 
 
