@@ -225,45 +225,12 @@ jobs:
           if [ "$add_dsm72_builds" == "true" ] && [ "$has_arch_packages" == "true" ]; then
             add_to_matrix "x64-7.2"
             add_to_matrix "aarch64-7.2"
-            add_to_matrix "armv7-7.2"
-          fi
-
-          # Add DSM 7.1 builds
-          if [ "$add_dsm71_builds" == "true" ] && [ "$has_arch_packages" == "true" ]; then
-            add_to_matrix "x64-7.1"
-            add_to_matrix "aarch64-7.1"
-            add_to_matrix "evansport-7.1"
-            add_to_matrix "armv7-7.1"
-            add_to_matrix "comcerto2k-7.1"
           fi
 
           # Add DSM 6.2 builds
           if [ "$add_dsm62_builds" == "true" ] && [ "$has_arch_packages" == "true" ]; then
             add_to_matrix "x64-6.2.4"
             add_to_matrix "aarch64-6.2.4"
-            add_to_matrix "evansport-6.2.4"
-            add_to_matrix "armv7-6.2.4"
-            add_to_matrix "hi3535-6.2.4"
-            add_to_matrix "88f6281-6.2.4"
-            add_to_matrix "qoriq-6.2.4"
-          fi
-
-          # Add DSM 5.2 builds
-          if [ "$add_dsm52_builds" == "true" ] && [ "$has_arch_packages" == "true" ]; then
-            add_to_matrix "x86-5.2"
-            add_to_matrix "88f6281-5.2"
-            add_to_matrix "ppc853x-5.2"
-          fi
-
-          # Add SRM 1.3 builds
-          if [ "$add_srm13_builds" == "true" ]; then
-            add_to_matrix "aarch64-1.3"
-            add_to_matrix "armv7-1.3"
-          fi
-
-          # Add SRM 1.2 builds
-          if [ "$add_srm12_builds" == "true" ]; then
-            add_to_matrix "armv7-1.2"
           fi
 
           # workflow_dispatch 时可强制只编译一个架构
