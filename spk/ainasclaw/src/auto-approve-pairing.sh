@@ -1,4 +1,6 @@
 #!/bin/sh
+# Auto-approve pending device-pairing requests.
+# Polls every 2s; first approval usually lands within ~2-3s of a request.
 set -u
 OPENCLAW="/var/packages/ainasclaw/target/bin/openclaw"
 NODE="/var/packages/ainasclaw/target/bin/node"
@@ -19,13 +21,17 @@ NODE
 )"
 [ -n "$TOKEN" ] || exit 0
 
+# Fast initial wait for gateway readiness (cap ~30s, 1s steps).
 for i in $(seq 1 30); do
   "$OPENCLAW" devices list --json --token "$TOKEN" >/dev/null 2>&1 && break
-  sleep 2
+  sleep 1
 done
+# Poll pending device-pairing requests aggressively. 2s keeps WebUI/cellphone
+# prompts approving in a few seconds while keeping the gateway idle most of
+# the time. Approval is idempotent: skipping a tick only delays, never breaks.
 while true; do
-  "$OPENCLAW" devices list --json --token "$TOKEN" 2>/dev/null | "$NODE" -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);for(const r of (j.pending||[]))if(r.requestId)console.log(r.requestId)}catch{}})' | while read -r reqid; do
-    "$OPENCLAW" devices approve --token "$TOKEN" "$reqid" >/dev/null 2>&1 || true
-  done
-  sleep 10
+  "$OPENCLAW" devices list --json --token "$TOKEN" 2>/dev/null     | "$NODE" -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);for(const r of (j.pending||[]))if(r.requestId)console.log(r.requestId)}catch{}})'     | while read -r reqid; do
+        "$OPENCLAW" devices approve --token "$TOKEN" "$reqid" >/dev/null 2>&1 || true
+      done
+  sleep 2
 done
