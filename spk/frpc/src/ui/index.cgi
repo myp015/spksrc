@@ -44,6 +44,14 @@ read_post_body() {
 # 运行状态显示：frpc 是否运行 + PID
 # 判断 frpc 是否真正连上 frps（依据 frpc.log 中最后一次连接标志）
 frpc_connected() {
+    # 优先用 netstat 检测 frpc 是否有 ESTABLISHED TCP 连接（实时、准确）。
+    # 连接失败/重连中 frpc 处于 SYN_SENT（不是 ESTABLISHED）→ 判定未连接。
+    # 日志末尾标志有 i/o timeout 写入延迟，刚重启/断线时可能误判为已连接。
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -anp 2>/dev/null | grep -F "frpc" | grep -q "ESTABLISHED" && return 0
+        return 1
+    fi
+    # netstat 不可用时回退日志检测
     [ -f "$LOG_FILE" ] || return 1
     last="$(grep -E 'login to server (success|failed)|connect to server error|start proxy success' "$LOG_FILE" 2>/dev/null | tail -n1)"
     case "$last" in
