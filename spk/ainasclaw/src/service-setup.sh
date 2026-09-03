@@ -1451,17 +1451,12 @@ if (modelIdInput) {
   // Keep existing defaults on UPGRADE; the wizard sends no model id.
 }
 
-cfg.memory = cfg.memory || {};
-cfg.memory.qmd = cfg.memory.qmd || {};
-cfg.memory.qmd.paths = Array.isArray(cfg.memory.qmd.paths) ? cfg.memory.qmd.paths : [];
-if (workspace) {
-  const statePath = `${workspace}/.openclaw`;
-  if (!cfg.memory.qmd.paths.length) {
-    cfg.memory.qmd.paths.push({ path: statePath, name: "workspace", pattern: "**/*.md" });
-  } else {
-    cfg.memory.qmd.paths[0].path = statePath;
-  }
-}
+// OpenClaw 2026.8.2 removed the QMD memory backend. Never write memory.qmd;
+// builtin memory is the only engine and must not carry a stale qmd key.
+cfg.memory = cfg.memory && typeof cfg.memory === "object" ? cfg.memory : {};
+delete cfg.memory.qmd;
+if (cfg.memory.backend === "qmd") cfg.memory.backend = "builtin";
+cfg.memory.backend = cfg.memory.backend || "builtin";
 
 cfg.channels = cfg.channels || {};
 cfg.plugins = cfg.plugins || {};
@@ -2210,11 +2205,11 @@ try {
   delete c.plugins.bundledDiscovery;
   if (Object.prototype.hasOwnProperty.call(c.plugins, "installs")) delete c.plugins.installs;
 
-  c.memory = c.memory || {};
-  c.memory.qmd = c.memory.qmd || {};
-  c.memory.qmd.paths = Array.isArray(c.memory.qmd.paths) ? c.memory.qmd.paths : [];
-  if (!c.memory.qmd.paths.length) c.memory.qmd.paths.push({ path: statePath, name: "workspace", pattern: "**/*.md" });
-  else c.memory.qmd.paths[0].path = statePath;
+  // OpenClaw 2026.8.2 removed QMD; strip stale memory.qmd and pin builtin backend.
+  c.memory = c.memory && typeof c.memory === "object" ? c.memory : {};
+  delete c.memory.qmd;
+  if (c.memory.backend === "qmd") c.memory.backend = "builtin";
+  c.memory.backend = c.memory.backend || "builtin";
 
   fs.writeFileSync(cfgPath, JSON.stringify(c, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
   fs.chmodSync(cfgPath, 0o600);
@@ -2606,21 +2601,16 @@ if (cfg.channels.wecom && typeof cfg.channels.wecom === "object") {
   }
 }
 
-// Normalize memory backend for SPK defaults: prefer builtin when qmd binary is unavailable.
+// OpenClaw 2026.8.2 removed the QMD memory backend. Force builtin and strip any
+// stale memory.qmd key so config reload never fails on the removed schema.
 cfg.memory = cfg.memory && typeof cfg.memory === "object" ? cfg.memory : {};
-const memBackend = (typeof cfg.memory.backend === "string" ? cfg.memory.backend.trim().toLowerCase() : "") || "builtin";
-if (!cfg.memory.backend) {
-  cfg.memory.backend = "builtin";
+if (Object.prototype.hasOwnProperty.call(cfg.memory, "qmd")) {
+  delete cfg.memory.qmd;
   changed = true;
 }
-if (memBackend === "qmd") {
-  const qmdCmd = cfg.memory?.qmd && typeof cfg.memory.qmd.command === "string" && cfg.memory.qmd.command.trim()
-    ? cfg.memory.qmd.command.trim()
-    : "/usr/local/bin/qmd";
-  if (qmdCmd.startsWith("/") && !fs.existsSync(qmdCmd)) {
-    cfg.memory.backend = "builtin";
-    changed = true;
-  }
+if ((cfg.memory.backend || "builtin") !== "builtin") {
+  cfg.memory.backend = "builtin";
+  changed = true;
 }
 
 // Normalize QQBot aliases + policy enums for schema safety.
