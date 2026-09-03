@@ -42,34 +42,49 @@ read_post_body() {
 }
 
 # 运行状态显示：frpc 是否运行 + PID
+# 判断 frpc 是否真正连上 frps（依据 frpc.log 中最后一次连接标志）
+frpc_connected() {
+    [ -f "$LOG_FILE" ] || return 1
+    last="$(grep -E 'login to server (success|failed)|connect to server error|start proxy success' "$LOG_FILE" 2>/dev/null | tail -n1)"
+    case "$last" in
+        *"login to server success"*|*"start proxy success"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 frpc_status() {
-    # 1) PID 文件优先
+    # 1) 进程是否存活（PID 文件优先）
+    local pid=""
     if [ -f "$PID_FILE" ]; then
         pid="$(cat "$PID_FILE" 2>/dev/null | tr -d '[:space:]')"
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            printf 'running|%s' "$pid"
-            return
+        if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+            pid=""
         fi
     fi
-    # 2) 兜底按进程名匹配
-    if command -v pgrep >/dev/null 2>&1; then
+    if [ -z "$pid" ] && command -v pgrep >/dev/null 2>&1; then
         pid="$(pgrep -f "${APP_TARGET_DIR}/bin/frpc" 2>/dev/null | head -n1 | tr -d '[:space:]')"
-        if [ -n "$pid" ]; then
-            printf 'running|%s' "$pid"
-            return
-        fi
-    else
+    fi
+    if [ -z "$pid" ]; then
         # busybox ps：DSM 上 ps 输出格式可能不同，逐列找进程号
         line="$(ps 2>/dev/null | grep -F "${APP_TARGET_DIR}/bin/frpc" | grep -v grep | head -n1)"
         if [ -n "$line" ]; then
             pid="$(printf '%s' "$line" | awk '{print $1}' | tr -d '[:space:]')"
-            if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
-                printf 'running|%s' "$pid"
-                return
-            fi
+            [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null || pid=""
         fi
     fi
-    printf 'stopped|'
+
+    # 进程不存在 → 已停止
+    if [ -z "$pid" ]; then
+        printf 'stopped|'
+        return
+    fi
+
+    # 进程存活，但需确认真正连上 frps（连接失败也视为已停止）
+    if frpc_connected; then
+        printf 'running|%s' "$pid"
+    else
+        printf 'stopped|'
+    fi
 }
 
 restart_frpc() {
@@ -155,14 +170,16 @@ STATUS_STATE="${STATUS%%|*}"
 STATUS_PID="${STATUS#*|}"
 # 刚保存过（POST 成功）：先显示“检测状态...”，由 JS 异步刷新真实状态
 if [ -n "$SAVED_MSG" ]; then
-    STATUS_HTML="<span class=\"status-dot checking\"></span>检测状态...<span class=\"status-pid\"></span>"
+    STATUS_DOT="checking"
+    STATUS_TEXT="检测状态..."
+    STATUS_PID_HTML=""
     STATUS_CLASS="checking"
     SAVED_FLAG=1
 else
     SAVED_FLAG=0
     case "$STATUS_STATE" in
-        running) STATUS_HTML="<span class=\"status-dot running\"></span>运行中<span class=\"status-pid\">PID: ${STATUS_PID}</span>"; STATUS_CLASS="running" ;;
-        *)       STATUS_HTML="<span class=\"status-dot stopped\"></span>未运行<span class=\"status-pid\"></span>"; STATUS_CLASS="stopped" ;;
+        running) STATUS_DOT="running"; STATUS_TEXT="运行中"; STATUS_PID_HTML="PID: ${STATUS_PID}"; STATUS_CLASS="running" ;;
+        *)       STATUS_DOT="stopped"; STATUS_TEXT="已停止"; STATUS_PID_HTML=""; STATUS_CLASS="stopped" ;;
     esac
 fi
 
@@ -182,7 +199,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Ping
 .header h2 { margin: 0; font-size: 20px; }
 .desc { color: #666; margin-bottom: 12px; }
 .status-bar { display: flex; align-items: center; gap: 8px; background: #f7f9fc; border: 1px solid #e3e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
-.status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 .status-dot.running { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
 .status-dot.stopped { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
 .status-dot.checking { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.2); animation: blink 1s infinite; }
@@ -190,7 +207,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Ping
 .status-bar.running { color: #15803d; }
 .status-bar.stopped { color: #b91c1c; }
 .status-bar.checking { color: #b45309; }
-.status-pid { margin-left: 8px; color: #6b7280; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+#statusText { flex: 0 0 auto; }
+.status-pid { color: #6b7280; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .msg { margin: 10px 0; color: #0a7a0a; font-weight: 600; min-height: 20px; }
 form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 textarea { width: 100%; flex: 1; min-height: 220px; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; box-sizing: border-box; resize: none; }
@@ -214,7 +232,9 @@ a { text-decoration: none; }
     </div>
   </div>
   <div class="status-bar ${STATUS_CLASS}" id="statusBar">
-    <span id="statusText">$STATUS_HTML</span>
+    <span class="status-dot ${STATUS_DOT}" id="statusDot"></span>
+    <span id="statusText">${STATUS_TEXT}</span>
+    <span class="status-pid" id="statusPid">${STATUS_PID_HTML}</span>
   </div>
   <div class="msg" id="statusMsg">$SAVED_MSG</div>
   <form method="post" action="index.cgi?$QUERY">
@@ -257,7 +277,9 @@ function loadLog() {
 
 function refreshStatus() {
   var bar = document.getElementById('statusBar');
+  var dot = document.getElementById('statusDot');
   var txt = document.getElementById('statusText');
+  var pidEl = document.getElementById('statusPid');
   fetch(buildUrl('status'), { cache: 'no-store' })
     .then(function(r){ return r.text(); })
     .then(function(s){
@@ -266,9 +288,9 @@ function refreshStatus() {
       var pid = s.split('|')[1] || '';
       var running = (state === 'running');
       bar.className = 'status-bar ' + (running ? 'running' : 'stopped');
-      txt.innerHTML = running
-        ? '<span class="status-dot running"></span>运行中<span class="status-pid">PID: ' + pid + '</span>'
-        : '<span class="status-dot stopped"></span>未运行<span class="status-pid"></span>';
+      dot.className = 'status-dot ' + (running ? 'running' : 'stopped');
+      txt.textContent = running ? '运行中' : '已停止';
+      pidEl.textContent = running ? ('PID: ' + pid) : '';
     })
     .catch(function(){});
 }
