@@ -1,6 +1,10 @@
 SPK_NAME = ddns-go
-SPK_VERS ?= 6.16.7
-# Override with SPK_VERS=<version> to pin a specific release
+# Version defaults to the latest stable GitHub release (resolved at build
+# time). Override on the command line with SPK_VERS=<version> to pin.
+RESOLVE_VERSIONS := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/src/resolve-versions.sh
+RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS) 2>/dev/null')
+LATEST_SPK_VERSION := $(patsubst SPK_VERSION=%,%,$(filter SPK_VERSION=%,$(RESOLVED_VERSIONS)))
+SPK_VERS ?= $(LATEST_SPK_VERSION)
 SPK_REV = 1
 SPK_ICON = src/ddns-go.png
 

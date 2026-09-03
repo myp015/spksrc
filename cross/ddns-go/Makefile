@@ -1,5 +1,10 @@
 PKG_NAME = ddns-go
-PKG_VERS = 6.16.7
+# Version defaults to the latest stable GitHub release (resolved at build
+# time). Override on the command line with PKG_VERS=<version> to pin.
+RESOLVE_VERSIONS := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/../../spk/ddns-go/src/resolve-versions.sh
+RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS) 2>/dev/null')
+LATEST_PKG_VERSION := $(patsubst PKG_VERSION=%,%,$(filter PKG_VERSION=%,$(RESOLVED_VERSIONS)))
+PKG_VERS ?= $(LATEST_PKG_VERSION)
 WEB_VERSION = $(PKG_VERS)
 PKG_EXT = tar.gz
 PKG_DIST_NAME = v$(PKG_VERS).$(PKG_EXT)

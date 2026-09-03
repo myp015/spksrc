@@ -1,5 +1,10 @@
 PKG_NAME = frpc
-PKG_VERS = 0.68.1
+# Version defaults to the latest stable GitHub release (resolved at build
+# time). Override on the command line with PKG_VERS=<version> to pin.
+RESOLVE_VERSIONS := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/../../spk/frpc/src/resolve-versions.sh
+RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS) 2>/dev/null')
+LATEST_PKG_VERSION := $(patsubst PKG_VERSION=%,%,$(filter PKG_VERSION=%,$(RESOLVED_VERSIONS)))
+PKG_VERS ?= $(LATEST_PKG_VERSION)
 PKG_EXT = tar.gz
 PKG_DIST_NAME = v$(PKG_VERS).$(PKG_EXT)
 PKG_DIST_SITE = https://github.com/fatedier/frp/archive

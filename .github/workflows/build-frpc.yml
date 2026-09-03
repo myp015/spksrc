@@ -1,0 +1,70 @@
+name: Build frpc SPK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.71.0). Leave empty to build the latest stable release.'
+        required: false
+        default: ''
+      target_arch:
+        description: 'Target arch (e.g. x64-7.2, x64-6.2.4, armv8-7.2, noarch-7.2)'
+        required: false
+        default: 'x64-7.2'
+  # Periodically rebuild against the latest stable upstream release. The
+  # Makefile resolves the newest version via src/resolve-versions.sh at build
+  # time, so a scheduled run picks up upstream updates automatically.
+  schedule:
+    - cron: '0 3 * * *'   # daily at 03:00 UTC
+
+jobs:
+  build-frpc:
+    name: Build frpc (${{ github.event.inputs.target_arch || 'x64-7.2' }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            V=$(sh spk/frpc/src/resolve-versions.sh | sed -n 's/^SPK_VERSION=//p')
+            echo "Resolved latest frpc version: $V"
+            echo "VERSION=$V" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache toolchains
+        uses: actions/cache@v4
+        with:
+          path: toolchain/*/work
+          key: toolchain-frpc-v1-${{ hashFiles('toolchain/*/digests') }}
+
+      - name: Build frpc package
+        uses: docker://ghcr.io/synocommunity/spksrc:latest
+        with:
+          entrypoint: /bin/bash
+          args: -lc "set -e; cd /github/workspace/spk/frpc && make V=s SPK_VERS=${{ steps.version.outputs.VERSION }} PKG_VERS=${{ steps.version.outputs.VERSION }} arch-${{ github.event.inputs.target_arch || 'x64-7.2' }}"
+
+      - name: Upload SPK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frpc-${{ github.event.inputs.target_arch || 'x64-7.2' }}-${{ steps.version.outputs.VERSION }}
+          path: packages/frpc_*.spk
+          if-no-files-found: error
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frpc-${{ github.event.inputs.target_arch || 'x64-7.2' }}-logs
+          path: |
+            spk/frpc/work-*/doctor.log
+            spk/frpc/status-build.log
+            spk/frpc/build-*.log
+          if-no-files-found: warn

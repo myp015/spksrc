@@ -1,5 +1,10 @@
 SPK_NAME = cliproxy
-SPK_VERS = 6.9.26
+# Version defaults to the latest stable GitHub release (resolved at build
+# time). Override on the command line with SPK_VERS=<version> to pin.
+RESOLVE_VERSIONS := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/src/resolve-versions.sh
+RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS) 2>/dev/null')
+LATEST_SPK_VERSION := $(patsubst SPK_VERSION=%,%,$(filter SPK_VERSION=%,$(RESOLVED_VERSIONS)))
+SPK_VERS ?= $(LATEST_SPK_VERSION)
 SPK_REV = 9
 SPK_ICON = src/cliproxy.png
 
