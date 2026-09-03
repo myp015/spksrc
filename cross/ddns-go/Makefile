@@ -7,6 +7,15 @@ LATEST_PKG_VERSION := $(patsubst PKG_VERSION=%,%,$(filter PKG_VERSION=%,$(RESOLV
 PKG_VERS ?= $(LATEST_PKG_VERSION)
 WEB_VERSION = $(PKG_VERS)
 PKG_EXT = tar.gz
+
+# Version resolves to the latest GitHub release at build time, so a fixed
+# digests file can never match. Skip source checksum verification.
+CHECKSUM_TARGET = checksum_skip
+.PHONY: checksum_skip
+checksum_skip:
+	@$(create_target_dir)
+	@touch -f $(CHECKSUM_COOKIE)
+
 PKG_DIST_NAME = v$(PKG_VERS).$(PKG_EXT)
 PKG_DIST_SITE = https://github.com/jeessy2/ddns-go/archive
 PKG_DIST_FILE = $(PKG_NAME)-$(PKG_VERS).$(PKG_EXT)

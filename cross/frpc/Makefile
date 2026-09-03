@@ -6,6 +6,15 @@ RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS) 2>/dev/null')
 LATEST_PKG_VERSION := $(patsubst PKG_VERSION=%,%,$(filter PKG_VERSION=%,$(RESOLVED_VERSIONS)))
 PKG_VERS ?= $(LATEST_PKG_VERSION)
 PKG_EXT = tar.gz
+
+# Version resolves to the latest GitHub release at build time, so a fixed
+# digests file can never match. Skip source checksum verification.
+CHECKSUM_TARGET = checksum_skip
+.PHONY: checksum_skip
+checksum_skip:
+	@$(create_target_dir)
+	@touch -f $(CHECKSUM_COOKIE)
+
 PKG_DIST_NAME = v$(PKG_VERS).$(PKG_EXT)
 PKG_DIST_SITE = https://github.com/fatedier/frp/archive
 PKG_DIST_FILE = frp-$(PKG_VERS).$(PKG_EXT)

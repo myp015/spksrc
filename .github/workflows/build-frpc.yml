@@ -1,6 +1,12 @@
 name: Build frpc SPK
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'spk/frpc/**'
+      - '.github/workflows/build-frpc.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -47,9 +53,12 @@ jobs:
 
       - name: Build frpc package
         uses: docker://ghcr.io/synocommunity/spksrc:latest
+        env:
+          SPK_VERS: ${{ steps.version.outputs.VERSION }}
+          PKG_VERS: ${{ steps.version.outputs.VERSION }}
         with:
           entrypoint: /bin/bash
-          args: -lc "set -e; cd /github/workspace/spk/frpc && make V=s SPK_VERS=${{ steps.version.outputs.VERSION }} PKG_VERS=${{ steps.version.outputs.VERSION }} arch-${{ github.event.inputs.target_arch || 'x64-7.2' }}"
+          args: -lc "set -e; cd /github/workspace/spk/frpc && make V=s arch-${{ github.event.inputs.target_arch || 'x64-7.2' }}"
 
       - name: Upload SPK artifact
         uses: actions/upload-artifact@v4
