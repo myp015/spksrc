@@ -189,8 +189,8 @@ jobs:
             # Enable noarch DSM 7.2 builds if noarch packages exist and minimum DSM 7.2 requirements are met
             add_noarch_dsm72_builds=$([ "$has_noarch_packages" == "true" ] && [ "$has_min_dsm72_packages" == "true" ] && echo "true" || echo "false")
 
-            # Enable DSM 7.2 builds if arch packages exist and minimum DSM 7.2 requirements are met
-            add_dsm72_builds=$([ "$has_arch_packages" == "true" ] && [ "$has_min_dsm72_packages" == "true" ] && echo "true" || echo "false")
+            # Enable DSM 7.2 builds if arch packages exist
+            add_dsm72_builds=$([ "$has_arch_packages" == "true" ] && echo "true" || echo "false")
 
             # Enable DSM 7.1 builds if arch packages exist
             add_dsm71_builds=false
