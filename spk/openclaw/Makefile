@@ -36,6 +36,11 @@ SPK_ICON = src/openclaw.png
 
 DEPENDS =
 
+# Require DSM Container Manager (handles the docker-project / container
+# lifecycle as a root service, so the package scripts do not need docker).
+# NOTE: no ">=version" — the ">" is eaten by the INFO echo (shell redirection).
+SPK_DEPENDS = ContainerManager
+
 UNSUPPORTED_ARCHS = $(i686_ARCHS) $(ARMv5_ARCHS) $(ARMv7_ARCHS) $(PPC_ARCHS)
 
 REQUIRED_MIN_DSM = 7.2
@@ -57,6 +62,11 @@ SERVICE_SETUP = src/service-setup.sh
 SSS_SCRIPT = src/start-stop-status
 WIZARDS_TEMPLATES_DIR = src/wizard_templates
 NO_SERVICE_SHORTCUT = yes
+
+# Custom conf: overrides the generated privilege (run-as: root so postinst can
+# docker load the bundled image + write sudoers) and resource (declares the
+# docker-project so Container Manager manages the container lifecycle).
+CONF_DIR = conf
 
 DSM_UI_DIR = app
 DSM_UI_CONFIG = src/app/config
@@ -123,6 +133,15 @@ openclaw_copy_target:
 	@ln -s ../ui/index.cgi $(STAGING_DIR)/app/index.cgi
 	@cp -rf src/ui/* $(STAGING_DIR)/ui/
 	@chmod 755 $(STAGING_DIR)/ui/index.cgi
+	# Pre-render docker-compose files (default data dir + port) so Container
+	# Manager always finds a valid compose at postinst. postinst re-renders if
+	# the wizard supplies different values.
+	@sed -e 's|{{DATA_DIR}}|/volume1/docker/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
+		src/app/docker-compose.yaml.tpl > $(STAGING_DIR)/app/docker-compose.yaml
+	@sed -e 's|{{DATA_DIR}}|/volume1/docker/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
+		src/app/docker-compose.admin.yaml.tpl > $(STAGING_DIR)/app/docker-compose.admin.yaml
+	@chmod 644 $(STAGING_DIR)/app/docker-compose.yaml $(STAGING_DIR)/app/docker-compose.admin.yaml
+	@ls -l $(STAGING_DIR)/app/docker-compose*.yaml
 	# Service lifecycle scripts
 	@install -d -m 755 $(STAGING_DIR)/scripts
 	@cp -f src/service-setup.sh $(STAGING_DIR)/scripts/service-setup

@@ -1,0 +1,11 @@
+{
+  "docker-project": {
+    "projects": [
+      {
+        "name": "openclaw",
+        "path": "app"
+      }
+    ]
+  },
+  "systemd-unit": {}
+}

@@ -114,15 +114,6 @@
       "allowFrom": {
         "webchat": [
           "*"
-        ],
-        "feishu": [
-          "*"
-        ],
-        "qqbot": [
-          "*"
-        ],
-        "wecom": [
-          "*"
         ]
       }
     },
@@ -133,52 +124,10 @@
       "workspaceOnly": true
     }
   },
-  "channels": {
-    "feishu": {
-      "enabled": false,
-      "defaultAccount": "default",
-      "accounts": {
-        "default": {}
-      },
-      "dmPolicy": "open",
-      "groupPolicy": "open",
-      "allowFrom": [
-        "*"
-      ]
-    },
-    "qqbot": {
-      "enabled": false,
-      "dmPolicy": "pairing",
-      "groupPolicy": "open",
-      "allowFrom": []
-    },
-    "wecom": {
-      "enabled": false,
-      "dmPolicy": "open",
-      "groupPolicy": "open",
-      "allowFrom": [
-        "*"
-      ],
-      "dynamicAgents": {
-        "enabled": false
-      },
-      "dm": {
-        "createAgentOnFirstMessage": false
-      }
-    }
-  },
+  "channels": {},
   "plugins": {
     "entries": {
       "browser": {
-        "enabled": true
-      },
-      "feishu": {
-        "enabled": true
-      },
-      "qqbot": {
-        "enabled": false
-      },
-      "wecom": {
         "enabled": true
       },
       "device-pair": {
@@ -189,9 +138,7 @@
     "allow": [
       "browser",
       "memory-core",
-      "device-pair",
-      "feishu",
-      "wecom"
+      "device-pair"
     ]
   },
   "memory": {

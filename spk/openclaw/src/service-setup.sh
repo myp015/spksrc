@@ -1,8 +1,10 @@
 #!/bin/sh
 # OpenClaw (container mode) — DSM package lifecycle + shared helpers.
 #
-# This package runs OpenClaw as a Docker container. The image is FIXED; the
-# OpenClaw app payload lives in a persistent volume and self-updates in place.
+# This package runs OpenClaw as a Docker container managed by the DSM
+# "Container Manager" (docker-project resource). The image is FIXED and
+# bundled in the SPK (offline install); the OpenClaw app payload lives in a
+# persistent volume and self-updates in place via npm.
 #
 # Hooks: initialize_variables, service_postinst, service_preupgrade,
 #        service_postupgrade, service_preuninst, service_postuninst.
@@ -18,12 +20,6 @@ CONTAINER_IMAGE_TAG="2026.8.2"
 CONTAINER_GATEWAY_PORT="58789"
 CONTAINER_DATA_DIR="${SYNOPKG_PKGVAR}/data"
 CONTAINER_USER="root"
-CONTAINER_EXTRA_ARGS=""
-
-# Allow runtime override persisted by write_container_env().
-if [ -r "${SYNOPKG_PKGVAR}/container.env" ]; then
-    . "${SYNOPKG_PKGVAR}/container.env"
-fi
 
 # Wizard-provided overrides (exported by the DSM installer at install/upgrade).
 WIZARD_DATA_DIR="${wizard_data_dir:-${WIZARD_DATA_DIR:-}}"
@@ -91,14 +87,38 @@ stage_container_scripts() {
     fi
 }
 
-# Allow the DSM web CGI (http user) to invoke the root helper for UI actions.
+# Render the docker-compose files from templates, substituting wizard values.
+# Container Manager reads these from target/app/ and manages the container.
+render_compose() {
+    local app_dir="${SYNOPKG_PKGDEST}/app"
+    local tpl_base="${app_dir}/docker-compose.yaml.tpl"
+    local tpl_admin="${app_dir}/docker-compose.admin.yaml.tpl"
+    [ -f "${tpl_base}" ] || return 0
+    mkdir -p "${app_dir}"
+    local data_dir port
+    data_dir="$(printf '%s' "${CONTAINER_DATA_DIR}" | sed 's|/$||')"
+    port="${CONTAINER_GATEWAY_PORT:-58789}"
+    # Replace {{DATA_DIR}} and {{GATEWAY_PORT}} placeholders.
+    sed -e "s|{{DATA_DIR}}|${data_dir}|g" \
+        -e "s|{{GATEWAY_PORT}}|${port}|g" \
+        "${tpl_base}" > "${app_dir}/docker-compose.yaml"
+    if [ -f "${tpl_admin}" ]; then
+        sed -e "s|{{DATA_DIR}}|${data_dir}|g" \
+            -e "s|{{GATEWAY_PORT}}|${port}|g" \
+            "${tpl_admin}" > "${app_dir}/docker-compose.admin.yaml"
+    fi
+    chmod 644 "${app_dir}/docker-compose.yaml" "${app_dir}/docker-compose.admin.yaml" 2>/dev/null || true
+}
+
+# Allow the DSM web CGI (http user) to invoke the root helper for UI actions
+# (status / self-update / logs), which need docker access. postinst runs as
+# root (privilege run-as: root) so this write succeeds.
 ensure_ui_sudoers() {
     local rule_file="/etc/sudoers.d/openclaw-ui"
     local rule="http ALL=(root) NOPASSWD: ${SYNOPKG_PKGDEST}/scripts/ui-run.sh"
     if [ -d /etc/sudoers.d ]; then
         printf '%s\n' "${rule}" > "${rule_file}"
         chmod 440 "${rule_file}" 2>/dev/null || true
-        # Validate before leaving a broken sudoers in place.
         if command -v visudo >/dev/null 2>&1; then
             if ! visudo -c -f "${rule_file}" >/dev/null 2>&1; then
                 rm -f "${rule_file}"
@@ -117,8 +137,10 @@ service_postinst() {
     mkdir -p "${SYNOPKG_PKGVAR}"
     ensure_data_dirs
     write_container_env
+    render_compose
     ensure_ui_sudoers
     # Import the FULL bundled container image (offline install, no download).
+    # Runs as root (privilege run-as: root) so docker.sock is accessible.
     load_bundled_image
 }
 
@@ -147,22 +169,21 @@ service_postupgrade() {
     mkdir -p "${SYNOPKG_PKGVAR}"
     ensure_data_dirs
     write_container_env
+    render_compose
     stage_container_scripts
     ensure_ui_sudoers
+    load_bundled_image
 }
 
 service_preuninst() {
-    # Stop and remove the container. The persistent data under PKGVAR is
-    # removed by DSM after uninstall.
-    if container_exists; then
-        if container_running; then
-            "${DOCKER_BIN}" stop -t 15 "${CONTAINER_NAME}" >> "${CONTAINER_LOG}" 2>&1 || true
-        fi
-        "${DOCKER_BIN}" rm "${CONTAINER_NAME}" >> "${CONTAINER_LOG}" 2>&1 || true
-    fi
+    # Container is managed by Container Manager; it stops/removes it on
+    # uninstall. Nothing to do here (avoid touching docker directly).
+    :
 }
 
 service_postuninst() {
-    # cleanup legacy container name if present
-    "${DOCKER_BIN}" rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+    # best-effort cleanup of any orphaned container name
+    if [ -n "${DOCKER_BIN}" ]; then
+        "${DOCKER_BIN}" rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+    fi
 }
