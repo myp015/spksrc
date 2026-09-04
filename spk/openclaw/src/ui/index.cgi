@@ -2474,10 +2474,13 @@ if not auth_ok():
     raise SystemExit
 
 # Container mode: the gateway lives in the 'openclaw' container managed by
-# Container mode: start/stop/restart use docker on the openclaw container.
-# Gateway IS the container's PID 1 process. "Stop" stops the gateway process
-# (container exits, kept) and disables auto-restart so it stays down. "Start"
-# brings it back and restores auto-restart. ttyd (host side) is unaffected.
+# Container Manager, and the gateway process IS the container's PID 1
+# (entrypoint: exec node openclaw.mjs gateway). stop/force-stop act on the
+# IN-CONTAINER gateway — `docker exec openclaw kill -s ... 1` — and never
+# `docker stop` the container itself: when PID 1 exits, the compose restart
+# policy (restart: always) auto-restarts the container and brings the gateway
+# back, so the container stays under Container Manager control. "Start" brings
+# the container up (and restores auto-restart if it was ever changed).
 def docker_cmd(args):
     try:
         p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker'] + args,
@@ -2486,28 +2489,25 @@ def docker_cmd(args):
     except Exception as e:
         return -1, '%s: %s' % (type(e).__name__, e)
 
-logs = []
-rc = -1
-out_txt = ''
-cmds = []
-if action == 'stop':
-    # stop gateway: disable auto-restart, then stop the container (PID1 = gateway)
-    rc1, o1 = docker_cmd(['update', '--restart=no', 'openclaw'])
-    rc2, o2 = docker_cmd(['stop', 'openclaw'])
-    rc = rc2 if rc1 == 0 else rc1
-    out_txt = 'update: %s | stop: %s' % (o1, o2)
-    cmds = ['docker update --restart=no openclaw', 'docker stop openclaw']
-elif action == 'start':
-    rc1, o1 = docker_cmd(['start', 'openclaw'])
-    rc2, o2 = docker_cmd(['update', '--restart=always', 'openclaw'])
-    rc = rc1 if rc1 == 0 else rc1
-    out_txt = 'start: %s | update: %s' % (o1, o2)
-    cmds = ['docker start openclaw', 'docker update --restart=always openclaw']
-else:  # restart
-    rc, out_txt = docker_cmd(['restart', 'openclaw'])
-    cmds = ['docker restart openclaw']
-for c in cmds:
-    logs.append({'cmd': c, 'rc': rc, 'out': out_txt})
+def container_running():
+    try:
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'inspect', '-f',
+                            '{{.State.Running}}', 'openclaw'],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                           text=True, timeout=8)
+        return p.stdout.strip() == 'true'
+    except Exception:
+        return False
+
+def container_started_at():
+    try:
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'inspect', '-f',
+                            '{{.State.StartedAt}}', 'openclaw'],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                           text=True, timeout=8)
+        return p.stdout.strip()
+    except Exception:
+        return ''
 
 gw_port = 58789
 try:
@@ -2533,17 +2533,58 @@ def port_listening(port):
         except Exception:
             pass
 
-running = port_listening(gw_port)
-if action in ('start', 'restart') and not running:
-    for _ in range(30):
-        time.sleep(1)
-        running = port_listening(gw_port)
-        if running:
-            break
-ok = (rc == 0)
-if action == 'stop' and running:
-    ok = False
-    logs.append({'cmd': 'post-stop-check', 'error': 'gateway still listening after stop'})
+running_before = port_listening(gw_port)
+logs = []
+if action in ('stop', 'force-stop'):
+    if container_running():
+        # Kill the in-container gateway (PID 1). Graceful TERM when it was
+        # healthy; KILL for a hung / not-listening gateway (强制停止). Never
+        # `docker stop` the container and never touch the restart policy.
+        sig = 'KILL' if (action == 'force-stop' or not running_before) else 'TERM'
+        rc, out = docker_cmd(['exec', 'openclaw', 'kill', '-s', sig, '1'])
+        # docker exec errors while the container exits/restarts mid-command;
+        # that is the expected outcome here, not a failure.
+        out = (out or '').strip() or 'gateway PID 1 killed'
+        logs.append({'cmd': 'docker exec openclaw kill -s %s 1 (in-container gateway)' % sig,
+                     'rc': 0, 'out': out + ' (container auto-restarts the gateway)'})
+        # TERM lets a healthy gateway drain and exit (it IS the container's
+        # PID 1); the auto-restart then gives the container a NEW StartedAt.
+        # A TCP probe alone can't tell "healthy" from "hung but still answering
+        # handshakes", so if a few seconds after TERM the container is still
+        # running with the SAME StartedAt, the gateway ignored TERM -> escalate
+        # to SIGKILL. Comparing StartedAt avoids false positives from the
+        # instant auto-restart of a healthy gateway.
+        if sig == 'TERM':
+            started_before = container_started_at()
+            time.sleep(4)
+            if container_running() and container_started_at() == started_before:
+                rc2, out2 = docker_cmd(['exec', 'openclaw', 'kill', '-s', 'KILL', '1'])
+                logs.append({'cmd': 'docker exec openclaw kill -s KILL 1 (TERM ignored, escalate)',
+                             'rc': 0, 'out': (out2 or '').strip() or 'escalated to SIGKILL'})
+    else:
+        # Container fully down: just bring it back up.
+        rc, out = docker_cmd(['start', 'openclaw'])
+        rc2, o2 = docker_cmd(['update', '--restart=always', 'openclaw'])
+        rc = rc if rc == 0 else rc2
+        logs.append({'cmd': 'docker start openclaw', 'rc': rc, 'out': out})
+        logs.append({'cmd': 'docker update --restart=always openclaw', 'rc': rc2, 'out': o2})
+elif action == 'start':
+    rc, out = docker_cmd(['start', 'openclaw'])
+    rc2, o2 = docker_cmd(['update', '--restart=always', 'openclaw'])
+    rc = rc if rc == 0 else rc2
+    logs.append({'cmd': 'docker start openclaw', 'rc': rc, 'out': out})
+    logs.append({'cmd': 'docker update --restart=always openclaw', 'rc': rc2, 'out': o2})
+else:  # restart
+    rc, out = docker_cmd(['restart', 'openclaw'])
+    logs.append({'cmd': 'docker restart openclaw', 'rc': rc, 'out': out})
+
+# Wait for the gateway port to come back (start/restart, or stop's auto-restart).
+for _ in range(30):
+    time.sleep(1)
+    if container_running() and port_listening(gw_port):
+        break
+running = container_running() and port_listening(gw_port)
+ok = (rc == 0) and running
 print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': True}, ensure_ascii=False))
 PY
             exit 0
@@ -3377,14 +3418,13 @@ cat <<'HTML'
           setMsg('运行状态：正在初始化', 'ok');
         }
         // 仅保留“运行状态”提示，不显示其它文案。
-        if (actionName === 'start' || actionName === 'stop') {
-          const wantRunning = (actionName !== 'stop');
+        if (actionName === 'start' || actionName === 'stop' || actionName === 'force-stop') {
+          const wantRunning = (actionName === 'start');
           const maxTries = 40; // 最多约 36s，覆盖重启后端口恢复慢的场景
           for (let i = 0; i < maxTries; i += 1) {
             await new Promise(r => setTimeout(r, 900));
             try {
               const s = await api('status');
-              const serviceRunning = !!(s && s.serviceRunning);
               const gatewayRunning = !!(s && s.running);
               if (wantRunning) {
                 if (gatewayRunning) {
@@ -3392,12 +3432,12 @@ cat <<'HTML'
                   return;
                 }
               } else {
-                // The DSM package deliberately keeps a tiny sleep process
-                // alive for Package Center. Gateway stopped is the only
-                // meaningful condition for this button.
-                if (!gatewayRunning) {
-                  window.__statusRunning = false;
-                  setMsg('运行状态：已停止', 'ok');
+                // 停止/强制停止作用于容器内部的 gateway（PID 1），不是容器本身。
+                // gateway 退出后 compose restart: always 会自动重启容器并重新
+                // 拉起 gateway，因此等待其恢复（运行中 = 容器内 gateway 已重启）。
+                if (gatewayRunning) {
+                  window.__statusRunning = true;
+                  setMsg('运行状态：运行中（已重启容器内 gateway）', 'ok');
                   return;
                 }
               }
