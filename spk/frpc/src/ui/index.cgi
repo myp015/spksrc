@@ -215,6 +215,13 @@ else
     esac
 fi
 
+# 无保存消息时隐藏 msg，把空间让给编辑框
+if [ -n "$SAVED_MSG" ]; then
+    MSG_HIDE=""
+else
+    MSG_HIDE=' style="display:none"'
+fi
+
 printf 'Content-type: text/html\r\n\r\n'
 cat <<HTML
 <!DOCTYPE html>
@@ -226,7 +233,7 @@ cat <<HTML
 html, body { height: 100%; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 0; background: #f5f6f7; overflow: hidden; }
 .wrapper { max-width: 1080px; height: calc(100vh - 40px); margin: 20px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; }
-.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .header h2 { margin: 0; font-size: 20px; }
 .status-chip { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 14px; background: #f7f9fc; border: 1px solid #e3e8f0; }
 .status-chip.running { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
@@ -237,10 +244,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Ping
 .status-dot.stopped { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
 .status-dot.checking { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.2); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: .35; } }
-.msg { margin: 10px 0; color: #0a7a0a; font-weight: 600; min-height: 20px; }
+.msg { margin: 0 0 10px; color: #0a7a0a; font-weight: 600; }
 form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .editor { flex: 1; min-height: 0; display: flex; border: 1px solid #d0d7de; border-radius: 8px; overflow: hidden; background: #fff; }
-.gutter { width: 48px; flex: 0 0 auto; box-sizing: border-box; padding: 12px 10px 12px 0; text-align: right; background: #f6f8fa; border-right: 1px solid #e1e4e8; color: #8c959f; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; overflow: hidden; user-select: none; }
+.gutter { width: 48px; flex: 0 0 auto; box-sizing: border-box; padding: 12px 10px 12px 0; text-align: right; white-space: pre; background: #f6f8fa; border-right: 1px solid #e1e4e8; color: #8c959f; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; overflow: hidden; user-select: none; }
 textarea { width: 100%; flex: 1; min-height: 220px; border: 0; border-radius: 0; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; box-sizing: border-box; resize: none; outline: none; }
 .actions { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
 button { border: 0; background: #1E90FF; color: white; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-family: "Microsoft YaHei", sans-serif; }
@@ -261,7 +268,7 @@ a { text-decoration: none; }
       <span id="statusText">${STATUS_TEXT}</span>
     </div>
   </div>
-  <div class="msg" id="statusMsg">$SAVED_MSG</div>
+  <div class="msg" id="statusMsg"${MSG_HIDE}>$SAVED_MSG</div>
   <form method="post" action="index.cgi?$QUERY" id="configForm" target="saveFrame" onsubmit="return saveConfig()">
     <div class="editor">
       <div class="gutter" id="lineGutter"></div>
@@ -368,7 +375,7 @@ window.addEventListener('beforeunload', function(){
   var msg = document.getElementById('statusMsg');
   if (!msg) return;
   if ((msg.textContent || '').trim().length === 0) return;
-  setTimeout(function(){ msg.textContent = ''; }, 3500);
+  setTimeout(function(){ msg.textContent = ''; msg.style.display = 'none'; }, 3500);
 })();
 
 // 行号：按 textarea 内容生成，随 textarea 滚动保持对齐
