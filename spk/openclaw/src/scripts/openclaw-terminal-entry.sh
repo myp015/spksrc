@@ -19,9 +19,12 @@ export OPENCLAW_WORKSPACE_DIR="$WS"
 export PATH="/usr/local/bin:/usr/sbin:/usr/bin:/bin:${PATH}"
 
 # Convenience aliases for common host-level operations.
-alias oc-compose='docker compose -f /var/packages/openclaw/target/app/docker-compose.admin.yaml'
-alias oc-logs='docker logs --tail 200 openclaw'
-alias oc-restart='synopkg restart openclaw'
+# After one-time panel authorization (授权面板操作), you can run docker as
+# root here with:  sudo docker exec ...  /  sudo docker logs ...
+alias oc-exec='sudo docker exec openclaw node /data/runtime/openclaw.mjs'
+alias oc-compose='sudo docker compose -f /var/packages/openclaw/target/app/docker-compose.admin.yaml'
+alias oc-logs='sudo docker logs --tail 200 openclaw'
+alias oc-restart='sudo synopkg restart openclaw'
 
 if [ -x /bin/bash ]; then
   exec /bin/bash -i

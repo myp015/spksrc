@@ -2369,6 +2369,59 @@ PY
             printf '{"ok":true,"message":"local mode"}'
             exit 0
             ;;
+        authorize)
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body"
+import json, subprocess, shlex, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+user = str(payload.get('adminUser') or '').strip()
+password = str(payload.get('adminPassword') or '')
+logs = []
+def run(argv):
+    try:
+        p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=30)
+        out = (p.stdout or '').strip()
+        if out: logs.append(out[-400:])
+        return p.returncode
+    except Exception as e:
+        logs.append(str(e)); return 124
+
+SUDOERS_D='/etc/sudoers.d/openclaw-ui'
+RULE='http ALL=(root) NOPASSWD: /usr/syno/bin/synopkg, /usr/local/bin/docker, /usr/bin/docker, /bin/systemctl, /usr/sbin/nginx, /usr/bin/nginx, /bin/ln, /var/packages/openclaw/target/scripts/ui-run.sh\nsc-openclaw ALL=(root) NOPASSWD: /usr/local/bin/docker, /usr/bin/docker, /usr/syno/bin/synopkg\n'
+rc=-1
+if user and password:
+    # write sudoers via admin password (sudo -S as admin)
+    inner = "printf '%s\n' '%s' > %s && chmod 440 %s" % (RULE, RULE, SUDOERS_D, SUDOERS_D)
+    su_cmd = "sudo -S -p '' sh -lc " + shlex.quote(inner)
+    try:
+        p = subprocess.Popen(['su','-s','/bin/sh',user,'-c',su_cmd], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        out,_ = p.communicate((password+'\n'+password+'\n'), timeout=30)
+        out=(out or '').strip()
+        if out: logs.append(out[-400:])
+        rc = p.returncode
+    except Exception as e:
+        logs.append('auth flow error: '+str(e)); rc=125
+else:
+    logs.append('need adminUser and adminPassword'); rc=127
+
+# verify
+ok = False
+p = subprocess.run(['ls','-l',SUDOERS_D], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+if p.returncode==0:
+    ok=True
+    # test http sudo
+    t = subprocess.run(['sudo','-n','-u','http','-l'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    logs.append('sudoers present: '+((p.stdout or '').strip()[-120:]))
+print(json.dumps({'ok': ok, 'rc': rc, 'sudoers': SUDOERS_D, 'logs': logs[-6:]}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+
         install_run)
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
@@ -2394,7 +2447,7 @@ rc = -1
 out_txt = ''
 try:
     p = subprocess.run(
-        ['/usr/syno/bin/synopkg', syno_map[action], 'openclaw'],
+        ['sudo', '-n', '/usr/syno/bin/synopkg', syno_map[action], 'openclaw'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120,
     )
     rc = p.returncode
@@ -2444,24 +2497,30 @@ PY
             ;;
         logs)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            OCL_LOG="/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log"
-            [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw/openclaw-$(date -d yesterday +%Y-%m-%d 2>/dev/null).log"
-            [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date +%Y-%m-%d).log"
-            [ -f "$OCL_LOG" ] || OCL_LOG="/tmp/openclaw-0/openclaw-$(date -d yesterday +%Y-%m-%d 2>/dev/null).log"
-            APP_LOG="$LOG_FILE"
-            SPAWN_LOG="${APP_VAR_DIR}/openclaw-gateway.spawn.log"
-            [ -f "$SPAWN_LOG" ] || SPAWN_LOG="/tmp/openclaw-gateway.spawn.log"
-            [ -f "$OCL_LOG" ] || touch "$OCL_LOG"
-            [ -f "$APP_LOG" ] || touch "$APP_LOG"
-            [ -f "$SPAWN_LOG" ] || touch "$SPAWN_LOG"
-            merged=$( \
-              printf '===== openclaw (gateway) :: %s =====\n' "$OCL_LOG"; tail -n 500 "$OCL_LOG" 2>/dev/null; \
-              printf '\n===== openclaw app :: %s =====\n' "$APP_LOG"; tail -n 220 "$APP_LOG" 2>/dev/null; \
-              printf '\n===== spawn log :: %s =====\n' "$SPAWN_LOG"; tail -n 180 "$SPAWN_LOG" 2>/dev/null \
-            )
-            logs_json=$(printf '%s' "$merged" | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\r/\\r/g;s/\n/\\n/g')
-            src_json=$(printf '%s | %s | %s' "$OCL_LOG" "$APP_LOG" "$SPAWN_LOG" | sed 's/\\/\\\\/g;s/"/\\"/g')
-            printf '{"log":"%s","source":"%s"}' "$logs_json" "$src_json"
+            # Container mode: gateway logs live inside the container.
+            python3 - <<'PY' "$LOG_FILE"
+import json, subprocess, sys
+app_log = sys.argv[1] if len(sys.argv) > 1 else ''
+def run(argv):
+    try:
+        p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
+        return (p.stdout or '')
+    except Exception as e:
+        return 'error: %s' % e
+# container gateway logs (docker logs openclaw) via sudo
+container_log = run(['sudo','-n','/usr/local/bin/docker','logs','--tail','300','openclaw'])
+# host app log (package installer/terminal log)
+app_txt = ''
+try:
+    if app_log and __import__('os').path.exists(app_log):
+        app_txt = open(app_log,'r',encoding='utf-8',errors='ignore').read()[-2000:]
+except Exception:
+    pass
+merged = '===== openclaw (container gateway) :: docker logs openclaw =====\n' + container_log
+if app_txt:
+    merged += '\n\n===== openclaw app :: %s =====\n' % app_log + app_txt
+print(json.dumps({'log': merged, 'source': 'container+docker logs'}, ensure_ascii=False))
+PY
             exit 0
             ;;
         weixin_qr_proxy)
@@ -2821,6 +2880,7 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
+            + '  <button class="btn" id="btn_oc_auth" onclick="authorizePanel()">授权面板操作</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
@@ -3115,6 +3175,25 @@ cat <<'HTML'
         await new Promise(r => setTimeout(r, 900));
       }
       return false;
+    }
+    function authorizePanel() {
+      const adminUser = prompt('管理员账号（用于一次性授权面板操作）', '');
+      if (adminUser === null) return;
+      const adminPassword = prompt('管理员密码（仅本次授权，不保存）', '');
+      if (adminPassword === null) return;
+      const btn = document.getElementById('btn_oc_auth');
+      if (btn) { btn.disabled = true; btn.textContent = '授权中...'; }
+      setMsg('正在授权面板操作（写 sudoers）…', '');
+      api('authorize', 'POST', { adminUser: adminUser, adminPassword: adminPassword }).then(function(ret){
+        if (btn) { btn.disabled = false; btn.textContent = '授权面板操作'; }
+        if (ret && ret.ok) {
+          setMsg('授权成功：面板启动/停止/日志/终端可用了', 'ok');
+        } else {
+          const d = (ret && ret.logs && ret.logs.length) ? ret.logs.join('; ') : '';
+          setMsg('授权失败：' + ((ret && ret.error) || d || '请确认管理员账号密码') , 'err');
+        }
+        refreshStatus && refreshStatus();
+      });
     }
     async function runInstallAction(actionName) {
       setInstallButtonsBusy(actionName, true);
