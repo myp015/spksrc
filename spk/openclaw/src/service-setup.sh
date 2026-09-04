@@ -62,6 +62,8 @@ write_container_env() {
         echo "CONTAINER_DATA_DIR=\"${CONTAINER_DATA_DIR}\""
     } > "${SYNOPKG_PKGVAR}/container.env"
     chmod 600 "${SYNOPKG_PKGVAR}/container.env"
+    # Persist the data dir for the non-root web CGI (index.cgi reads this).
+    printf '%s\n' "${CONTAINER_DATA_DIR}" > "${SYNOPKG_PKGVAR}/data-dir" 2>/dev/null || true
 }
 
 ensure_data_dirs() {
@@ -76,6 +78,15 @@ ensure_data_dirs() {
             cp -f "${SYNOPKG_PKGDEST}/app/openclaw/config/openclaw.template.json" \
                   "${CONTAINER_DATA_DIR}/conf/openclaw.json"
         fi
+    fi
+    # Make the config dir/file readable & writable by the DSM web CGI (http)
+    # so the settings panel can load/save it WITHOUT root/docker. The container
+    # runs as root and can still read/write it too.
+    chmod -R a+rX "${CONTAINER_DATA_DIR}/conf" 2>/dev/null || true
+    chmod a+rw "${CONTAINER_DATA_DIR}/conf/openclaw.json" 2>/dev/null || true
+    # The panel also shows the installed version from the seeded runtime.
+    if [ -f "${CONTAINER_DATA_DIR}/runtime/package.json" ]; then
+        chmod a+r "${CONTAINER_DATA_DIR}/runtime/package.json" 2>/dev/null || true
     fi
 }
 

@@ -45,6 +45,107 @@ native_api=$(urldecode "$(get_param native_api "$QUERY")")
 launch_app=$(urldecode "$(get_param launchApp "$QUERY")")
 from_app=$(urldecode "$(get_param fromApp "$QUERY")")
 
+# --- resolve data dir + config path (non-root, file-based) ---
+# Default matches the wizard default; override from a persisted marker.
+DATA_DIR="/volume1/docker/openclaw"
+if [ -r "${PKG_VAR}/data-dir" ]; then
+    d="$(cat "${PKG_VAR}/data-dir" 2>/dev/null | tr -d '[:space:]')"
+    [ -n "$d" ] && DATA_DIR="$d"
+fi
+CONFIG_FILE="${DATA_DIR}/conf/openclaw.json"
+RUNTIME_PKG="${DATA_DIR}/runtime/package.json"
+GATEWAY_PORT="58789"
+if [ -r "${CONFIG_FILE}" ]; then
+    p="$(python3 -c 'import json,sys
+try:
+  v=int(json.load(open(sys.argv[1])).get("gateway",{}).get("port",0))
+  print(v if 1024<=v<=65535 else 58789)
+except: print(58789)' "$CONFIG_FILE" 2>/dev/null)"
+    [ -n "$p" ] && GATEWAY_PORT="$p"
+fi
+
+container_up() {
+    curl -s -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${GATEWAY_PORT}/healthz" 2>/dev/null | grep -q '200'
+}
+
+read_version() {
+    if [ -r "${RUNTIME_PKG}" ]; then
+        python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get("version","unknown"))
+except: print("unknown")' "$RUNTIME_PKG" 2>/dev/null
+    else
+        echo "unknown"
+    fi
+}
+
+get_status_json() {
+    local running="false" ver image data port
+    container_up && running="true"
+    ver="$(read_version)"
+    image="openclaw/openclaw:2026.8.2"
+    data="${DATA_DIR}"
+    port="${GATEWAY_PORT}"
+    python3 - "$running" "$ver" "$image" "$data" "$CONFIG_FILE" "$port" <<'PY'
+import json, sys
+running, ver, image, data, cfg, port = sys.argv[1:7]
+print(json.dumps({
+    "running": running == "true",
+    "version": ver,
+    "image": image,
+    "dataDir": data,
+    "configPath": cfg,
+    "port": port,
+}, ensure_ascii=False))
+PY
+}
+
+get_config_json() {
+    if [ -r "${CONFIG_FILE}" ]; then
+        cat "${CONFIG_FILE}"
+    else
+        printf '{"error":"config not found or not readable"}\n'
+    fi
+}
+
+set_config_json() {
+    local body="$1"
+    if [ ! -w "${CONFIG_FILE}" ]; then
+        printf '{"ok":false,"error":"config not writable (permission)"}\n'
+        return
+    fi
+    # Validate JSON before writing.
+    if ! printf '%s' "$body" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+        printf '{"ok":false,"error":"invalid JSON"}\n'
+        return
+    fi
+    cp -f "${CONFIG_FILE}" "${CONFIG_FILE}.bak" 2>/dev/null || true
+    if printf '%s\n' "$body" > "${CONFIG_FILE}" 2>/dev/null; then
+        printf '{"ok":true,"configPath":"%s"}\n' "$CONFIG_FILE"
+    else
+        printf '{"ok":false,"error":"write failed"}\n'
+    fi
+}
+
+get_check_update_json() {
+    local installed latest updatable="false"
+    installed="$(read_version)"
+    latest="$installed"
+    # latest is only known via the container (docker exec npm view) — report
+    # installed-only when the sudo/docker path is unavailable.
+    if [ -x "${UI_RUN}" ] && sudo -n true 2>/dev/null; then
+        latest="$(${SUDO} check_update 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("latest","unknown"))
+except: print("unknown")' 2>/dev/null)"
+        [ "$latest" = "unknown" ] && latest="$installed"
+    fi
+    [ "$installed" != "unknown" ] && [ "$latest" != "unknown" ] && [ "$installed" != "$latest" ] && updatable="true"
+    python3 - "$installed" "$latest" "$updatable" <<'PY'
+import json, sys
+installed, latest, updatable = sys.argv[1:4]
+print(json.dumps({"installed": installed, "latest": latest, "updatable": updatable == "true"}, ensure_ascii=False))
+PY
+}
+
 # Require a DSM login session (unless it's a native_api JSON call which is
 # still served behind the same session in practice).
 REQ_COOKIE="${HTTP_COOKIE:-}"
@@ -68,10 +169,11 @@ if [ "$native_api" = "1" ]; then
     printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
     case "$action" in
         status)
-            ${SUDO} status
+            # Non-root, file-based status (no docker / sudo needed).
+            get_status_json
             ;;
         check_update)
-            ${SUDO} check_update
+            get_check_update_json
             ;;
         update)
             body=$(read_body)
@@ -79,26 +181,49 @@ if [ "$native_api" = "1" ]; then
 try: print(json.load(sys.stdin).get("version","latest"))
 except: print("latest")' 2>/dev/null)
             [ -z "$ver" ] && ver=latest
-            ${SUDO} update "$ver"
+            # In-container update requires docker exec (root). Try sudo helper;
+            # if unavailable, report clearly.
+            if [ -x "${UI_RUN}" ] && sudo -n true 2>/dev/null; then
+                ${SUDO} update "$ver"
+            else
+                printf '{"ok":false,"error":"在线升级需在 NAS 终端执行：docker exec -it openclaw /data/scripts/update-openclaw.sh %s"}\n' "$ver"
+            fi
             ;;
         restart)
-            ${SUDO} restart
+            if [ -x "${UI_RUN}" ] && sudo -n true 2>/dev/null; then
+                ${SUDO} restart
+            else
+                printf '{"ok":false,"error":"重启需在 NAS 终端执行：synopkg restart openclaw"}\n'
+            fi
             ;;
         start)
-            ${SUDO} start
+            if [ -x "${UI_RUN}" ] && sudo -n true 2>/dev/null; then
+                ${SUDO} start
+            else
+                printf '{"ok":false,"error":"启动需在 NAS 终端执行：synopkg start openclaw"}\n'
+            fi
             ;;
         stop)
-            ${SUDO} stop
+            if [ -x "${UI_RUN}" ] && sudo -n true 2>/dev/null; then
+                ${SUDO} stop
+            else
+                printf '{"ok":false,"error":"停止需在 NAS 终端执行：synopkg stop openclaw"}\n'
+            fi
             ;;
         config_get)
-            ${SUDO} config_get
+            # Non-root file-based config read.
+            get_config_json
             ;;
         config_set)
             body=$(read_body)
-            printf '%s' "$body" | ${SUDO} config_set
+            set_config_json "$body"
             ;;
         logs)
-            ${SUDO} logs 300
+            if [ -x "${UI_RUN}" ] && sudo -n true 2>/dev/null; then
+                ${SUDO} logs 300
+            else
+                printf '{"logs":"查看容器日志需在 NAS 终端执行：docker logs --tail 200 openclaw"}\n'
+            fi
             ;;
         *)
             printf '{"error":"unknown action %s"}\n' "$action"
