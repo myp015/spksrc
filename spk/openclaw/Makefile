@@ -78,6 +78,8 @@ SERVICE_URL = /app/openclaw/
 # Resolve the upstream binary arch for docker --platform from the target arch.
 TARGET_ARCH_NAME = $(or $(ARCH),$(TC_ARCH),$(word 1,$(subst -, ,$(TC_NAME))))
 IMAGE_PLATFORM = $(if $(filter $(TARGET_ARCH_NAME),$(x64_ARCHS)),linux/amd64,$(if $(filter $(TARGET_ARCH_NAME),$(ARMv8_ARCHS)),linux/arm64,))
+# ttyd (bundled terminal) prebuilt arch suffix.
+TTYD_DIST_ARCH = $(if $(filter $(TARGET_ARCH_NAME),$(x64_ARCHS)),x86_64,$(if $(filter $(TARGET_ARCH_NAME),$(ARMv8_ARCHS)),aarch64,))
 
 PRE_COPY_TARGET = openclaw_prepare_bundle
 COPY_TARGET = openclaw_copy_target
@@ -100,6 +102,15 @@ openclaw_prepare_bundle:
 	else \
 		echo "WARN: no image bundle (OPENCLAW_IMAGE_TAR unset, OPENCLAW_PACK_IMAGE!=1) -> shell-only SPK"; \
 	fi
+	# Bundled terminal (ttyd) prebuilt binary.
+	@[ -n "$(TTYD_DIST_ARCH)" ] || { echo "Unsupported target arch for ttyd bundle: $(TARGET_ARCH_NAME)"; exit 1; }
+	@install -d -m 755 $(WORK_DIR)
+	@if [ ! -f "$(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH)" ]; then \
+		echo "Downloading ttyd 1.7.4 ($(TTYD_DIST_ARCH))"; \
+		curl -fsSL -o "$(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH)" \
+			https://github.com/tsl0922/ttyd/releases/download/1.7.4/ttyd.$(TTYD_DIST_ARCH); \
+	fi
+	@chmod +x "$(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH)"
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
@@ -124,6 +135,20 @@ openclaw_copy_target:
 	# Host-side CLI wrapper `openclaw`
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
 	@chmod 755 $(STAGING_DIR)/bin/openclaw
+	# Bundled terminal (ttyd)
+	@if [ -f "$(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH)" ]; then \
+		cp -f "$(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH)" $(STAGING_DIR)/bin/ttyd; \
+		chmod 755 $(STAGING_DIR)/bin/ttyd; \
+		ls -lh $(STAGING_DIR)/bin/ttyd; \
+	else \
+		echo "WARN: ttyd binary not present"; \
+	fi
+	# Terminal entry script (host side)
+	@install -d -m 755 $(STAGING_DIR)/scripts
+	@cp -f src/scripts/openclaw-terminal-entry.sh $(STAGING_DIR)/scripts/openclaw-terminal-entry.sh
+	@chmod 755 $(STAGING_DIR)/scripts/openclaw-terminal-entry.sh
+	@cp -f src/scripts/terminal.sh $(STAGING_DIR)/scripts/terminal.sh
+	@chmod 755 $(STAGING_DIR)/scripts/terminal.sh
 	# OpenClaw default config template
 	@install -d -m 755 $(STAGING_DIR)/app/openclaw/config
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json

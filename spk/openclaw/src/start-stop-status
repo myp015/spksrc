@@ -20,13 +20,23 @@ if [ -r "${SYNOPKG_PKGVAR}/container.env" ]; then
     GATEWAY_PORT="${CONTAINER_GATEWAY_PORT:-58789}"
 fi
 
+# Host-side bundled terminal (ttyd) lifecycle helper.
+TERMINAL_SCRIPT="/var/packages/${SYNOPKG_PKGNAME:-openclaw}/target/scripts/terminal.sh"
+
 case "$1" in
     start)
-        # Container Manager starts the container; nothing to do here.
+        # Container Manager starts the container; we also bring up the
+        # host-side web terminal (ttyd).
+        if [ -x "${TERMINAL_SCRIPT}" ]; then
+            "${TERMINAL_SCRIPT}" start >/dev/null 2>&1 || true
+        fi
         exit 0
         ;;
     stop)
-        # Container Manager stops the container; nothing to do here.
+        # Container Manager stops the container; stop the web terminal too.
+        if [ -x "${TERMINAL_SCRIPT}" ]; then
+            "${TERMINAL_SCRIPT}" stop >/dev/null 2>&1 || true
+        fi
         exit 0
         ;;
     status)
