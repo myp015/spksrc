@@ -349,17 +349,29 @@ function saveConfig() {
 }
 
 
+function stopAutoRefresh() {
+  if (!autoTimer) return;
+  clearInterval(autoTimer);
+  autoTimer = null;
+  document.getElementById('autoBtn').textContent = '开启实时刷新日志(2秒)';
+}
+
 function toggleLog() {
   var box = document.getElementById('logBox');
-  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+  var show = (box.style.display === 'none' || !box.style.display);
+  if (show) {
+    box.style.display = 'block';
+  } else {
+    // 收起日志时同步关闭实时刷新，避免 loadLog 每 2 秒把日志框重新弹出
+    box.style.display = 'none';
+    stopAutoRefresh();
+  }
 }
 
 function toggleAutoRefresh() {
   var btn = document.getElementById('autoBtn');
   if (autoTimer) {
-    clearInterval(autoTimer);
-    autoTimer = null;
-    btn.textContent = '开启实时刷新日志(2秒)';
+    stopAutoRefresh();
     return;
   }
   loadLog();
