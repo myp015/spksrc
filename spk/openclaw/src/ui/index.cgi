@@ -2372,14 +2372,13 @@ PY
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body"
-import json, subprocess, shlex, sys
+import json, subprocess, shlex, sys, pwd, grp
 raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
 try:
     payload = json.loads(raw or '{}')
 except Exception:
     payload = {}
-user = str(payload.get('adminUser') or '').strip()
-password = str(payload.get('adminPassword') or '')
+password = str(payload.get('password') or '')   # account auto-detected, only password
 logs = []
 def run(argv):
     try:
@@ -2392,8 +2391,44 @@ def run(argv):
 
 SUDOERS_D='/etc/sudoers.d/openclaw-ui'
 RULE='http ALL=(root) NOPASSWD: *** /usr/local/bin/docker, /usr/bin/docker, /bin/systemctl, /usr/sbin/nginx, /usr/bin/nginx, /bin/ln, /var/packages/openclaw/target/scripts/ui-run.sh\nsc-openclaw ALL=(root) NOPASSWD: *** /usr/local/bin/docker, /usr/bin/docker\n'
-rc=-1
-if user and password:
+
+def detect_admin():
+    # 1) explicit admins group members
+    try:
+        g = grp.getgrnam('administrators')
+        for u in g.gr_mem:
+            try:
+                pe = pwd.getpwnam(u)
+                if pe.pw_uid != 0 and pe.pw_uid != 65534 and not u.startswith('sc-'):
+                    return u
+            except KeyError:
+                pass
+    except KeyError:
+        pass
+    # 2) fallback: the 'admin' user or the first uid==1024 (DSM default admin)
+    for cand in ('admin',):
+        try:
+            pwd.getpwnam(cand)
+            return cand
+        except KeyError:
+            pass
+    # 3) any uid 1024 user
+    try:
+        for pe in pwd.getpwall():
+            if pe.pw_uid == 1024:
+                return pe.pw_name
+    except Exception:
+        pass
+    return ''
+
+user = detect_admin()
+rc = -1
+if not password:
+    logs.append('请输入管理员密码'); rc = 127
+elif not user:
+    logs.append('未找到可用的管理员账号'); rc = 126
+else:
+    logs.append('使用管理员账号: ' + user)
     # write sudoers via admin password (sudo -S as admin)
     inner = "printf '%s\n' '%s' > %s && chmod 440 %s" % (RULE, RULE, SUDOERS_D, SUDOERS_D)
     su_cmd = "sudo -S -p '' sh -lc " + shlex.quote(inner)
@@ -2405,18 +2440,23 @@ if user and password:
         rc = p.returncode
     except Exception as e:
         logs.append('auth flow error: '+str(e)); rc=125
-else:
-    logs.append('need adminUser and adminPassword'); rc=127
 
-# verify
-ok = False
-p = subprocess.run(['ls','-l',SUDOERS_D], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-if p.returncode==0:
-    ok=True
-    # test http sudo
-    t = subprocess.run(['sudo','-n','-u','http','-l'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    logs.append('sudoers present: '+((p.stdout or '').strip()[-120:]))
-print(json.dumps({'ok': ok, 'rc': rc, 'sudoers': SUDOERS_D, 'logs': logs[-6:]}, ensure_ascii=False))
+# Verify activated: http user can sudo docker
+activated = False
+t = subprocess.run(['sudo','-n','-u','http','-l'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
+if 'docker' in ((t.stdout or '') + (t.stderr or '')) or subprocess.run(['sudo','-n','-u','http','/usr/local/bin/docker','version'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10).returncode == 0:
+    activated = True
+reason = ''
+if not activated:
+    if rc == 0:
+        reason = 'sudoers 已写入但 http 用户仍无法 sudo docker'
+    elif rc == 127:
+        reason = '未输入密码'
+    elif rc == 126:
+        reason = '未找到管理员账号'
+    else:
+        reason = '密码错误或账号无 sudo 权限（rc=%s）' % rc
+print(json.dumps({'ok': activated, 'activated': activated, 'rc': rc, 'user': user, 'sudoers': SUDOERS_D, 'reason': reason, 'logs': logs[-6:]}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -2440,20 +2480,39 @@ if action not in ('start', 'stop', 'restart'):
 
 # Container mode: the gateway lives in the 'openclaw' container managed by
 # Container mode: start/stop/restart use docker on the openclaw container.
-syno_map = {'start': 'start', 'stop': 'stop', 'restart': 'restart'}
+# Gateway IS the container's PID 1 process. "Stop" stops the gateway process
+# (container exits, kept) and disables auto-restart so it stays down. "Start"
+# brings it back and restores auto-restart. ttyd (host side) is unaffected.
+def docker_cmd(args):
+    try:
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker'] + args,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+        return p.returncode, (p.stdout or b'').decode('utf-8', 'ignore')[-600:]
+    except Exception as e:
+        return -1, '%s: %s' % (type(e).__name__, e)
+
 logs = []
 rc = -1
 out_txt = ''
-try:
-    p = subprocess.run(
-        ['sudo', '-n', '/usr/local/bin/docker', syno_map[action], 'openclaw'],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120,
-    )
-    rc = p.returncode
-    out_txt = (p.stdout or b'').decode('utf-8', 'ignore')[-600:]
-except Exception as e:
-    out_txt = '%s: %s' % (type(e).__name__, e)
-logs.append({'cmd': 'docker %s openclaw' % syno_map[action], 'rc': rc, 'out': out_txt})
+cmds = []
+if action == 'stop':
+    # stop gateway: disable auto-restart, then stop the container (PID1 = gateway)
+    rc1, o1 = docker_cmd(['update', '--restart=no', 'openclaw'])
+    rc2, o2 = docker_cmd(['stop', 'openclaw'])
+    rc = rc2 if rc1 == 0 else rc1
+    out_txt = 'update: %s | stop: %s' % (o1, o2)
+    cmds = ['docker update --restart=no openclaw', 'docker stop openclaw']
+elif action == 'start':
+    rc1, o1 = docker_cmd(['start', 'openclaw'])
+    rc2, o2 = docker_cmd(['update', '--restart=always', 'openclaw'])
+    rc = rc1 if rc1 == 0 else rc1
+    out_txt = 'start: %s | update: %s' % (o1, o2)
+    cmds = ['docker start openclaw', 'docker update --restart=always openclaw']
+else:  # restart
+    rc, out_txt = docker_cmd(['restart', 'openclaw'])
+    cmds = ['docker restart openclaw']
+for c in cmds:
+    logs.append({'cmd': c, 'rc': rc, 'out': out_txt})
 
 gw_port = 58789
 try:
@@ -3176,20 +3235,19 @@ cat <<'HTML'
       return false;
     }
     function authorizePanel() {
-      const adminUser = prompt('管理员账号（用于一次性授权面板操作）', '');
-      if (adminUser === null) return;
-      const adminPassword = prompt('管理员密码（仅本次授权，不保存）', '');
+      const adminPassword = prompt('请输入管理员密码以授权面板操作（账号自动识别，仅本次授权不保存）', '');
       if (adminPassword === null) return;
       const btn = document.getElementById('btn_oc_auth');
       if (btn) { btn.disabled = true; btn.textContent = '授权中...'; }
       setMsg('正在授权面板操作（写 sudoers）…', '');
-      api('authorize', 'POST', { adminUser: adminUser, adminPassword: adminPassword }).then(function(ret){
+      api('authorize', 'POST', { password: adminPassword }).then(function(ret){
         if (btn) { btn.disabled = false; btn.textContent = '授权面板操作'; }
-        if (ret && ret.ok) {
-          setMsg('授权成功：面板启动/停止/日志/终端可用了', 'ok');
+        if (ret && ret.activated) {
+          setMsg('已激活：面板启动/停止/日志/终端可用了', 'ok');
         } else {
+          const r = (ret && ret.reason) || '';
           const d = (ret && ret.logs && ret.logs.length) ? ret.logs.join('; ') : '';
-          setMsg('授权失败：' + ((ret && ret.error) || d || '请确认管理员账号密码') , 'err');
+          setMsg('激活失败：' + (r || d || '请确认管理员密码'), 'err');
         }
         refreshStatus && refreshStatus();
       });
