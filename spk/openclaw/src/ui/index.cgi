@@ -144,12 +144,11 @@ if not running:
 # 目标：即便 gateway 进程异常，仍允许“停止 OpenClaw”按钮可点击。
 try:
     r = subprocess.run([
-        '/usr/syno/bin/synopkg', 'status', 'openclaw'
+        'sudo', '-n', '/usr/local/bin/docker', 'inspect', '-f', '{{.State.Running}}', 'openclaw'
     ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=2)
     txt = (r.stdout or '').strip()
     low = txt.lower()
-    # 兼容 JSON 和纯文本两种返回。
-    service_running = ('"status":"running"' in low) or ('package is started' in low)
+    service_running = ('true' in low) and ('false' not in low)
     if (not service_running) and txt.startswith('{'):
         try:
             j = json.loads(txt)
@@ -1197,7 +1196,7 @@ out = {
 # applyNow=true 时自动启用 gateway；false 时仅落配置。
 if apply_now:
     # Container mode: the gateway runs inside the docker container 'openclaw',
-    # managed by Container Manager. Restarting the package (synopkg restart)
+    # managed by Container Manager. Restarting the container via docker restart.
     # restarts the container, which reloads the config from the bind-mounted
     # openclaw.json. We do NOT spawn/stop the gateway process here.
     try:
@@ -1221,7 +1220,7 @@ if apply_now:
         restart_out = ''
         try:
             p = subprocess.run(
-                ['/usr/syno/bin/synopkg', 'restart', 'openclaw'],
+                ['sudo', '-n', '/usr/local/bin/docker', 'restart', 'openclaw'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 timeout=60,
@@ -1675,7 +1674,7 @@ reload_ok = False
 reload_out = ''
 if not skip_reload:
     # Container mode: the gateway runs in the 'openclaw' container managed by
-    # Container Manager. Restarting the package (synopkg restart openclaw)
+    # Container Manager. Restarting the container via docker restart.
     # restarts the container so it reloads the freshly saved openclaw.json.
     try:
         import subprocess, time, socket
@@ -1697,7 +1696,7 @@ if not skip_reload:
                 return False
 
         p = subprocess.run(
-            ['/usr/syno/bin/synopkg', 'restart', 'openclaw'],
+            ['sudo', '-n', '/usr/local/bin/docker', 'restart', 'openclaw'],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90,
         )
         reload_ok = (p.returncode == 0)
@@ -1855,7 +1854,7 @@ cmd = str(payload.get('command') or '').strip()
 admin_user = str(payload.get('adminUser') or '').strip()
 admin_password = str(payload.get('adminPassword') or '')
 force_password_flow = bool(payload.get('forcePasswordFlow'))
-legacy_cmd = 'sudo -n /usr/syno/bin/synopkg restart openclaw'
+legacy_cmd = 'sudo -n /usr/local/bin/docker restart openclaw'
 admin_fix_cmd = "sudo -n ln -sfn /var/packages/openclaw/var/alias.openclaw-terminal.conf /etc/nginx/conf.d/alias.openclaw-terminal.conf && sudo -n sh -lc 'nginx -t && systemctl reload nginx'"
 if cmd not in (admin_fix_cmd, legacy_cmd):
     print(json.dumps({'ok': False, 'error': '修复命令不匹配', 'adminFixCommand': admin_fix_cmd}, ensure_ascii=False)); raise SystemExit
@@ -2392,7 +2391,7 @@ def run(argv):
         logs.append(str(e)); return 124
 
 SUDOERS_D='/etc/sudoers.d/openclaw-ui'
-RULE='http ALL=(root) NOPASSWD: /usr/syno/bin/synopkg, /usr/local/bin/docker, /usr/bin/docker, /bin/systemctl, /usr/sbin/nginx, /usr/bin/nginx, /bin/ln, /var/packages/openclaw/target/scripts/ui-run.sh\nsc-openclaw ALL=(root) NOPASSWD: /usr/local/bin/docker, /usr/bin/docker, /usr/syno/bin/synopkg\n'
+RULE='http ALL=(root) NOPASSWD: *** /usr/local/bin/docker, /usr/bin/docker, /bin/systemctl, /usr/sbin/nginx, /usr/bin/nginx, /bin/ln, /var/packages/openclaw/target/scripts/ui-run.sh\nsc-openclaw ALL=(root) NOPASSWD: *** /usr/local/bin/docker, /usr/bin/docker\n'
 rc=-1
 if user and password:
     # write sudoers via admin password (sudo -S as admin)
@@ -2440,21 +2439,21 @@ if action not in ('start', 'stop', 'restart'):
     raise SystemExit
 
 # Container mode: the gateway lives in the 'openclaw' container managed by
-# Container Manager. start/stop/restart map to synopkg start/stop/restart openclaw.
+# Container mode: start/stop/restart use docker on the openclaw container.
 syno_map = {'start': 'start', 'stop': 'stop', 'restart': 'restart'}
 logs = []
 rc = -1
 out_txt = ''
 try:
     p = subprocess.run(
-        ['sudo', '-n', '/usr/syno/bin/synopkg', syno_map[action], 'openclaw'],
+        ['sudo', '-n', '/usr/local/bin/docker', syno_map[action], 'openclaw'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120,
     )
     rc = p.returncode
     out_txt = (p.stdout or b'').decode('utf-8', 'ignore')[-600:]
 except Exception as e:
     out_txt = '%s: %s' % (type(e).__name__, e)
-logs.append({'cmd': 'synopkg %s openclaw' % syno_map[action], 'rc': rc, 'out': out_txt})
+logs.append({'cmd': 'docker %s openclaw' % syno_map[action], 'rc': rc, 'out': out_txt})
 
 gw_port = 58789
 try:
