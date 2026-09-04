@@ -233,7 +233,7 @@ cat <<HTML
 html, body { height: 100%; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 0; background: #f5f6f7; overflow: hidden; }
 .wrapper { max-width: 1080px; height: calc(100vh - 40px); margin: 20px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; }
-.header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid #e8eaee; }
+.header { display: flex; align-items: center; justify-content: space-between; margin: -20px -20px 0; padding: 14px 20px; background: #f7f9fc; border-bottom: 1px solid #e6e8ec; border-radius: 10px 10px 0 0; }
 .header h2 { margin: 0; font-size: 20px; }
 .status-chip { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 14px; background: #f7f9fc; border: 1px solid #e3e8f0; }
 .status-chip.running { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
