@@ -112,33 +112,21 @@ port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 running = False
 service_running = False
-# 避免单次探测抖动导致“已停止 -> 运行中”闪烁：做短重试（端口探测）。
-for _ in range(3):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.6)
+# 容器模式：gateway 是容器内 supervisor（PID 1）的子进程，容器本身始终由
+# supervisor 保持运行。因此 “running” 必须看容器内 supervisor 的 pidfile
+# （/data/runtime/.gateway.pid）记录的进程是否存活，而不是探测 host 端口：
+# 容器运行时 docker-proxy 仍占用 host 端口映射，端口探测会把已停止的
+# gateway 误报为运行中。
+def gateway_running():
     try:
-        s.connect(('127.0.0.1', port))
-        running = True
-        s.close()
-        break
+        r = subprocess.run(
+            ['sudo', '-n', '/usr/local/bin/docker', 'exec', 'openclaw', 'sh', '-c',
+             'p=$(cat /data/runtime/.gateway.pid 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+        return r.returncode == 0
     except Exception:
-        running = False
-        try:
-            s.close()
-        except Exception:
-            pass
-        time.sleep(0.15)
-
-# gateway 进程探测兜底：按钮语义是“停止 gateway”，不是“停止套件”。
-# 不能用 pgrep -f 正则（会误匹配当前检查命令自身 argv），改为精确 comm 匹配。
-if not running:
-    try:
-        r = subprocess.run([
-            'pgrep', '-x', 'openclaw-gatewa'
-        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=1.5)
-        running = (r.returncode == 0)
-    except Exception:
-        pass
+        return False
+running = gateway_running()
 
 # 套件运行态（独立于 gateway 端口探活）：用于按钮可用性判断。
 # 目标：即便 gateway 进程异常，仍允许“停止 OpenClaw”按钮可点击。
@@ -2383,9 +2371,9 @@ PY
             exit 0
             ;;
         install)
-            # Container mode: "install" = ensure the openclaw container (whose
-            # PID 1 IS the gateway) is running with auto-restart. Docker ops
-            # require panel authorization.
+            # Container mode: "install" = ensure the openclaw container is
+            # running with auto-restart; its supervisor entrypoint then starts
+            # the in-container gateway. Docker ops require panel authorization.
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY'
 import json, subprocess, sys
@@ -2455,7 +2443,7 @@ try:
 except Exception:
     payload = {}
 action = (payload.get('action') or '').strip().lower()
-if action not in ('start', 'stop', 'restart'):
+if action not in ('start', 'stop', 'restart', 'force-stop'):
     print(json.dumps({'ok': False, 'action': action, 'logs': [], 'running': False, 'initialized': True,
                       'error': 'unsupported action'}, ensure_ascii=False))
     raise SystemExit
@@ -2474,13 +2462,18 @@ if not auth_ok():
     raise SystemExit
 
 # Container mode: the gateway lives in the 'openclaw' container managed by
-# Container Manager, and the gateway process IS the container's PID 1
-# (entrypoint: exec node openclaw.mjs gateway). stop/force-stop act on the
-# IN-CONTAINER gateway — `docker exec openclaw kill -s ... 1` — and never
-# `docker stop` the container itself: when PID 1 exits, the compose restart
-# policy (restart: always) auto-restarts the container and brings the gateway
-# back, so the container stays under Container Manager control. "Start" brings
-# the container up (and restores auto-restart if it was ever changed).
+# Container Manager. The container entrypoint (/data/scripts/entrypoint.sh) is
+# a SUPERVISOR that runs the gateway as its CHILD (not PID 1), so stop/start
+# control the IN-CONTAINER gateway while the container itself stays running:
+#   - 停止:      docker exec openclaw kill -s USR1 1  -> supervisor TERMs the
+#                gateway and keeps it stopped (container stays up)
+#   - 启动:      docker exec openclaw kill -s USR2 1  -> supervisor starts it
+#   - 强制停止:  USR2 (clear any stop state) + SIGKILL the gateway via its
+#                pidfile (/data/runtime/.gateway.pid) -> supervisor treats it
+#                as a crash and auto-restarts it (recovery)
+# The gateway process is the only thing that goes up/down; `docker stop` is
+# never used from the panel. If the container is fully down (e.g. after a
+# Package Center stop) start just brings the container back up.
 def docker_cmd(args):
     try:
         p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker'] + args,
@@ -2533,59 +2526,119 @@ def port_listening(port):
         except Exception:
             pass
 
-running_before = port_listening(gw_port)
 logs = []
+hung = False
+
+def gateway_running():
+    # Container mode: the gateway is the supervisor's (PID 1) child, so
+    # "running" = the supervisor's pidfile (/data/runtime/.gateway.pid) points
+    # at a live process INSIDE the container. Host port probes are unreliable
+    # here: docker-proxy keeps the host port mapped while the container is up,
+    # so a stopped gateway would still answer TCP handshakes on the host.
+    try:
+        r = subprocess.run(
+            ['sudo', '-n', '/usr/local/bin/docker', 'exec', 'openclaw', 'sh', '-c',
+             'p=$(cat /data/runtime/.gateway.pid 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+def gateway_pid():
+    # In-container gateway PID recorded by the supervisor (PID 1) in
+    # /data/runtime/.gateway.pid, so force-stop can SIGKILL it directly and
+    # the supervisor auto-restarts it (crash-recovery loop).
+    rc, out = docker_cmd(['exec', 'openclaw', 'cat', '/data/runtime/.gateway.pid'])
+    if rc == 0 and out:
+        for tok in (out or '').split():
+            if tok.strip().isdigit():
+                return tok.strip()
+    return ''
+
 if action in ('stop', 'force-stop'):
     if container_running():
-        # Kill the in-container gateway (PID 1). Graceful TERM when it was
-        # healthy; KILL for a hung / not-listening gateway (强制停止). Never
-        # `docker stop` the container and never touch the restart policy.
-        sig = 'KILL' if (action == 'force-stop' or not running_before) else 'TERM'
-        rc, out = docker_cmd(['exec', 'openclaw', 'kill', '-s', sig, '1'])
-        # docker exec errors while the container exits/restarts mid-command;
-        # that is the expected outcome here, not a failure.
-        out = (out or '').strip() or 'gateway PID 1 killed'
-        logs.append({'cmd': 'docker exec openclaw kill -s %s 1 (in-container gateway)' % sig,
-                     'rc': 0, 'out': out + ' (container auto-restarts the gateway)'})
-        # TERM lets a healthy gateway drain and exit (it IS the container's
-        # PID 1); the auto-restart then gives the container a NEW StartedAt.
-        # A TCP probe alone can't tell "healthy" from "hung but still answering
-        # handshakes", so if a few seconds after TERM the container is still
-        # running with the SAME StartedAt, the gateway ignored TERM -> escalate
-        # to SIGKILL. Comparing StartedAt avoids false positives from the
-        # instant auto-restart of a healthy gateway.
-        if sig == 'TERM':
-            started_before = container_started_at()
-            time.sleep(4)
-            if container_running() and container_started_at() == started_before:
-                rc2, out2 = docker_cmd(['exec', 'openclaw', 'kill', '-s', 'KILL', '1'])
-                logs.append({'cmd': 'docker exec openclaw kill -s KILL 1 (TERM ignored, escalate)',
-                             'rc': 0, 'out': (out2 or '').strip() or 'escalated to SIGKILL'})
+        if action == 'stop':
+            # Graceful in-container stop: signal the supervisor (PID 1) with
+            # USR1. It TERMs the gateway and keeps it stopped — the container
+            # stays up, only the gateway goes down.
+            rc, out = docker_cmd(['exec', 'openclaw', 'kill', '-s', 'USR1', '1'])
+            logs.append({'cmd': 'docker exec openclaw kill -s USR1 1 (stop in-container gateway)',
+                         'rc': rc, 'out': (out or '').strip() or 'sent stop signal to gateway'})
+            # A healthy gateway drains in ~1-2s after SIGTERM. If it is still
+            # alive after STOP_WAIT it ignored the signal (hung) — report that
+            # so the UI can offer 强制停止 instead of pretending it stopped.
+            hung = False
+            for _ in range(8):
+                time.sleep(1)
+                if not gateway_running():
+                    break
+            else:
+                hung = True
+        else:
+            # 强制停止: first clear any stop state (USR2), then SIGKILL the
+            # in-container gateway via its pidfile. The supervisor treats the
+            # SIGKILL as a crash and auto-restarts the gateway — recovery.
+            rc, out = docker_cmd(['exec', 'openclaw', 'kill', '-s', 'USR2', '1'])
+            logs.append({'cmd': 'docker exec openclaw kill -s USR2 1 (clear stop, prepare recovery)',
+                         'rc': rc, 'out': (out or '').strip() or 'sent recovery signal'})
+            pid = gateway_pid()
+            if pid:
+                rc2, out2 = docker_cmd(['exec', 'openclaw', 'kill', '-s', 'KILL', pid])
+                logs.append({'cmd': 'docker exec openclaw kill -s KILL %s (in-container gateway; supervisor auto-restarts)' % pid,
+                             'rc': rc2, 'out': (out2 or '').strip() or 'sent SIGKILL to gateway'})
+                rc = rc2
+            else:
+                logs.append({'cmd': 'force-stop', 'rc': 0,
+                             'out': 'no gateway pidfile (gateway already stopped) — recovery will start it'})
     else:
-        # Container fully down: just bring it back up.
+        # Container fully down: bring it back up (supervisor starts the gateway).
         rc, out = docker_cmd(['start', 'openclaw'])
         rc2, o2 = docker_cmd(['update', '--restart=always', 'openclaw'])
         rc = rc if rc == 0 else rc2
         logs.append({'cmd': 'docker start openclaw', 'rc': rc, 'out': out})
         logs.append({'cmd': 'docker update --restart=always openclaw', 'rc': rc2, 'out': o2})
 elif action == 'start':
-    rc, out = docker_cmd(['start', 'openclaw'])
-    rc2, o2 = docker_cmd(['update', '--restart=always', 'openclaw'])
-    rc = rc if rc == 0 else rc2
-    logs.append({'cmd': 'docker start openclaw', 'rc': rc, 'out': out})
-    logs.append({'cmd': 'docker update --restart=always openclaw', 'rc': rc2, 'out': o2})
+    if container_running():
+        # Container up but gateway stopped (supervisor holds it): ask the
+        # supervisor to start the gateway with USR2.
+        rc, out = docker_cmd(['exec', 'openclaw', 'kill', '-s', 'USR2', '1'])
+        logs.append({'cmd': 'docker exec openclaw kill -s USR2 1 (start in-container gateway)',
+                     'rc': rc, 'out': (out or '').strip() or 'sent start signal'})
+    else:
+        rc, out = docker_cmd(['start', 'openclaw'])
+        rc2, o2 = docker_cmd(['update', '--restart=always', 'openclaw'])
+        rc = rc if rc == 0 else rc2
+        logs.append({'cmd': 'docker start openclaw', 'rc': rc, 'out': out})
+        logs.append({'cmd': 'docker update --restart=always openclaw', 'rc': rc2, 'out': o2})
 else:  # restart
     rc, out = docker_cmd(['restart', 'openclaw'])
     logs.append({'cmd': 'docker restart openclaw', 'rc': rc, 'out': out})
 
-# Wait for the gateway port to come back (start/restart, or stop's auto-restart).
-for _ in range(30):
-    time.sleep(1)
-    if container_running() and port_listening(gw_port):
-        break
-running = container_running() and port_listening(gw_port)
-ok = (rc == 0) and running
-print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'initialized': True}, ensure_ascii=False))
+# Wait for the gateway to reach the target state (stop: down; start /
+# force-stop / restart: up). The container itself stays up in all cases —
+# only the in-container gateway changes state, and docker-proxy keeps the
+# host port mapped, so state must be read via the supervisor's pidfile.
+if action == 'stop' and not hung:
+    for _ in range(30):
+        time.sleep(1)
+        if not gateway_running():
+            break
+elif action != 'stop':
+    for _ in range(30):
+        time.sleep(1)
+        if gateway_running():
+            break
+running = gateway_running()
+error = ''
+if action == 'stop':
+    # stop succeeds when the in-container gateway is down; the container stays up.
+    ok = (rc == 0) and (not running)
+    if hung and running:
+        error = '容器内 gateway 未响应停止信号（疑似卡死），请使用“强制停止”'
+else:
+    ok = (rc == 0) and running
+print(json.dumps({'ok': ok, 'action': action, 'logs': logs, 'running': running, 'error': error,
+                  'initialized': True}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -3017,7 +3070,7 @@ cat <<'HTML'
             + authBanner
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')"' + authDisable + '>启动 OpenClaw</button>'
-            + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')"' + authDisable + '>停止 OpenClaw</button>'
+            + '  <button class="btn" id="btn_oc_stop" onclick="runStopOrForce()"' + authDisable + '>停止 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_auth" onclick="authorizePanel()">' + (authState === 'authorized' ? '已授权' : '授权面板操作') + '</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
@@ -3305,15 +3358,24 @@ cat <<'HTML'
         startBtn.disabled = true;
         stopBtn.disabled = false;
         startBtn.textContent = actionName === 'start' ? '启动中...' : '启动 OpenClaw';
-        stopBtn.textContent = '强制停止 OpenClaw';
+        stopBtn.textContent = '强制停止中...';
         return;
       }
       const running = !!window.__statusRunning;
       const authed = (authState === 'authorized');
+      // 运行中 -> 停止（优雅停容器内 gateway，容器保持运行）；
+      // 已停止 / 上次停止失败（疑似卡死）-> 强制停止（杀 gateway 后自动重启恢复）。
+      const forceMode = !running || !!window.__stopFailed;
       startBtn.disabled = running || !authed;
       stopBtn.disabled = !authed;
       startBtn.textContent = '启动 OpenClaw';
-      stopBtn.textContent = running ? '停止 OpenClaw' : '强制停止 OpenClaw';
+      stopBtn.textContent = forceMode ? '强制停止 OpenClaw' : '停止 OpenClaw';
+    }
+    // 停止按钮：根据当前 gateway 状态在“停止”/“强制停止”间切换动作。
+    function runStopOrForce() {
+      const running = !!window.__statusRunning;
+      const forceMode = !running || !!window.__stopFailed;
+      runInstallAction(forceMode ? 'force-stop' : 'stop');
     }
     function setHotReloadBusy(busy) {
       setInstallButtonsBusy('', !!busy);
@@ -3419,8 +3481,10 @@ cat <<'HTML'
         }
         // 仅保留“运行状态”提示，不显示其它文案。
         if (actionName === 'start' || actionName === 'stop' || actionName === 'force-stop') {
-          const wantRunning = (actionName === 'start');
-          const maxTries = 40; // 最多约 36s，覆盖重启后端口恢复慢的场景
+          // 启动/强制停止期待 gateway 恢复运行；停止期待 gateway 停下。
+          // 容器本身始终由 supervisor 保持运行，只有容器内 gateway 变状态。
+          const wantRunning = (actionName !== 'stop');
+          const maxTries = 40; // 最多约 36s
           for (let i = 0; i < maxTries; i += 1) {
             await new Promise(r => setTimeout(r, 900));
             try {
@@ -3428,20 +3492,35 @@ cat <<'HTML'
               const gatewayRunning = !!(s && s.running);
               if (wantRunning) {
                 if (gatewayRunning) {
-                  setMsg('运行状态：运行中', 'ok');
+                  window.__statusRunning = true;
+                  window.__stopFailed = false;
+                  setMsg(actionName === 'force-stop'
+                    ? '运行状态：运行中（已强制重启容器内 gateway）'
+                    : '运行状态：运行中', 'ok');
                   return;
                 }
               } else {
-                // 停止/强制停止作用于容器内部的 gateway（PID 1），不是容器本身。
-                // gateway 退出后 compose restart: always 会自动重启容器并重新
-                // 拉起 gateway，因此等待其恢复（运行中 = 容器内 gateway 已重启）。
-                if (gatewayRunning) {
-                  window.__statusRunning = true;
-                  setMsg('运行状态：运行中（已重启容器内 gateway）', 'ok');
+                if (!gatewayRunning) {
+                  window.__statusRunning = false;
+                  window.__stopFailed = false;
+                  setMsg('运行状态：已停止（容器内 gateway 已停止，容器保持运行）', 'err');
                   return;
                 }
               }
             } catch {}
+          }
+          if (actionName === 'stop') {
+            // 停止超时：gateway 疑似卡死（忽略 SIGTERM），切换按钮为强制停止。
+            window.__statusRunning = true;
+            window.__stopFailed = true;
+            setMsg('停止失败：容器内 gateway 未响应，请点击“强制停止”', 'err');
+            setInstallButtonsBusy('', false);
+          } else if (actionName === 'force-stop') {
+            window.__stopFailed = false;
+            setMsg('强制停止失败：容器内 gateway 未能恢复', 'err');
+          } else {
+            window.__stopFailed = false;
+            setMsg('启动失败：容器内 gateway 未就绪', 'err');
           }
           return;
         }
