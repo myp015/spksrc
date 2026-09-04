@@ -15,19 +15,45 @@ LOG_FILE="${APP_VAR_DIR}/frpc.log"
 PID_FILE="${APP_VAR_DIR}/frpc.pid"
 TMP_FILE="/tmp/frpc.toml.$$"
 
-# frp 皮肤：与 .spk 相同的 frp GitHub 官方 logo（base64 data URI）
-FRP_LOGO_B64="$(cat "$(dirname "$0")/frp_logo.b64" 2>/dev/null || true)"
-[ -n "$FRP_LOGO_B64" ] || FRP_LOGO_B64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
-
 html_escape() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
 urldecode() {
     # + -> space, %XX -> byte
-    local data
-    data=$(printf '%s' "$1" | sed 's/+/ /g;s/%/\\x/g')
-    printf '%b' "$data"
+    # 单个 awk 按字节解码（仅用 POSIX index/substr/sprintf/%c，兼容
+    # dash/mawk 与 DSM 的 busybox awk）。不用 printf %b 的 \x/\OOO 转义：
+    # dash 的 %b 会贪婪多读八进制位（如 \042127 会变成 0x11 + "27"）。
+    printf '%s' "$1" | awk '
+    { s = s $0 }
+    END {
+        out = ""
+        n = length(s)
+        HEX = "0123456789abcdefABCDEF"
+        i = 1
+        while (i <= n) {
+            c = substr(s, i, 1)
+            if (c == "%" && i + 2 <= n) {
+                hi = substr(s, i + 1, 1)
+                lo = substr(s, i + 2, 1)
+                hv = index(HEX, hi)
+                lv = index(HEX, lo)
+                if (hv > 0 && lv > 0) {
+                    v = (hv > 16 ? hv - 7 : hv - 1) * 16 + (lv > 16 ? lv - 7 : lv - 1)
+                    out = out sprintf("%c", v)
+                    i = i + 3
+                    continue
+                }
+                out = out "%"
+                i = i + 1
+                continue
+            }
+            if (c == "+") { out = out " "; i = i + 1; continue }
+            out = out c
+            i = i + 1
+        }
+        printf "%s", out
+    }'
 }
 
 get_param() {
@@ -175,19 +201,17 @@ CFG_CONTENT=$(cat "$CFG_FILE" 2>/dev/null | html_escape)
 # 当前运行状态
 STATUS="$(frpc_status)"
 STATUS_STATE="${STATUS%%|*}"
-STATUS_PID="${STATUS#*|}"
 # 刚保存过（POST 成功）：先显示“检测状态...”，由 JS 异步刷新真实状态
 if [ -n "$SAVED_MSG" ]; then
     STATUS_DOT="checking"
     STATUS_TEXT="检测状态..."
-    STATUS_PID_HTML=""
     STATUS_CLASS="checking"
     SAVED_FLAG=1
 else
     SAVED_FLAG=0
     case "$STATUS_STATE" in
-        running) STATUS_DOT="running"; STATUS_TEXT="运行中"; STATUS_PID_HTML="PID: ${STATUS_PID}"; STATUS_CLASS="running" ;;
-        *)       STATUS_DOT="stopped"; STATUS_TEXT="已停止"; STATUS_PID_HTML=""; STATUS_CLASS="stopped" ;;
+        running) STATUS_DOT="running"; STATUS_TEXT="运行中"; STATUS_CLASS="running" ;;
+        *)       STATUS_DOT="stopped"; STATUS_TEXT="已停止"; STATUS_CLASS="stopped" ;;
     esac
 fi
 
@@ -202,24 +226,22 @@ cat <<HTML
 html, body { height: 100%; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 0; background: #f5f6f7; overflow: hidden; }
 .wrapper { max-width: 1080px; height: calc(100vh - 40px); margin: 20px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; }
-.header { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
-.header img { height: 48px; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .header h2 { margin: 0; font-size: 20px; }
-.desc { color: #666; margin-bottom: 12px; }
-.status-bar { display: flex; align-items: center; gap: 8px; background: #f7f9fc; border: 1px solid #e3e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
+.status-chip { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 14px; background: #f7f9fc; border: 1px solid #e3e8f0; }
+.status-chip.running { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
+.status-chip.stopped { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+.status-chip.checking { color: #b45309; background: #fffbeb; border-color: #fde68a; }
 .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 .status-dot.running { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
 .status-dot.stopped { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
 .status-dot.checking { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.2); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: .35; } }
-.status-bar.running { color: #15803d; }
-.status-bar.stopped { color: #b91c1c; }
-.status-bar.checking { color: #b45309; }
-#statusText { flex: 0 0 auto; }
-.status-pid { color: #6b7280; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .msg { margin: 10px 0; color: #0a7a0a; font-weight: 600; min-height: 20px; }
 form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-textarea { width: 100%; flex: 1; min-height: 220px; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; box-sizing: border-box; resize: none; }
+.editor { flex: 1; min-height: 0; display: flex; border: 1px solid #d0d7de; border-radius: 8px; overflow: hidden; background: #fff; }
+.gutter { width: 48px; flex: 0 0 auto; box-sizing: border-box; padding: 12px 10px 12px 0; text-align: right; background: #f6f8fa; border-right: 1px solid #e1e4e8; color: #8c959f; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; overflow: hidden; user-select: none; }
+textarea { width: 100%; flex: 1; min-height: 220px; border: 0; border-radius: 0; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.4; box-sizing: border-box; resize: none; outline: none; }
 .actions { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
 button { border: 0; background: #1E90FF; color: white; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-family: "Microsoft YaHei", sans-serif; }
 button:hover { background: #5599FF; }
@@ -233,20 +255,18 @@ a { text-decoration: none; }
 <body>
 <div class="wrapper">
   <div class="header">
-    <a href="https://github.com/fatedier/frp" target="_blank"><img src="data:image/png;base64,${FRP_LOGO_B64}" alt="frp" /></a>
-    <div>
-      <h2>frpc 配置编辑器</h2>
-      <div class="desc">编辑并保存 <code>${CFG_FILE}</code>。保存后会尝试重启 frpc。</div>
+    <h2>frpc 配置编辑器</h2>
+    <div class="status-chip ${STATUS_CLASS}" id="statusBar">
+      <span class="status-dot ${STATUS_DOT}" id="statusDot"></span>
+      <span id="statusText">${STATUS_TEXT}</span>
     </div>
-  </div>
-  <div class="status-bar ${STATUS_CLASS}" id="statusBar">
-    <span class="status-dot ${STATUS_DOT}" id="statusDot"></span>
-    <span id="statusText">${STATUS_TEXT}</span>
-    <span class="status-pid" id="statusPid">${STATUS_PID_HTML}</span>
   </div>
   <div class="msg" id="statusMsg">$SAVED_MSG</div>
   <form method="post" action="index.cgi?$QUERY" id="configForm" target="saveFrame" onsubmit="return saveConfig()">
-    <textarea name="textcontent">$CFG_CONTENT</textarea>
+    <div class="editor">
+      <div class="gutter" id="lineGutter"></div>
+      <textarea name="textcontent" id="cfgTextarea" spellcheck="false">$CFG_CONTENT</textarea>
+    </div>
     <div class="actions">
       <button type="submit">保存并重启</button>
       <button class="secondary" type="button" onclick="loadLog()">查看当前日志</button>
@@ -254,7 +274,6 @@ a { text-decoration: none; }
       <button class="secondary" id="autoBtn" type="button" onclick="toggleAutoRefresh()">开启实时刷新日志(2秒)</button>
       <button class="secondary" type="button" onclick="refreshStatus()">刷新状态</button>
     </div>
-    <small>提示：若 frps 地址不可达，frpc 可能会退出（日志见 $LOG_FILE）。</small>
     <div id="logBox">点击“查看当前日志”加载。</div>
   </form>
   <!-- 隐藏 iframe：表单提交到此处，主页面不刷新，日志窗口保持打开，只刷新状态 -->
@@ -289,18 +308,15 @@ function refreshStatus() {
   var bar = document.getElementById('statusBar');
   var dot = document.getElementById('statusDot');
   var txt = document.getElementById('statusText');
-  var pidEl = document.getElementById('statusPid');
   fetch(buildUrl('status'), { cache: 'no-store' })
     .then(function(r){ return r.text(); })
     .then(function(s){
       s = (s || '').trim();
       var state = s.split('|')[0];
-      var pid = s.split('|')[1] || '';
       var running = (state === 'running');
-      bar.className = 'status-bar ' + (running ? 'running' : 'stopped');
+      bar.className = 'status-chip ' + (running ? 'running' : 'stopped');
       dot.className = 'status-dot ' + (running ? 'running' : 'stopped');
       txt.textContent = running ? '运行中' : '已停止';
-      pidEl.textContent = running ? ('PID: ' + pid) : '';
     })
     .catch(function(){});
 }
@@ -310,11 +326,9 @@ function showChecking() {
   var bar = document.getElementById('statusBar');
   var dot = document.getElementById('statusDot');
   var txt = document.getElementById('statusText');
-  var pidEl = document.getElementById('statusPid');
-  bar.className = 'status-bar checking';
+  bar.className = 'status-chip checking';
   dot.className = 'status-dot checking';
   txt.textContent = '检测状态...';
-  pidEl.textContent = '';
 }
 
 function saveConfig() {
@@ -355,6 +369,22 @@ window.addEventListener('beforeunload', function(){
   if (!msg) return;
   if ((msg.textContent || '').trim().length === 0) return;
   setTimeout(function(){ msg.textContent = ''; }, 3500);
+})();
+
+// 行号：按 textarea 内容生成，随 textarea 滚动保持对齐
+function updateLineNumbers() {
+  var ta = document.getElementById('cfgTextarea');
+  var count = ta.value.split('\n').length;
+  var nums = new Array(count);
+  for (var i = 0; i < count; i++) nums[i] = i + 1;
+  document.getElementById('lineGutter').textContent = nums.join('\n');
+}
+(function initEditor(){
+  var ta = document.getElementById('cfgTextarea');
+  var gutter = document.getElementById('lineGutter');
+  updateLineNumbers();
+  ta.addEventListener('scroll', function(){ gutter.scrollTop = ta.scrollTop; });
+  ta.addEventListener('input', updateLineNumbers);
 })();
 
 // 刚保存过：延迟一点等 frpc 起来，再异步刷新真实运行状态（未连接成功则显示已停止）
