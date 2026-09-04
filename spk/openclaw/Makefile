@@ -1,13 +1,20 @@
 SPK_NAME = openclaw
 
 # ---------------------------------------------------------------------------
-# OpenClaw SPK (container mode) — FULL image bundle
+# OpenClaw SPK (container mode) — FULL offline image bundle
 #
 # This package runs OpenClaw as a Docker container on DSM (requires the DSM
 # "Docker" package / container manager). The COMPLETE container image
-# (openclaw/openclaw:<tag>, including the Node runtime and the /app payload)
-# is `docker save`-d into the SPK, so installation is fully OFFLINE — no
-# re-download of the image at install time.
+# (openclaw/openclaw:<tag>, including the Node runtime and the /app payload) is
+# shipped INSIDE the SPK as a Docker *build context* (a Dockerfile + a flattened
+# rootfs.tar.gz), so installation is fully OFFLINE — no download at install time.
+#
+# Why a build context and not a `docker save` tar: DSM refuses to run community
+# package scripts as root (privilege `run-as: package` only), so postinst can
+# never `docker load`. The one root context during install is Container
+# Manager's docker-project postreplace, which runs `docker compose` and can
+# *build* an image from a bundled context (same mechanism as the Baidu Netdisk
+# package). `FROM scratch` => the build pulls no base image => zero online pull.
 #
 # The bundled image is FIXED. The OpenClaw app payload is copied into a
 # persistent volume and updated IN-PLACE via npm, so the SPK does not need to
@@ -47,7 +54,7 @@ REQUIRED_MIN_DSM = 7.2
 
 MAINTAINER = ainas
 MAINTAINER_URL = https://ainas.taobao.com
-DESCRIPTION = OpenClaw for Synology（Docker 容器版，完整镜像打包，离线安装）。镜像固定，OpenClaw 本体容器内在线自更新。默认 Token: 123456。
+DESCRIPTION = OpenClaw for Synology（Docker 容器版，完整镜像打包，离线安装）。镜像固定，OpenClaw 本体容器内在线自更新。默认 Token: 335aba10f02647eb431a83e6e742589d4103c5681a4acb90。
 DISPLAY_NAME = OpenClaw
 CHANGELOG = "Full container image bundled; in-container self-update."
 
@@ -87,9 +94,9 @@ POST_STRIP_TARGET = openclaw_extra_install
 
 include ../../mk/spksrc.spk.mk
 
-.PHONY: openclaw_prepare_bundle
+.PHONY: openclaw_prepare_bundle openclaw_gen_build_context
 openclaw_prepare_bundle:
-	@$(MSG) Prepare OpenClaw container image bundle
+	@$(MSG) Prepare OpenClaw container image bundle - offline build context
 	@if [ -n "$(OPENCLAW_IMAGE_TAR)" ]; then \
 		echo "Using pre-built image tarball: $(OPENCLAW_IMAGE_TAR)"; \
 		install -d -m 755 $(WORK_DIR); \
@@ -102,6 +109,11 @@ openclaw_prepare_bundle:
 	else \
 		echo "WARN: no image bundle (OPENCLAW_IMAGE_TAR unset, OPENCLAW_PACK_IMAGE!=1) -> shell-only SPK"; \
 	fi
+	@if [ -f "$(WORK_DIR)/openclaw-image.tar" ]; then \
+		$(MAKE) openclaw_gen_build_context; \
+	else \
+		echo "WARN: no image tar; skipping offline build context (shell-only SPK)"; \
+	fi
 	# Bundled terminal (ttyd) prebuilt binary.
 	@[ -n "$(TTYD_DIST_ARCH)" ] || { echo "Unsupported target arch for ttyd bundle: $(TARGET_ARCH_NAME)"; exit 1; }
 	@install -d -m 755 $(WORK_DIR)
@@ -111,6 +123,25 @@ openclaw_prepare_bundle:
 			https://github.com/tsl0922/ttyd/releases/download/1.7.4/ttyd.$(TTYD_DIST_ARCH); \
 	fi
 	@chmod +x "$(WORK_DIR)/ttyd.$(TTYD_DIST_ARCH)"
+
+# Generate the OFFLINE Docker build context (Dockerfile + flattened rootfs)
+# from the bundled image tar. Container Manager builds the image from this
+# context at install time (postreplace, runs as root); no base image, no
+# registry access. The context is arch-neutral (no RUN steps), so it can be
+# generated on any build host.
+openclaw_gen_build_context:
+	@$(MSG) Generate offline Docker build context from bundled image
+	@install -d -m 755 $(WORK_DIR)/oc-context
+	@echo "  loading image openclaw/openclaw:$(OPENCLAW_IMAGE_TAG)"
+	@docker load -i $(WORK_DIR)/openclaw-image.tar >/dev/null
+	@echo "  exporting flattened rootfs"
+	@docker create --name openclaw-occtx-export $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) >/dev/null
+	@docker export openclaw-occtx-export | gzip -1 > $(WORK_DIR)/oc-context/rootfs.tar.gz
+	@docker rm openclaw-occtx-export >/dev/null
+	@docker image inspect $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) > $(WORK_DIR)/oc-context/inspect.json
+	@python3 src/container/gen-dockerfile.py $(WORK_DIR)/oc-context/inspect.json > $(WORK_DIR)/oc-context/Dockerfile
+	@rm -f $(WORK_DIR)/oc-context/inspect.json
+	@ls -lh $(WORK_DIR)/oc-context/Dockerfile $(WORK_DIR)/oc-context/rootfs.tar.gz
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:
@@ -125,12 +156,16 @@ openclaw_copy_target:
 	@cp -f src/container/entrypoint.sh $(STAGING_DIR)/etc/entrypoint.sh
 	@cp -f src/container/update-openclaw.sh $(STAGING_DIR)/etc/update-openclaw.sh
 	@chmod 755 $(STAGING_DIR)/etc/entrypoint.sh $(STAGING_DIR)/etc/update-openclaw.sh
-	# Full container image (docker save) bundled for offline install
-	@if [ -f "$(WORK_DIR)/openclaw-image.tar" ]; then \
-		cp -f "$(WORK_DIR)/openclaw-image.tar" $(STAGING_DIR)/etc/openclaw-image.tar; \
-		ls -lh $(STAGING_DIR)/etc/openclaw-image.tar; \
+	# Full offline image as a Docker build context (Dockerfile + flattened
+	# rootfs). Container Manager builds the image from target/app/openclaw at
+	# install time; the package scripts never touch docker.
+	@if [ -d "$(WORK_DIR)/oc-context" ]; then \
+		install -d -m 755 $(STAGING_DIR)/app/openclaw; \
+		cp -f $(WORK_DIR)/oc-context/Dockerfile $(STAGING_DIR)/app/openclaw/Dockerfile; \
+		cp -f $(WORK_DIR)/oc-context/rootfs.tar.gz $(STAGING_DIR)/app/openclaw/rootfs.tar.gz; \
+		ls -lh $(STAGING_DIR)/app/openclaw/Dockerfile $(STAGING_DIR)/app/openclaw/rootfs.tar.gz; \
 	else \
-		echo "WARN: openclaw-image.tar not present; building shell-only SPK"; \
+		echo "WARN: no offline build context; building shell-only SPK"; \
 	fi
 	# Host-side CLI wrapper `openclaw`
 	@cp -f src/openclaw-spk $(STAGING_DIR)/bin/openclaw
@@ -161,12 +196,12 @@ openclaw_copy_target:
 	@ln -s ../ui/index.cgi $(STAGING_DIR)/app/index.cgi
 	@cp -rf src/ui/* $(STAGING_DIR)/ui/
 	@chmod 755 $(STAGING_DIR)/ui/index.cgi
-	# Pre-render docker-compose files (default data dir + port) so Container
+	# Pre-render docker-compose files (default HOME dir + port) so Container
 	# Manager always finds a valid compose at postinst. postinst re-renders if
 	# the wizard supplies different values.
-	@sed -e 's|{{DATA_DIR}}|/volume1/docker/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
+	@sed -e 's|{{OPENCLAW_HOME}}|/volume1/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
 		src/app/docker-compose.yaml.tpl > $(STAGING_DIR)/app/docker-compose.yaml
-	@sed -e 's|{{DATA_DIR}}|/volume1/docker/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
+	@sed -e 's|{{OPENCLAW_HOME}}|/volume1/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
 		src/app/docker-compose.admin.yaml.tpl > $(STAGING_DIR)/app/docker-compose.admin.yaml
 	@chmod 644 $(STAGING_DIR)/app/docker-compose.yaml $(STAGING_DIR)/app/docker-compose.admin.yaml
 	@ls -l $(STAGING_DIR)/app/docker-compose*.yaml

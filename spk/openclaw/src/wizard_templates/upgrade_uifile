@@ -2,11 +2,11 @@
     "step_title": "{{{CONFIGURATION_TITLE}}}",
     "items": [{
         "type": "textfield",
-        "desc": "{{{DATA_DIR_DESCRIPTION}}}",
+        "desc": "{{{HOME_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_data_dir",
-            "defaultValue": "/volume1/docker/openclaw",
-            "desc": "{{{DATA_DIR_LABEL}}}",
+            "key": "wizard_openclaw_home",
+            "defaultValue": "/volume1/openclaw",
+            "desc": "{{{HOME_LABEL}}}",
             "validator": {
               "allowBlank": false
             }

@@ -1,7 +1,9 @@
 {
   "meta": {
     "lastTouchedVersion": "2026.8.2",
-    "lastTouchedAt": "2026-09-03T00:00:00.000Z"
+    "migrations": {
+      "modelPolicyAllowlist": true
+    }
   },
   "update": {
     "checkOnStart": false
@@ -29,32 +31,16 @@
       "subagents": {
         "maxConcurrent": 8
       },
-      "workspace": "/home/node/.openclaw",
-      "memorySearch": {
-        "enabled": false
-      }
+      "workspace": "/home/node/.openclaw"
+    },
+    "entries": {
+      "main": {}
     }
   },
   "messages": {
     "ackReactionScope": "group-mentions",
     "groupChat": {
       "visibleReplies": "message_tool"
-    },
-    "tts": {
-      "auto": "off",
-      "mode": "final",
-      "provider": "microsoft",
-      "providers": {
-        "microsoft": {
-          "lang": "zh-CN",
-          "outputFormat": "ogg-24khz-16bit-mono-opus",
-          "pitch": "+0Hz",
-          "rate": "+0%",
-          "volume": "+0%",
-          "timeoutMs": 30000,
-          "speakerVoice": "zh-CN-XiaoxiaoNeural"
-        }
-      }
     }
   },
   "commands": {
@@ -104,6 +90,90 @@
       },
       "openai-whisper-api": {
         "enabled": false
+      },
+      "1password": {
+        "enabled": false
+      },
+      "blogwatcher": {
+        "enabled": false
+      },
+      "blucli": {
+        "enabled": false
+      },
+      "camsnap": {
+        "enabled": false
+      },
+      "coding-agent": {
+        "enabled": false
+      },
+      "eightctl": {
+        "enabled": false
+      },
+      "gemini": {
+        "enabled": false
+      },
+      "gh-issues": {
+        "enabled": false
+      },
+      "gifgrep": {
+        "enabled": false
+      },
+      "github": {
+        "enabled": false
+      },
+      "gog": {
+        "enabled": false
+      },
+      "goplaces": {
+        "enabled": false
+      },
+      "himalaya": {
+        "enabled": false
+      },
+      "mcporter": {
+        "enabled": false
+      },
+      "model-usage": {
+        "enabled": false
+      },
+      "nano-pdf": {
+        "enabled": false
+      },
+      "obsidian": {
+        "enabled": false
+      },
+      "openhue": {
+        "enabled": false
+      },
+      "oracle": {
+        "enabled": false
+      },
+      "ordercli": {
+        "enabled": false
+      },
+      "sherpa-onnx-tts": {
+        "enabled": false
+      },
+      "songsee": {
+        "enabled": false
+      },
+      "sonoscli": {
+        "enabled": false
+      },
+      "spotify-player": {
+        "enabled": false
+      },
+      "summarize": {
+        "enabled": false
+      },
+      "trello": {
+        "enabled": false
+      },
+      "video-frames": {
+        "enabled": false
+      },
+      "xurl": {
+        "enabled": false
       }
     }
   },
@@ -132,44 +202,42 @@
       },
       "device-pair": {
         "enabled": true
+      },
+      "microsoft": {
+        "enabled": true
+      },
+      "codex": {
+        "enabled": true
       }
     },
     "enabled": true,
     "allow": [
       "browser",
       "memory-core",
-      "device-pair"
+      "device-pair",
+      "microsoft",
+      "codex"
     ]
   },
   "memory": {
     "search": {
       "enabled": false,
-      "rememberAcrossConversations": false
-    },
-    "backend": "builtin",
-    "citations": "auto",
-    "qmd": {
-      "includeDefaultMemory": true,
-      "sessions": {
-        "enabled": true
+      "rememberAcrossConversations": false,
+      "experimental": {
+        "sessionMemory": true
       },
-      "limits": {
-        "timeoutMs": 8000,
-        "maxResults": 16
-      },
-      "update": {
-        "onBoot": true,
-        "interval": "5m",
-        "debounceMs": 15000
-      },
-      "paths": [
+      "sources": [
+        "memory",
+        "sessions"
+      ],
+      "extraPaths": [
         {
           "path": "/home/node/.openclaw",
-          "name": "workspace",
           "pattern": "**/*.md"
         }
       ]
-    }
+    },
+    "citations": "auto"
   },
   "gateway": {
     "port": 58789,
@@ -183,7 +251,23 @@
     },
     "auth": {
       "mode": "token",
-      "token": "123456"
+      "token": "335aba10f02647eb431a83e6e742589d4103c5681a4acb90"
+    }
+  },
+  "tts": {
+    "auto": "off",
+    "mode": "final",
+    "provider": "microsoft",
+    "providers": {
+      "microsoft": {
+        "lang": "zh-CN",
+        "outputFormat": "ogg-24khz-16bit-mono-opus",
+        "pitch": "+0Hz",
+        "rate": "+0%",
+        "volume": "+0%",
+        "timeoutMs": 30000,
+        "speakerVoice": "zh-CN-XiaoxiaoNeural"
+      }
     }
   }
 }

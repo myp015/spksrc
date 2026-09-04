@@ -1,14 +1,17 @@
 version: '3.8'
 services:
   openclaw:
-    # Fixed bundled image; OpenClaw app self-updates inside the persistent volume.
+    # Fully-offline image: Container Manager builds it from the bundled build
+    # context (target/app/openclaw — Dockerfile + rootfs.tar.gz, FROM scratch,
+    # no base image, no online pull) at install time. OpenClaw app self-updates
+    # inside the persistent volume.
+    build: /var/packages/openclaw/target/app/openclaw
     image: openclaw/openclaw:2026.8.2
     container_name: openclaw
     volumes:
-      - {{DATA_DIR}}/runtime:/data/runtime
-      - {{DATA_DIR}}/conf:/home/node/.openclaw
-      - {{DATA_DIR}}/workspace:/home/node/.openclaw/workspace
-      - {{DATA_DIR}}/scripts:/data/scripts
+      - {{OPENCLAW_HOME}}/.openclaw:/home/node/.openclaw
+      - {{OPENCLAW_HOME}}/.openclaw/runtime:/data/runtime
+      - {{OPENCLAW_HOME}}/.openclaw/scripts:/data/scripts
       - /etc/localtime:/etc/localtime:ro
     environment:
       - HOME=/home/node

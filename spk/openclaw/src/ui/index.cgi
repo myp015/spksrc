@@ -8,18 +8,21 @@ LOG_FILE="${APP_VAR_DIR}/openclaw.log"
 GATEWAY_PORT="58789"
 QUERY="${QUERY_STRING:-}"
 
-# ---- OpenClaw (container mode) fixed layout ----
-# Config and workspace live in the container's persistent data volume.
-#   config    /volume1/docker/openclaw/conf/openclaw.json
+# ---- OpenClaw (container mode) HOME 布局 ----
+# 所有 OpenClaw 文件位于安装向导确定的 HOME 基目录下（home-dir，兼容旧 data-dir）：
+#   config    $HOME/.openclaw/openclaw.json
 #             (= /home/node/.openclaw/openclaw.json inside the container)
-#   workspace /volume1/docker/openclaw/workspace
-DATA_DIR="/volume1/docker/openclaw"
-if [ -r "${APP_VAR_DIR}/data-dir" ]; then
+#   workspace $HOME/.openclaw            (= /home/node/.openclaw inside container)
+HOME_DIR="/volume1/openclaw"
+if [ -r "${APP_VAR_DIR}/home-dir" ]; then
+    d="$(cat "${APP_VAR_DIR}/home-dir" 2>/dev/null | tr -d '\r' | tr -d '\n')"
+    [ -n "$d" ] && HOME_DIR="$d"
+elif [ -r "${APP_VAR_DIR}/data-dir" ]; then
     d="$(cat "${APP_VAR_DIR}/data-dir" 2>/dev/null | tr -d '\r' | tr -d '\n')"
-    [ -n "$d" ] && DATA_DIR="$d"
+    [ -n "$d" ] && HOME_DIR="$d"
 fi
-CFG_FILE="${DATA_DIR}/conf/openclaw.json"
-WORKSPACE_DIR="${DATA_DIR}/workspace"
+CFG_FILE="${HOME_DIR}/.openclaw/openclaw.json"
+WORKSPACE_DIR="${HOME_DIR}/.openclaw"
 # Dynamic gateway port from active config (fallback 58789)
 GATEWAY_PORT="$(python3 - <<'PY' "$CFG_FILE"
 import json, os, sys
@@ -2786,6 +2789,26 @@ cat <<'HTML'
     </div>
   </div>
 
+  <!-- 授权面板操作：管理员密码输入框（掩码显示，不用明文 prompt） -->
+  <div class="modal-mask" id="authModalMask">
+    <div class="modal" style="width:min(440px,90vw);">
+      <h3>授权面板操作</h3>
+      <p style="margin:0 0 14px;font-size:13px;color:#475569;line-height:1.6;">
+        请输入 DSM 管理员密码（当前登录账号，仅本次验证，密码不会保存）。验证通过后通过一次性的
+        root 计划任务写入面板所需的 sudoers，使面板可以启动/停止 OpenClaw、查看日志与使用终端。
+      </p>
+      <div class="field">
+        <label>管理员密码</label>
+        <input id="auth_admin_password" type="password" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();submitAuthDialog();}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeAuthDialog()">取消</button>
+        <button class="btn primary" id="btn_auth_confirm" onclick="submitAuthDialog()">授权</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = '/webman/3rdparty/openclaw/index.cgi?native_api=1&action=';
     const PROVIDER_PRESETS = {
@@ -3071,7 +3094,7 @@ cat <<'HTML'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
             + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')"' + authDisable + '>启动 OpenClaw</button>'
             + '  <button class="btn" id="btn_oc_stop" onclick="runStopOrForce()"' + authDisable + '>停止 OpenClaw</button>'
-            + '  <button class="btn" id="btn_oc_auth" onclick="authorizePanel()">' + (authState === 'authorized' ? '已授权' : '授权面板操作') + '</button>'
+            + '  <button class="btn" id="btn_oc_auth" onclick="openAuthDialog()">' + (authState === 'authorized' ? '已授权' : '授权面板操作') + '</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
@@ -3396,18 +3419,40 @@ cat <<'HTML'
       if (!r || !r.success) {
         const code = r && r.error && r.error.code;
         const msg = r && r.error && r.error.message;
-        throw new Error('管理员密码校验失败' + (msg ? ('（' + (code != null ? code + ': ' : '') + msg + '）') : '（请确认当前登录账号是管理员）'));
+        if (code === 119) {
+          throw new Error('登录会话已过期：请刷新页面重新登录后再试（119）');
+        }
+        throw new Error('管理员密码校验失败：密码错误，或当前登录账号不是管理员'
+          + (msg ? ('（' + (code != null ? code + ': ' : '') + msg + '）')
+                : '（请确认输入的是当前登录账号的 DSM 管理员密码，而非 SSH 密码）'));
       }
       const token = r.data && r.data.SynoConfirmPWToken;
       if (!token) throw new Error('未取得授权令牌（SynoConfirmPWToken 为空）');
       return token;
     }
     // 授权面板操作：输入管理员密码 -> 校验密码取得 SynoConfirmPWToken ->
-    // 创建并运行一个 root 计划任务写入 sudoers -> 删除计划任务 -> 校验激活。
+    // 创建并运行一个 root 计划任务写入 sudoers -> 轮询确认生效 -> 删除计划任务。
     // 与已安装的“权限管理器”套件同一机制（SYNO.Core.EventScheduler.Root）。
-    async function authorizePanel() {
-      const adminPassword = prompt('请输入管理员密码以授权面板操作（当前登录账号，仅本次授权不保存）', '');
-      if (adminPassword === null) return;
+    function openAuthDialog() {
+      const mask = document.getElementById('authModalMask');
+      const el = document.getElementById('auth_admin_password');
+      if (!mask || !el) return;
+      mask.style.display = 'flex';
+      el.value = '';
+      setTimeout(() => { el.focus(); }, 50);
+    }
+    function closeAuthDialog() {
+      const mask = document.getElementById('authModalMask');
+      if (mask) mask.style.display = 'none';
+    }
+    async function submitAuthDialog() {
+      const el = document.getElementById('auth_admin_password');
+      const password = (el && el.value) || '';
+      if (!password) { setMsg('请输入管理员密码', 'err'); if (el) el.focus(); return; }
+      closeAuthDialog();
+      await doAuthorizePanel(password);
+    }
+    async function doAuthorizePanel(adminPassword) {
       const btn = document.getElementById('btn_oc_auth');
       if (btn) { btn.disabled = true; btn.textContent = '授权中...'; }
       setMsg('正在授权面板操作（计划任务方式写入 sudoers）…', '');
@@ -3435,24 +3480,41 @@ cat <<'HTML'
             : '未知错误';
           throw new Error('创建计划任务失败：' + m);
         }
-        // 3) run it now (SPM re-validates the password for each step)
+        // 3) run it now. DSM 的 run 是异步的：返回成功时 root 脚本可能还没执行完，
+        //    因此下面必须轮询 authorize（而不是只查一次），否则会出现“密码正确却
+        //    提示授权未生效”的假失败。
         const t2 = await ocFetchToken(adminPassword);
-        await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName, SynoConfirmPWToken: t2 });
-        // 4) delete it (best-effort; a leftover bootup task is harmless/idempotent)
+        const runResp = await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName, SynoConfirmPWToken: t2 });
+        if (!runResp || !runResp.success) {
+          const m = runResp && runResp.error
+            ? (runResp.error.code + ': ' + (runResp.error.message || ''))
+            : '未知错误';
+          throw new Error('触发计划任务失败：' + m);
+        }
+        // 4) poll authorize until the root task has actually written the sudoers
+        const deadline = Date.now() + 15000;
+        let activated = false;
+        let reason = 'sudoers 未写入成功';
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 700));
+          try {
+            const ret = await api('authorize');
+            if (ret && ret.activated) { activated = true; break; }
+            if (ret && ret.reason) reason = ret.reason;
+          } catch (_) {}
+        }
+        // 5) delete the one-shot task (best-effort; a leftover bootup task is harmless)
         try {
           const t3 = await ocFetchToken(adminPassword);
           await dsmApi('SYNO.Core.EventScheduler', 'delete', 1, { task_name: taskName, SynoConfirmPWToken: t3 });
         } catch (_) {}
-        // 5) verify the panel can now run docker via sudo
-        const ret = await api('authorize');
-        if (ret && ret.activated) {
+        if (activated) {
           setAuthState(true, '');
           setMsg('已授权：面板启动/停止/日志/终端可用', 'ok');
           await load('status');
         } else {
-          const r = (ret && ret.reason) || 'sudoers 未写入成功';
-          setAuthState(false, r);
-          setMsg('授权未生效：' + r, 'err');
+          setAuthState(false, reason);
+          setMsg('授权未生效：' + reason + '；请确认输入的是当前登录账号的 DSM 管理员密码', 'err');
         }
       } catch (e) {
         setAuthState(false, e && e.message ? e.message : String(e));

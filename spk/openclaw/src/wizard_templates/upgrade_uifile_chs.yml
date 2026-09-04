@@ -1,10 +1,10 @@
 CONFIGURATION_TITLE: "OpenClaw 升级参数（容器版）"
 
-DATA_DIR_DESCRIPTION: "数据目录（保持与安装时一致，容器卷所在路径）"
-DATA_DIR_LABEL: "数据目录"
+HOME_DESCRIPTION: "HOME 目录（升级时必须与当前安装保持一致，否则数据会被视为新 HOME 重新初始化）"
+HOME_LABEL: "HOME 目录"
 
 GATEWAY_PORT_DESCRIPTION: "Gateway 监听端口（保持与安装时一致）"
 GATEWAY_PORT_LABEL: "端口"
 
 INSTALLATION_NOTES_TITLE: "<b>说明</b><br/>"
-INSTALLATION_NOTES_TEXT1: "升级仅更新套件外壳（UI/脚本），OpenClaw 本体仍由容器内在线更新机制管理，数据目录保持不变。"
+INSTALLATION_NOTES_TEXT1: "升级仅更新套件外壳（UI/脚本），OpenClaw 本体仍由容器内在线更新机制管理。请将 HOME 目录保持为当前安装目录（所有 OpenClaw 文件位于 HOME/.openclaw）。"

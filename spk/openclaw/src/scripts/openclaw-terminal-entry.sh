@@ -10,13 +10,17 @@ set -eu
 
 SELF="/var/packages/openclaw/target/scripts/openclaw-terminal-entry.sh"
 
-# Resolve the OpenClaw data dir (workspace for the unprivileged fallback).
-DATA_DIR="/volume1/docker/openclaw"
-if [ -r "/var/packages/openclaw/var/data-dir" ]; then
+# Resolve the OpenClaw HOME 基目录（workspace 为 $HOME/.openclaw）。
+# home-dir 优先，兼容旧版 data-dir。
+HOME_DIR="/volume1/openclaw"
+if [ -r "/var/packages/openclaw/var/home-dir" ]; then
+  d="$(cat /var/packages/openclaw/var/home-dir 2>/dev/null | tr -d '\r' | tr -d '\n')"
+  [ -n "$d" ] && HOME_DIR="$d"
+elif [ -r "/var/packages/openclaw/var/data-dir" ]; then
   d="$(cat /var/packages/openclaw/var/data-dir 2>/dev/null | tr -d '\r' | tr -d '\n')"
-  [ -n "$d" ] && DATA_DIR="$d"
+  [ -n "$d" ] && HOME_DIR="$d"
 fi
-WS="${DATA_DIR}/workspace"
+WS="${HOME_DIR}/.openclaw"
 
 # --- Elevate to root once authorized ------------------------------------
 # sudo -n -l only checks whether the NOPASSWD rule allows this script; it does

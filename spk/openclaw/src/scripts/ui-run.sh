@@ -12,7 +12,9 @@ SYNOPKG_PKGDEST="${SYNOPKG_PKGDEST:-/var/packages/${SYNOPKG_PKGNAME}/target}"
 SYNOPKG_PKGVAR="${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
 
 CONTAINER_NAME="openclaw"
-CONTAINER_DATA_DIR="${SYNOPKG_PKGVAR}/data"
+# HOME 基目录：所有 OpenClaw 文件位于 ${CONTAINER_OPENCLAW_HOME}/.openclaw。
+# 实际值由 postinst 写入 container.env（向导确定），此处仅为 fallback。
+CONTAINER_OPENCLAW_HOME="${SYNOPKG_PKGVAR}/data"
 CONTAINER_GATEWAY_PORT="58789"
 CONTAINER_IMAGE="openclaw/openclaw"
 CONTAINER_IMAGE_TAG="2026.8.2"
@@ -21,7 +23,7 @@ if [ -r "${SYNOPKG_PKGVAR}/container.env" ]; then
     . "${SYNOPKG_PKGVAR}/container.env"
 fi
 
-CONFIG_FILE="${CONTAINER_DATA_DIR}/conf/openclaw.json"
+CONFIG_FILE="${CONTAINER_OPENCLAW_HOME}/.openclaw/openclaw.json"
 
 find_docker() {
     for c in docker /usr/local/bin/docker /usr/bin/docker; do
@@ -78,8 +80,8 @@ do_status() {
         ver="$("${DOCKER}" exec "${CONTAINER_NAME}" sh -c 'grep -m1 "\"version\"" /data/runtime/package.json 2>/dev/null | sed -E "s/.*\"version\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/"' 2>/dev/null || echo unknown)"
     fi
     image="$("${DOCKER}" inspect -f '{{.Config.Image}}' "${CONTAINER_NAME}" 2>/dev/null || echo "${CONTAINER_IMAGE}:${CONTAINER_IMAGE_TAG}")"
-    python3 -c 'import json,sys; print(json.dumps({"running": %s, "version": %r, "image": %r, "container": %r, "dataDir": %r, "configPath": %r, "port": %r}, ensure_ascii=False))' \
-        "$running" "$ver" "$image" "$CONTAINER_NAME" "$CONTAINER_DATA_DIR" "$CONFIG_FILE" "$CONTAINER_GATEWAY_PORT"
+    python3 -c 'import json,sys; print(json.dumps({"running": %s, "version": %r, "image": %r, "container": %r, "homeDir": %r, "configPath": %r, "port": %r}, ensure_ascii=False))' \
+        "$running" "$ver" "$image" "$CONTAINER_NAME" "$CONTAINER_OPENCLAW_HOME" "$CONFIG_FILE" "$CONTAINER_GATEWAY_PORT"
 }
 
 do_check_update() {
