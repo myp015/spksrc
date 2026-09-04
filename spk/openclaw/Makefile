@@ -149,6 +149,9 @@ openclaw_copy_target:
 	@chmod 755 $(STAGING_DIR)/scripts/openclaw-terminal-entry.sh
 	@cp -f src/scripts/terminal.sh $(STAGING_DIR)/scripts/terminal.sh
 	@chmod 755 $(STAGING_DIR)/scripts/terminal.sh
+	# Root helper executed by the panel's one-shot authorize scheduled task.
+	@cp -f src/scripts/authorize-root.sh $(STAGING_DIR)/scripts/authorize-root.sh
+	@chmod 755 $(STAGING_DIR)/scripts/authorize-root.sh
 	# OpenClaw default config template
 	@install -d -m 755 $(STAGING_DIR)/app/openclaw/config
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json

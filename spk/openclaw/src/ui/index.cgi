@@ -349,6 +349,23 @@ terminal_port = get_config_val(cfg, 'gateway', 'port') or 58789
 # terminal ttyd port is 17682 by default, configured via openclaw-bundle.json
 # but we hardcode it for now since the DSM UI panel doesn't need to read it from config
 terminal_port = 17682
+
+# Panel-operation authorization: can this CGI (http) run docker via sudo?
+# Granted interactively by the 授权面板操作 flow (one-shot root scheduled task,
+# SimplePermissionManager-style). Until then the panel is read-only.
+def _auth_check():
+    try:
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+        if p.returncode == 0:
+            return True, ''
+        lines = [l for l in (p.stdout or '').splitlines() if l.strip()]
+        reason = lines[-1][:200] if lines else 'docker sudo 失败 (rc=%s)' % p.returncode
+        return False, reason
+    except Exception as e:
+        return False, '授权检查异常: %s' % e
+
+authorized, auth_error = _auth_check()
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -365,7 +382,9 @@ out = {
   'startedAt': started_ts,
   'gatewayPort': port,
   'terminalPort': terminal_port,
-  'gatewayToken': gateway_token
+  'gatewayToken': gateway_token,
+  'authorized': authorized,
+  'authError': auth_error
 }
 print(json.dumps(out, ensure_ascii=False))
 PY
@@ -2364,99 +2383,62 @@ PY
             exit 0
             ;;
         install)
+            # Container mode: "install" = ensure the openclaw container (whose
+            # PID 1 IS the gateway) is running with auto-restart. Docker ops
+            # require panel authorization.
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            printf '{"ok":true,"message":"local mode"}'
+            python3 - <<'PY'
+import json, subprocess, sys
+def auth_ok():
+    try:
+        p = subprocess.run(['sudo','-n','/usr/local/bin/docker','version'],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+        return p.returncode == 0
+    except Exception:
+        return False
+def run(argv):
+    try:
+        p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+        return p.returncode, (p.stdout or b'').decode('utf-8', 'ignore')[-400:]
+    except Exception as e:
+        return -1, '%s: %s' % (type(e).__name__, e)
+if not auth_ok():
+    print(json.dumps({'ok': False, 'authorized': False, 'error': '面板操作未授权：请先点击“授权面板操作”输入管理员密码'}, ensure_ascii=False))
+    raise SystemExit
+rc1, o1 = run(['sudo','-n','/usr/local/bin/docker','start','openclaw'])
+rc2, o2 = run(['sudo','-n','/usr/local/bin/docker','update','--restart=always','openclaw'])
+print(json.dumps({'ok': rc1 == 0, 'authorized': True, 'action': 'install',
+                  'logs': [{'cmd': 'docker start openclaw', 'rc': rc1, 'out': o1},
+                           {'cmd': 'docker update --restart=always openclaw', 'rc': rc2, 'out': o2}]}, ensure_ascii=False))
+PY
             exit 0
             ;;
         authorize)
-            body=$(read_body)
+            # The actual sudoers write is done by the panel's 授权面板操作 flow:
+            # the browser verifies the admin password (SYNO.Core.User.PasswordConfirm)
+            # and runs a one-shot ROOT scheduled task (SYNO.Core.EventScheduler.Root)
+            # whose payload is target/scripts/authorize-root.sh. This action only
+            # VERIFIES the result — can this CGI run docker via sudo — and reports
+            # the exact reason when it cannot.
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            python3 - <<'PY' "$body"
-import json, subprocess, shlex, sys, pwd, grp
-raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
-try:
-    payload = json.loads(raw or '{}')
-except Exception:
-    payload = {}
-password = str(payload.get('password') or '')   # account auto-detected, only password
-logs = []
-def run(argv):
+            python3 - <<'PY'
+import json, subprocess, sys
+def auth_check():
     try:
-        p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=30)
-        out = (p.stdout or '').strip()
-        if out: logs.append(out[-400:])
-        return p.returncode
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+        if p.returncode == 0:
+            return True, ''
+        lines = [l for l in (p.stdout or '').splitlines() if l.strip()]
+        reason = lines[-1][:220] if lines else 'docker sudo 失败 (rc=%s)' % p.returncode
+        return False, reason
     except Exception as e:
-        logs.append(str(e)); return 124
-
-SUDOERS_D='/etc/sudoers.d/openclaw-ui'
-RULE='http ALL=(root) NOPASSWD: *** /usr/local/bin/docker, /usr/bin/docker, /bin/systemctl, /usr/sbin/nginx, /usr/bin/nginx, /bin/ln, /var/packages/openclaw/target/scripts/ui-run.sh\nsc-openclaw ALL=(root) NOPASSWD: *** /usr/local/bin/docker, /usr/bin/docker\n'
-
-def detect_admin():
-    # 1) explicit admins group members
-    try:
-        g = grp.getgrnam('administrators')
-        for u in g.gr_mem:
-            try:
-                pe = pwd.getpwnam(u)
-                if pe.pw_uid != 0 and pe.pw_uid != 65534 and not u.startswith('sc-'):
-                    return u
-            except KeyError:
-                pass
-    except KeyError:
-        pass
-    # 2) fallback: the 'admin' user or the first uid==1024 (DSM default admin)
-    for cand in ('admin',):
-        try:
-            pwd.getpwnam(cand)
-            return cand
-        except KeyError:
-            pass
-    # 3) any uid 1024 user
-    try:
-        for pe in pwd.getpwall():
-            if pe.pw_uid == 1024:
-                return pe.pw_name
-    except Exception:
-        pass
-    return ''
-
-user = detect_admin()
-rc = -1
-if not password:
-    logs.append('请输入管理员密码'); rc = 127
-elif not user:
-    logs.append('未找到可用的管理员账号'); rc = 126
-else:
-    logs.append('使用管理员账号: ' + user)
-    # write sudoers via admin password (sudo -S as admin)
-    inner = "printf '%s\n' '%s' > %s && chmod 440 %s" % (RULE, RULE, SUDOERS_D, SUDOERS_D)
-    su_cmd = "sudo -S -p '' sh -lc " + shlex.quote(inner)
-    try:
-        p = subprocess.Popen(['su','-s','/bin/sh',user,'-c',su_cmd], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        out,_ = p.communicate((password+'\n'+password+'\n'), timeout=30)
-        out=(out or '').strip()
-        if out: logs.append(out[-400:])
-        rc = p.returncode
-    except Exception as e:
-        logs.append('auth flow error: '+str(e)); rc=125
-
-# Verify activated: http user can sudo docker
-activated = False
-t = subprocess.run(['sudo','-n','-u','http','-l'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
-if 'docker' in ((t.stdout or '') + (t.stderr or '')) or subprocess.run(['sudo','-n','-u','http','/usr/local/bin/docker','version'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10).returncode == 0:
-    activated = True
-reason = ''
-if not activated:
-    if rc == 0:
-        reason = 'sudoers 已写入但 http 用户仍无法 sudo docker'
-    elif rc == 127:
-        reason = '未输入密码'
-    elif rc == 126:
-        reason = '未找到管理员账号'
-    else:
-        reason = '密码错误或账号无 sudo 权限（rc=%s）' % rc
-print(json.dumps({'ok': activated, 'activated': activated, 'rc': rc, 'user': user, 'sudoers': SUDOERS_D, 'reason': reason, 'logs': logs[-6:]}, ensure_ascii=False))
+        return False, '授权检查异常: %s' % e
+activated, reason = auth_check()
+print(json.dumps({'ok': activated, 'activated': activated, 'authorized': activated,
+                  'sudoers': '/etc/sudoers.d/openclaw-ui',
+                  'reason': '' if activated else (reason or '授权未生效'),
+                  'logs': []}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -2476,6 +2458,19 @@ action = (payload.get('action') or '').strip().lower()
 if action not in ('start', 'stop', 'restart'):
     print(json.dumps({'ok': False, 'action': action, 'logs': [], 'running': False, 'initialized': True,
                       'error': 'unsupported action'}, ensure_ascii=False))
+    raise SystemExit
+
+# Panel-operation authorization gate: start/stop/restart need docker sudo.
+def auth_ok():
+    try:
+        p = subprocess.run(['sudo','-n','/usr/local/bin/docker','version'],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+        return p.returncode == 0
+    except Exception:
+        return False
+if not auth_ok():
+    print(json.dumps({'ok': False, 'authorized': False, 'action': action, 'logs': [], 'running': False,
+                      'initialized': True, 'error': '面板操作未授权：请先点击“授权面板操作”输入管理员密码'}, ensure_ascii=False))
     raise SystemExit
 
 # Container mode: the gateway lives in the 'openclaw' container managed by
@@ -2555,29 +2550,28 @@ PY
             ;;
         logs)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-            # Container mode: gateway logs live inside the container.
-            python3 - <<'PY' "$LOG_FILE"
+            # Container mode: gateway logs live inside the container. Show ONLY
+            # `docker logs openclaw` output (like `docker logs -f`), nothing else.
+            python3 - <<'PY'
 import json, subprocess, sys
-app_log = sys.argv[1] if len(sys.argv) > 1 else ''
-def run(argv):
+def auth_ok():
     try:
-        p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
-        return (p.stdout or '')
-    except Exception as e:
-        return 'error: %s' % e
-# container gateway logs (docker logs openclaw) via sudo
-container_log = run(['sudo','-n','/usr/local/bin/docker','logs','--tail','300','openclaw'])
-# host app log (package installer/terminal log)
-app_txt = ''
+        p = subprocess.run(['sudo','-n','/usr/local/bin/docker','version'],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+        return p.returncode == 0
+    except Exception:
+        return False
+if not auth_ok():
+    print(json.dumps({'ok': False, 'authorized': False,
+                      'reason': '面板操作未授权：请先点击“授权面板操作”输入管理员密码', 'log': ''}, ensure_ascii=False))
+    raise SystemExit
 try:
-    if app_log and __import__('os').path.exists(app_log):
-        app_txt = open(app_log,'r',encoding='utf-8',errors='ignore').read()[-2000:]
-except Exception:
-    pass
-merged = '===== openclaw (container gateway) :: docker logs openclaw =====\n' + container_log
-if app_txt:
-    merged += '\n\n===== openclaw app :: %s =====\n' % app_log + app_txt
-print(json.dumps({'log': merged, 'source': 'container+docker logs'}, ensure_ascii=False))
+    p = subprocess.run(['sudo','-n','/usr/local/bin/docker','logs','--tail','300','openclaw'],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=20)
+    log = p.stdout or ''
+except Exception as e:
+    log = 'error: %s' % e
+print(json.dumps({'ok': True, 'authorized': True, 'log': log, 'source': 'docker logs openclaw'}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -2838,6 +2832,43 @@ cat <<'HTML'
       const text = await resp.text();
       try { return text ? JSON.parse(text) : {}; } catch (e) { return { error: 'JSON parse failed', raw: text }; }
     }
+    // Call the DSM web API on the same origin as the panel (/webapi/entry.cgi).
+    // Used by the 授权面板操作 flow exactly like SimplePermissionManager does:
+    // verify the admin password, then create/run/delete a one-shot ROOT
+    // scheduled task that writes the package sudoers.
+    async function dsmApi(apiName, methodName, version, params) {
+      const q = '/webapi/entry.cgi?api=' + encodeURIComponent(apiName)
+        + '&method=' + encodeURIComponent(methodName)
+        + '&version=' + encodeURIComponent(version)
+        + '&_dc=' + Date.now();
+      const form = new URLSearchParams();
+      const appendFlat = (key, val) => {
+        if (val === null || val === undefined) { form.append(key, ''); return; }
+        if (typeof val === 'object') {
+          for (const k of Object.keys(val)) appendFlat(key + '[' + k + ']', val[k]);
+          return;
+        }
+        form.append(key, String(val));
+      };
+      for (const k of Object.keys(params || {})) appendFlat(k, params[k]);
+      const resp = await fetch(q, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: form.toString(),
+        cache: 'no-store'
+      });
+      const text = await resp.text();
+      try { return text ? JSON.parse(text) : {}; } catch (e) { return { success: false, error: { message: 'webapi 返回非 JSON: ' + String(text).slice(0, 120) } }; }
+    }
+    // Panel-operation authorization state, refreshed from status / authorize.
+    let authState = 'unknown';          // 'authorized' | 'unauthorized' | 'unknown'
+    let authReason = '';
+    function setAuthState(authorized, reason) {
+      authState = (authorized === true) ? 'authorized' : ((authorized === false) ? 'unauthorized' : 'unknown');
+      authReason = reason || '';
+      const btn = document.getElementById('btn_oc_auth');
+      if (btn && btn.textContent !== '授权中...') btn.textContent = (authState === 'authorized') ? '已授权' : '授权面板操作';
+    }
     function updateTerminalRepairBtnState() {
       const btn = document.getElementById('terminal_repair_btn');
       const userEl = document.getElementById('terminal_admin_user');
@@ -2934,11 +2965,19 @@ cat <<'HTML'
             ['binaryPath', data.binaryPath || '-']
           ];
           const runningText = data.running ? '运行中' : '已停止';
+          setAuthState(!!data.authorized, data.authError || '');
+          const authBanner = (authState === 'authorized')
+            ? ''
+            : '<div id="auth_banner" style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:#fef3f2;border:1px solid #fda29b;color:#b42318;font-size:13px;line-height:1.6;">'
+              + '<b>面板操作未授权</b>：' + esc(authReason || '请点击下方“授权面板操作”，输入管理员密码后即可使用启动/停止/日志/终端。')
+              + '</div>';
+          const authDisable = (authState === 'authorized') ? '' : ' disabled';
           content.innerHTML = ''
+            + authBanner
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
-            + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')">启动 OpenClaw</button>'
-            + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')">停止 OpenClaw</button>'
-            + '  <button class="btn" id="btn_oc_auth" onclick="authorizePanel()">授权面板操作</button>'
+            + '  <button class="btn" id="btn_oc_start" onclick="runInstallAction(\'start\')"' + authDisable + '>启动 OpenClaw</button>'
+            + '  <button class="btn" id="btn_oc_stop" onclick="runInstallAction(\'stop\')"' + authDisable + '>停止 OpenClaw</button>'
+            + '  <button class="btn" id="btn_oc_auth" onclick="authorizePanel()">' + (authState === 'authorized' ? '已授权' : '授权面板操作') + '</button>'
             + '  <button class="btn primary" onclick="openOpenclawWeb()">打开 OpenClaw Web</button>'
             + '</div>'
             + '<div class="grid">' + rows.map(([k,v]) => {
@@ -2965,6 +3004,17 @@ cat <<'HTML'
               const nextText = nextRunning ? '运行中' : '已停止';
               const nextUptime = nextRunning ? formatUptime((s && s.uptimeSeconds) || 0) : '-';
               const nextPort = (s && s.port) || '-';
+              if (s && typeof s.authorized === 'boolean') {
+                setAuthState(s.authorized, s.authError || '');
+              }
+              const authBannerEl = document.getElementById('auth_banner');
+              if (authBannerEl) {
+                if (authState === 'authorized') {
+                  authBannerEl.remove();
+                } else {
+                  authBannerEl.innerHTML = '<b>面板操作未授权</b>：' + esc(authReason || '请点击下方“授权面板操作”，输入管理员密码后即可使用启动/停止/日志/终端。');
+                }
+              }
               const msgEl = document.getElementById('msg');
               if (msgEl) {
                 msgEl.className = 'msg ' + (nextRunning ? 'ok' : 'err');
@@ -2991,17 +3041,20 @@ cat <<'HTML'
         }
         if (tab === 'logs') {
           logsAutoRefresh = true;
+          const logText = (data && data.authorized === false)
+            ? '[面板操作未授权] ' + (data.reason || '请先点击“授权面板操作”输入管理员密码')
+            : (data.log || '');
           content.innerHTML = ''
             + '<div style="height:100%;display:flex;flex-direction:column;gap:8px;">'
             + '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">'
-            + '    <div style="font-size:13px;color:#667085;">实时显示网关与套件日志（自动刷新）。</div>'
+            + '    <div style="font-size:13px;color:#667085;">实时显示容器网关日志（docker logs openclaw，自动刷新）。</div>'
             + '    <div style="display:flex;gap:8px;">'
             + '      <button class="btn" onclick="refreshLogsNow(true)">刷新一次</button>'
             + '      <button class="btn" id="btn_logs_toggle" onclick="toggleLogsAutoRefresh()">停止刷新</button>'
             + '      <button class="btn" onclick="copyLogsText()">复制日志</button>'
             + '    </div>'
             + '  </div>'
-            + '  <pre id="log_pre" style="flex:1;min-height:0;max-height:none;margin:0;">' + esc(data.log || '') + '</pre>'
+            + '  <pre id="log_pre" style="flex:1;min-height:0;max-height:none;margin:0;">' + esc(logText) + '</pre>'
             + '</div>';
           const pre = document.getElementById('log_pre');
           if (pre) pre.scrollTop = pre.scrollHeight;
@@ -3215,8 +3268,9 @@ cat <<'HTML'
         return;
       }
       const running = !!window.__statusRunning;
-      startBtn.disabled = running;
-      stopBtn.disabled = false;
+      const authed = (authState === 'authorized');
+      startBtn.disabled = running || !authed;
+      stopBtn.disabled = !authed;
       startBtn.textContent = '启动 OpenClaw';
       stopBtn.textContent = running ? '停止 OpenClaw' : '强制停止 OpenClaw';
     }
@@ -3234,25 +3288,84 @@ cat <<'HTML'
       }
       return false;
     }
-    function authorizePanel() {
-      const adminPassword = prompt('请输入管理员密码以授权面板操作（账号自动识别，仅本次授权不保存）', '');
+    async function ocFetchToken(password) {
+      const r = await dsmApi('SYNO.Core.User.PasswordConfirm', 'auth', 2, { password: password });
+      if (!r || !r.success) {
+        const code = r && r.error && r.error.code;
+        const msg = r && r.error && r.error.message;
+        throw new Error('管理员密码校验失败' + (msg ? ('（' + (code != null ? code + ': ' : '') + msg + '）') : '（请确认当前登录账号是管理员）'));
+      }
+      const token = r.data && r.data.SynoConfirmPWToken;
+      if (!token) throw new Error('未取得授权令牌（SynoConfirmPWToken 为空）');
+      return token;
+    }
+    // 授权面板操作：输入管理员密码 -> 校验密码取得 SynoConfirmPWToken ->
+    // 创建并运行一个 root 计划任务写入 sudoers -> 删除计划任务 -> 校验激活。
+    // 与已安装的“权限管理器”套件同一机制（SYNO.Core.EventScheduler.Root）。
+    async function authorizePanel() {
+      const adminPassword = prompt('请输入管理员密码以授权面板操作（当前登录账号，仅本次授权不保存）', '');
       if (adminPassword === null) return;
       const btn = document.getElementById('btn_oc_auth');
       if (btn) { btn.disabled = true; btn.textContent = '授权中...'; }
-      setMsg('正在授权面板操作（写 sudoers）…', '');
-      api('authorize', 'POST', { password: adminPassword }).then(function(ret){
-        if (btn) { btn.disabled = false; btn.textContent = '授权面板操作'; }
-        if (ret && ret.activated) {
-          setMsg('已激活：面板启动/停止/日志/终端可用了', 'ok');
-        } else {
-          const r = (ret && ret.reason) || '';
-          const d = (ret && ret.logs && ret.logs.length) ? ret.logs.join('; ') : '';
-          setMsg('激活失败：' + (r || d || '请确认管理员密码'), 'err');
+      setMsg('正在授权面板操作（计划任务方式写入 sudoers）…', '');
+      const taskName = 'openclaw-authorize-' + Math.floor(Date.now() / 1000);
+      try {
+        // 1) verify the admin password -> one-time SynoConfirmPWToken
+        const token = await ocFetchToken(adminPassword);
+        // 2) create a ROOT scheduled task whose payload writes the sudoers
+        const createResp = await dsmApi('SYNO.Core.EventScheduler.Root', 'create', 1, {
+          task_name: taskName,
+          owner: { 0: 'root' },
+          event: 'bootup',
+          enable: true,
+          depend_on_task: '',
+          notify_enable: false,
+          notify_mail: '',
+          notify_if_error: false,
+          operation_type: 'script',
+          operation: '/var/packages/openclaw/target/scripts/authorize-root.sh',
+          SynoConfirmPWToken: token
+        });
+        if (!createResp || !createResp.success) {
+          const m = createResp && createResp.error
+            ? (createResp.error.code + ': ' + (createResp.error.message || ''))
+            : '未知错误';
+          throw new Error('创建计划任务失败：' + m);
         }
-        refreshStatus && refreshStatus();
-      });
+        // 3) run it now (SPM re-validates the password for each step)
+        const t2 = await ocFetchToken(adminPassword);
+        await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName, SynoConfirmPWToken: t2 });
+        // 4) delete it (best-effort; a leftover bootup task is harmless/idempotent)
+        try {
+          const t3 = await ocFetchToken(adminPassword);
+          await dsmApi('SYNO.Core.EventScheduler', 'delete', 1, { task_name: taskName, SynoConfirmPWToken: t3 });
+        } catch (_) {}
+        // 5) verify the panel can now run docker via sudo
+        const ret = await api('authorize');
+        if (ret && ret.activated) {
+          setAuthState(true, '');
+          setMsg('已授权：面板启动/停止/日志/终端可用', 'ok');
+          await load('status');
+        } else {
+          const r = (ret && ret.reason) || 'sudoers 未写入成功';
+          setAuthState(false, r);
+          setMsg('授权未生效：' + r, 'err');
+        }
+      } catch (e) {
+        setAuthState(false, e && e.message ? e.message : String(e));
+        setMsg('授权失败：' + (e && e.message ? e.message : String(e)), 'err');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = (authState === 'authorized') ? '已授权' : '授权面板操作';
+        }
+      }
     }
     async function runInstallAction(actionName) {
+      if (authState !== 'authorized') {
+        setMsg('面板操作未授权：' + (authReason || '请先点击“授权面板操作”输入管理员密码'), 'err');
+        return;
+      }
       setInstallButtonsBusy(actionName, true);
       try {
         let act;

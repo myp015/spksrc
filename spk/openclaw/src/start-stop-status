@@ -1,17 +1,23 @@
 #!/bin/sh
 # OpenClaw (container mode) — start/stop/status.
 #
-# The Docker container is managed by DSM "Container Manager" through the
-# package's docker-project resource; CM creates, starts and stops the
-# container with the package lifecycle. This script therefore only provides
-# a status health-check (like the Baidu Netdisk package) and is a no-op for
-# start/stop — avoiding any need for the package scripts to touch docker.
+# The OpenClaw gateway runs INSIDE the 'openclaw' Docker container (PID 1 =
+# openclaw-gateway), managed by DSM "Container Manager" through the package's
+# docker-project resource. start/stop/status here explicitly control that
+# container via sudo docker, so Package Center and the panel both act on the
+# in-container gateway. The host-side web terminal (ttyd) follows the same
+# lifecycle.
+#
+# Docker access is best-effort: before the one-time authorize flow
+# (授权面板操作) the service user has no docker sudo, so we rely on Container
+# Manager and never hard-fail on docker errors.
 #
 # Usage: start-stop-status {start|stop|status}
 set -u
 
 DNAME="OpenClaw"
 CONTAINER_NAME="openclaw"
+DOCKER="/usr/local/bin/docker"
 
 SYNOPKG_PKGVAR="${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME:-openclaw}/var}"
 GATEWAY_PORT="58789"
@@ -23,29 +29,46 @@ fi
 # Host-side bundled terminal (ttyd) lifecycle helper.
 TERMINAL_SCRIPT="/var/packages/${SYNOPKG_PKGNAME:-openclaw}/target/scripts/terminal.sh"
 
+sudo_docker() {
+    [ -x "$DOCKER" ] || return 1
+    sudo -n "$DOCKER" "$@" 2>/dev/null
+}
+
+container_running() {
+    [ "$(sudo_docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null)" = "true" ]
+}
+
+container_exists() {
+    sudo_docker inspect "$CONTAINER_NAME" >/dev/null 2>&1
+}
+
 case "$1" in
     start)
-        # Container Manager starts the container; we also bring up the
-        # host-side web terminal (ttyd).
+        # Gateway start: bring the container up and restore auto-restart.
+        sudo_docker start "$CONTAINER_NAME" >/dev/null 2>&1 || true
+        sudo_docker update --restart=always "$CONTAINER_NAME" >/dev/null 2>&1 || true
         if [ -x "${TERMINAL_SCRIPT}" ]; then
             "${TERMINAL_SCRIPT}" start >/dev/null 2>&1 || true
         fi
         exit 0
         ;;
     stop)
-        # Container Manager stops the container; stop the web terminal too.
+        # Gateway stop: disable auto-restart FIRST (so `docker stop` stays down
+        # instead of being brought back by the compose `restart: always`), then
+        # stop the container (PID 1 = gateway).
+        sudo_docker update --restart=no "$CONTAINER_NAME" >/dev/null 2>&1 || true
+        sudo_docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
         if [ -x "${TERMINAL_SCRIPT}" ]; then
             "${TERMINAL_SCRIPT}" stop >/dev/null 2>&1 || true
         fi
         exit 0
         ;;
     status)
-        # Health-check: report running when the gateway port is up.
-        if command -v curl >/dev/null 2>&1 && [ -n "${GATEWAY_PORT}" ]; then
-            if curl -s -m 3 "http://127.0.0.1:${GATEWAY_PORT}/" >/dev/null 2>&1; then
-                echo "${DNAME} is running"
-                exit 0
-            fi
+        # Health-check: running when the container is up or the gateway port
+        # is listening (port probe works even before docker sudo is granted).
+        if container_running || { command -v curl >/dev/null 2>&1 && [ -n "${GATEWAY_PORT}" ] && curl -s -m 3 "http://127.0.0.1:${GATEWAY_PORT}/" >/dev/null 2>&1; }; then
+            echo "${DNAME} is running"
+            exit 0
         fi
         echo "${DNAME} is not running"
         exit 1

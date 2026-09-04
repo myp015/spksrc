@@ -121,22 +121,10 @@ render_compose() {
     chmod 644 "${app_dir}/docker-compose.yaml" "${app_dir}/docker-compose.admin.yaml" 2>/dev/null || true
 }
 
-# Allow the DSM web CGI (http user) to invoke the root helper for UI actions
-# (status / self-update / logs), which need docker access. postinst runs as
-# root (privilege run-as: root) so this write succeeds.
-ensure_ui_sudoers() {
-    local rule_file="/etc/sudoers.d/openclaw-ui"
-    local rule="http ALL=(root) NOPASSWD: ${SYNOPKG_PKGDEST}/scripts/ui-run.sh"
-    if [ -d /etc/sudoers.d ]; then
-        printf '%s\n' "${rule}" > "${rule_file}"
-        chmod 440 "${rule_file}" 2>/dev/null || true
-        if command -v visudo >/dev/null 2>&1; then
-            if ! visudo -c -f "${rule_file}" >/dev/null 2>&1; then
-                rm -f "${rule_file}"
-            fi
-        fi
-    fi
-}
+# NOTE: no static sudoers is written at install time. The panel's 授权面板操作
+# flow (root scheduled task, SimplePermissionManager-style) owns
+# /etc/sudoers.d/openclaw-ui, and postinst runs as the non-root service user
+# anyway — writing a docker-less rule here could clobber the working one.
 
 # ---- lifecycle hooks ----
 
@@ -149,7 +137,6 @@ service_postinst() {
     ensure_data_dirs
     write_container_env
     render_compose
-    ensure_ui_sudoers
     # Import the FULL bundled container image (offline install, no download).
     # Runs as root (privilege run-as: root) so docker.sock is accessible.
     load_bundled_image
@@ -182,7 +169,6 @@ service_postupgrade() {
     write_container_env
     render_compose
     stage_container_scripts
-    ensure_ui_sudoers
     load_bundled_image
 }
 
