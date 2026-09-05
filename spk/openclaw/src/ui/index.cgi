@@ -2444,13 +2444,12 @@ PY
             exit 0
             ;;
         authorize)
-            # The actual sudoers write is done by the panel's 授权面板操作 flow:
-            # the browser verifies the admin password (SYNO.Core.User.PasswordConfirm)
-            # and runs a one-shot ROOT scheduled task (SYNO.Core.TaskScheduler.Root
-            # v4 — the modern DSM 7.2 Task Scheduler API) whose payload is
-            # target/scripts/authorize-root.sh. This action only VERIFIES the
-            # result — can this CGI run docker via sudo — and reports the exact
-            # reason when it cannot.
+            # 只读的授权状态检查（浏览器轮询用）。实际的 sudoers 写入由
+            # authorize_write 完成：浏览器在 授权面板操作 流程里用管理员密码
+            # （SYNO.Core.User.PasswordConfirm → SynoConfirmPWToken）建好一次性
+            # root 任务后，面板 CGI（root）直接执行 target/scripts/authorize-root.sh。
+            # 这里只做判定——sudoers 文件存在 且 sc-openclaw 能 sudo docker——并
+            # 在失败时给出准确原因。
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY'
 import json, os, subprocess, sys
@@ -2472,6 +2471,86 @@ print(json.dumps({'ok': activated, 'activated': activated, 'authorized': activat
                   'sudoers': '/etc/sudoers.d/openclaw-ui',
                   'reason': '' if activated else (reason or '授权未生效'),
                   'logs': []}, ensure_ascii=False))
+PY
+            exit 0
+            ;;
+
+        authorize_write)
+            # 同步写 sudoers（授权流程第 3 步，POST）：浏览器在 doAuthorizePanel 里
+            # 已用管理员密码换到 SynoConfirmPWToken，并通过 SYNO.Core.EventScheduler
+            # .Root create v1 建好一次性 root 任务（create 需要 token —— 管理员身份
+            # 验证 + CSRF 防护都在这一步由 DSM 完成）。这里由面板 CGI（root）直接
+            # 执行 authorize-root.sh 写 sudoers，秒级返回。
+            #
+            # ⚠ 刻意不走 EventScheduler run：实测这台 NAS 上 run 也是异步执行，
+            # 脚本实际运行比 run 返回晚约 1 分钟（面板 60s 轮询必然超时误报失败，
+            # 即此前反复出现"授权未生效"的根因）。同步写完全消除时序竞态。
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body"
+import json, os, subprocess, sys
+
+def auth_check():
+    try:
+        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+            return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权）'
+        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                            '/usr/local/bin/docker', 'version'],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+        if p.returncode == 0:
+            return True, ''
+        return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
+    except Exception as e:
+        return False, '授权检查异常: %s' % e
+
+def task_exists(task_name):
+    """一次性授权任务是否真实存在（create 需要管理员密码 token，任务存在 =
+    管理员验证 + CSRF 防护已通过的服务端证据）。无法核实（无 sqlite3）时返回
+    None 放行，依赖浏览器侧 create 已成功的既定事实。"""
+    if not task_name:
+        return False
+    db = '/usr/syno/etc/esynoscheduler/esynoscheduler.db'
+    if not os.path.exists(db):
+        return None
+    try:
+        import sqlite3
+        con = sqlite3.connect('file:%s?mode=ro' % db, uri=True, timeout=3)
+        try:
+            row = con.execute(
+                "SELECT operation FROM task WHERE task_name=? AND operation_type='script'",
+                (task_name,)).fetchone()
+            return bool(row and 'authorize-root.sh' in (row[0] or ''))
+        finally:
+            con.close()
+    except Exception:
+        return None
+
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {}
+task_name = str(payload.get('task_name') or '')
+script = '/var/packages/openclaw/target/scripts/authorize-root.sh'
+
+activated, reason = auth_check()
+write_log = ''
+if not activated:
+    exists = task_exists(task_name)
+    if exists is False:
+        reason = '授权任务未创建（管理员密码验证未完成），请重试'
+    elif not os.path.exists(script):
+        reason = '缺少授权脚本：%s' % script
+    else:
+        try:
+            p = subprocess.run([script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+            write_log = (p.stdout or b'').decode('utf-8', 'ignore')[-500:]
+        except Exception as e:
+            write_log = '%s: %s' % (type(e).__name__, e)
+        activated, reason = auth_check()
+print(json.dumps({'ok': activated, 'activated': activated, 'authorized': activated,
+                  'reason': '' if activated else (reason or '授权未生效'),
+                  'log': write_log}, ensure_ascii=False))
 PY
             exit 0
             ;;
@@ -3301,7 +3380,11 @@ cat <<'HTML'
           ];
           const runningText = data.running ? '运行中' : '已停止';
           setAuthState(!!data.authorized, data.authError || '');
-          const authBanner = (authState === 'authorized')
+          // 已有持久错误（如"授权未生效"）时不再重复渲染"面板操作未授权"横幅，
+          // 避免同一信息显示两行；persistMsg 被下一次成功(ok)清除后横幅恢复。
+          const pelErr = document.getElementById('persistMsg');
+          const persistErrActive = !!(pelErr && pelErr.style.display !== 'none' && String(pelErr.textContent || '').trim());
+          const authBanner = (authState === 'authorized' || persistErrActive)
             ? ''
             : '<div id="auth_banner" style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:#fef3f2;border:1px solid #fda29b;color:#b42318;font-size:13px;line-height:1.6;">'
               + '<b>面板操作未授权</b>：' + esc(authReason || '请点击下方“授权面板操作”，输入管理员密码后即可使用启动/停止/日志/终端。')
@@ -3656,8 +3739,11 @@ cat <<'HTML'
       return token;
     }
     // 授权面板操作：输入管理员密码 -> 校验密码取得 SynoConfirmPWToken ->
-    // 创建并运行一个 root 计划任务写入 sudoers -> 轮询确认生效 -> 删除计划任务。
-    // 与已安装的“权限管理器”套件同一机制（SYNO.Core.EventScheduler.Root）。
+    // 用 token 建一次性 root 计划任务（管理员身份验证 + CSRF 防护，与已安装的
+    // “权限管理器”套件同一机制）-> 后端 authorize_write 由面板 CGI（root）同步
+    // 执行 authorize-root.sh 写 sudoers -> 删除计划任务。
+    // 不走 EventScheduler run：实测该 NAS 上 run 也是异步执行（滞后约 1 分钟），
+    // 同步直写彻底消除轮询超时的误报。
     function openAuthDialog() {
       const mask = document.getElementById('authModalMask');
       const el = document.getElementById('auth_admin_password');
@@ -3740,7 +3826,7 @@ cat <<'HTML'
     }
     // 面板脚本版本号：改版后递增，便于确认浏览器加载的是新代码
     // （旧标签页不会热更新，需强制刷新 Ctrl+Shift+R 才能取到新脚本）。
-    const PANEL_VER = '2026.09.05-fix3';
+    const PANEL_VER = '2026.09.05-fix4';
     console.log('OpenClaw panel v' + PANEL_VER);
     async function doAuthorizePanel(adminPassword) {
       const btn = document.getElementById('btn_oc_auth');
@@ -3759,12 +3845,15 @@ cat <<'HTML'
         //    SYNO.Core.EventScheduler.Root —— 与已安装的「权限管理器」
         //    (SimplePermissionManager) 套件同一机制（其 UI 输密码授权是秒级完成）。
         //
-        //    为什么不用新版 SYNO.Core.TaskScheduler.Root v4：
-        //    新版 create 后必须 TaskScheduler run v2，而 run 是「异步排队」——
-        //    root 脚本要等 synoscheduled 守护进程下一轮扫描才执行，实测滞后
-        //    5~10 分钟（面板 60s 轮询必然超时，于是反复出现"授权未生效"）。
-        //    EventScheduler 则不同：esynoscheduler.db 没有常驻守护进程轮询，
-        //    它的 run v1 由 webapi 进程直接同步执行脚本 —— 秒级生效。
+        //    为什么建任务却不跑 EventScheduler run：
+        //    TaskScheduler.Root v4 + run v2 是「异步排队」——root 脚本要等
+        //    synoscheduled 守护进程下一轮扫描才执行，实测滞后 5~10 分钟（面板
+        //    60s 轮询必然超时，于是反复出现"授权未生效"）。实测 EventScheduler
+        //    的 run 在这台 NAS 上同样是异步执行（脚本实际运行比 run 返回晚约
+        //    1 分钟），60s 轮询照样超时。因此这里只把 create 当作「管理员身份
+        //    验证 + CSRF 防护」的凭证步骤（create 必须携带 PasswordConfirm 换来
+        //    的一次性 SynoConfirmPWToken），sudoers 的写入由面板 CGI（root）同步
+        //    直写（authorize_write）完成——零时序竞态。
         //
         //    script 任务的 operation 填完整路径（esynoscheduler 存的是命令本身，
         //    例如系统自带的 shutdown 任务 operation=/usr/bin/loader-reboot.sh），
@@ -3793,53 +3882,29 @@ cat <<'HTML'
           throw new Error('创建计划任务失败：' + m);
         }
         logPanel({ ev: 'authorize', step: 'create', ok: true });
-        // 3) run it now. EventScheduler v1 按 task_name 引用任务（没有
-        //    TaskScheduler 的 id/real_owner），由 webapi 直接执行，无需密码。
-        const runResp = await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName });
-        if (!runResp || !runResp.success) {
-          const m = runResp && runResp.error
-            ? (runResp.error.code + ': ' + (runResp.error.message || ''))
-            : '未知错误';
-          logPanel({ ev: 'authorize', step: 'run', ok: false, err: m });
-          throw new Error('触发计划任务失败：' + m);
-        }
-        logPanel({ ev: 'authorize', step: 'run', ok: true });
-        // 4) poll authorize until the root script has actually written the sudoers.
-        //    EventScheduler 是同步执行，通常 1~2 秒即生效；轮询窗口只是兜底。
-        const deadline = Date.now() + 60000;
-        let activated = false;
-        let reason = 'sudoers 未写入成功';
-        while (Date.now() < deadline) {
-          await new Promise(r => setTimeout(r, 500));
-          try {
-            const ret = await api('authorize');
-            if (ret && ret.activated) { activated = true; break; }
-            if (ret && ret.reason) reason = ret.reason;
-          } catch (_) {}
-        }
-        if (!activated) {
-          // 超时后任务可能刚落地：立即再查一次，避免差一个 tick 误报失败。
-          try {
-            const ret = await api('authorize');
-            if (ret && ret.activated) activated = true;
-            else if (ret && ret.reason) reason = ret.reason;
-          } catch (_) {}
-        }
-        logPanel({ ev: 'authorize', step: 'poll', activated: activated, reason: reason });
-        // 5) delete the one-shot task (best-effort; a leftover task is harmless——
-        //    没有常驻守护进程时它不会自动执行，下次成功授权会覆盖同名任务)。
-        if (!activated) await new Promise(r => setTimeout(r, 2000));
+        // 3) 同步写 sudoers：后端 authorize_write 由面板 CGI（root）直接执行
+        //    authorize-root.sh，秒级完成。
+        //    ⚠ 刻意不再走 EventScheduler run + 轮询：实测这台 NAS 上 run 也是
+        //    异步执行，脚本实际运行比 run 返回晚约 1 分钟，面板 60s 轮询会超时
+        //    误报失败（此前反复出现"授权未生效"的根因）。create 用管理员密码
+        //    换来的 SynoConfirmPWToken 建好任务 = 管理员验证 + CSRF 防护已完成；
+        //    后端核对任务存在后由 CGI 同步写，无任何时序竞态。
+        const wr = await api('authorize_write', 'POST', { task_name: taskName });
+        logPanel({ ev: 'authorize', step: 'write', ok: !!(wr && wr.activated), reason: (wr && wr.reason) || '' });
+        // 4) delete the one-shot task (best-effort; 任务只是管理员凭证，写已同步完成)
         try {
           await dsmApi('SYNO.Core.EventScheduler', 'delete', 1, { task_name: taskName });
         } catch (_) {}
-        if (activated) {
+        if (wr && wr.activated) {
           setAuthState(true, '');
           setMsg('已授权：面板启动/停止/日志/终端可用', 'ok');
           await load('status');
         } else {
+          const reason = (wr && wr.reason) || 'sudoers 未写入成功';
           setAuthState(false, reason);
-          // 密码错误在步骤 1 已拦截；EventScheduler run 是同步的，走到这里说明
-          // 脚本确实没写成功（权限/路径问题），直接展示原因，不再提示排队等待。
+          // 只显示这一条错误，清掉状态区里重复的"面板操作未授权"横幅，避免两行。
+          const bannerEl = document.getElementById('auth_banner');
+          if (bannerEl) bannerEl.remove();
           setMsg('授权未生效：' + reason, 'err');
         }
       } catch (e) {
