@@ -3797,20 +3797,33 @@ cat <<'HTML'
           throw new Error('触发计划任务失败：' + m);
         }
         logPanel({ ev: 'authorize', step: 'run', ok: true });
-        // 5) poll authorize until the root task has actually written the sudoers
-        const deadline = Date.now() + 15000;
+        // 5) poll authorize until the root task has actually written the sudoers.
+        //    DSM 的 TaskScheduler run 是异步排队的：root 任务由调度守护进程串行执行，
+        //    可能滞后请求数秒到十几秒。轮询窗口给足 60s，且超时后立即复查一次——否则
+        //    会出现“密码正确却提示授权未生效”的假失败。
+        const deadline = Date.now() + 60000;
         let activated = false;
         let reason = 'sudoers 未写入成功';
         while (Date.now() < deadline) {
-          await new Promise(r => setTimeout(r, 700));
+          await new Promise(r => setTimeout(r, 1000));
           try {
             const ret = await api('authorize');
             if (ret && ret.activated) { activated = true; break; }
             if (ret && ret.reason) reason = ret.reason;
           } catch (_) {}
         }
+        if (!activated) {
+          // 超时后任务可能刚落地：立即再查一次，避免差一个 tick 误报失败。
+          try {
+            const ret = await api('authorize');
+            if (ret && ret.activated) activated = true;
+            else if (ret && ret.reason) reason = ret.reason;
+          } catch (_) {}
+        }
         logPanel({ ev: 'authorize', step: 'poll', activated: activated, reason: reason });
-        // 6) delete the one-shot task (best-effort; a leftover task is harmless)
+        // 6) delete the one-shot task (best-effort; a leftover task is harmless).
+        //    未激活时多等 2s 再删，避免删掉仍在调度队列中、随即就会执行的 root 任务。
+        if (!activated) await new Promise(r => setTimeout(r, 2000));
         try {
           await dsmApi('SYNO.Core.TaskScheduler', 'delete', 2, { tasks: [taskRef] }, { jsonMode: true });
         } catch (_) {}
@@ -3820,7 +3833,9 @@ cat <<'HTML'
           await load('status');
         } else {
           setAuthState(false, reason);
-          setMsg('授权未生效：' + reason + '；请确认输入的是当前登录账号的 DSM 管理员密码', 'err');
+          // 密码错误在步骤 1 已拦截；走到这里多是任务执行晚于轮询窗口（可能仍在排队），
+          // 引导稍候刷新或重试，而不是误指密码错误。
+          setMsg('授权未生效：' + reason + '（若已输入正确的管理员密码，多为计划任务仍在排队；请稍候刷新页面查看，或重试）', 'err');
         }
       } catch (e) {
         setAuthState(false, e && e.message ? e.message : String(e));
