@@ -64,40 +64,50 @@ sc-openclaw ALL=(root) NOPASSWD: /usr/local/bin/docker, /usr/bin/docker, /usr/sy
 payload 脚本：`spk/openclaw/src/scripts/authorize-root.sh`（写入 → `visudo -c` 校验 → mv → chmod 440，
 日志到 `/var/packages/openclaw/var/authorize-root.log`）。
 
-## 4. 授权流程（SimplePermissionManager 式，DSM 7.2 v4 API）
+## 4. 授权流程（SimplePermissionManager 式，EventScheduler v1 —— 秒级生效）
 
 浏览器端 `doAuthorizePanel()`（index.cgi）：
 
 1. **验证管理员密码**，拿一次性 `SynoConfirmPWToken`：
    `SYNO.Core.User.PasswordConfirm auth v2 {password}`。
-2. **取任务骨架**（后端认可的 schedule/extra/real_owner 模板）：
-   `SYNO.Core.TaskScheduler get v4 {id:-1, type:"script"}`。
-3. **创建一次性 root 脚本任务**：
-   `SYNO.Core.TaskScheduler.Root create v4`
-   `{name, owner:"root", enable:true, type:"script", extra:{script: payload}, schedule, SynoConfirmPWToken}`；
-   若骨架返回 `real_owner` 则一并带上。
-4. **查任务 id + real_owner**（run/delete 必需，从后端返回拿，不猜用户名）：
-   `SYNO.Core.TaskScheduler list v3 {offset:0, limit:100}`（刚创建可能未入列表，需重试）。
-5. **运行**：`SYNO.Core.TaskScheduler run v2 {tasks:[{id, real_owner}]}`（无密码）。
-6. **轮询授权生效**（run 是异步的，不能只查一次）→ **删除**：`delete v2 {tasks:[{id, real_owner}]}`。
+2. **创建一次性 root 脚本任务**（`event:"bootup"`，不会真的等开机，随后手动 run）：
+   `SYNO.Core.EventScheduler.Root create v1`
+   `{task_name, owner:{0:"root"}, event:"bootup", enable:true, depend_on_task:"",
+   notify_enable:false, notify_mail:"", notify_if_error:false,
+   operation_type:"script", operation:"<root 脚本完整路径>", SynoConfirmPWToken:token}`
+   —— script 任务的 `operation` 就是**要执行的命令本身**（完整路径即可，
+   esynoscheduler 存的是命令：系统自带 shutdown 任务就是
+   `operation=/usr/bin/loader-reboot.sh`），**不需要**任何符号链接。
+3. **运行**：`SYNO.Core.EventScheduler run v1 {task_name}`（按 task_name 引用，
+   无 TaskScheduler 的 id/real_owner，无需密码）。
+4. **轮询授权生效** → **删除**：`delete v1 {task_name}`。
+
+### 为什么用 v1 EventScheduler 而不是 v4 TaskScheduler（本仓库踩过的坑）
+
+- `SYNO.Core.TaskScheduler.Root create v4` + `run v2` 是**官方推荐**的新接口，但它的
+  `run` 是**异步排队**的：root 脚本要等 `synoscheduled` 守护进程下一轮扫描才执行，
+  实测滞后 **5~10 分钟**。面板 60s 轮询必然超时，于是反复出现「密码正确却提示
+  授权未生效」的假失败。
+- `SYNO.Core.EventScheduler`（esynoscheduler.db）**没有常驻守护进程轮询**（实测
+  `lsof` 无进程持有该 db、`synoscheduled` 不引用它）——它的 `run v1` 由 webapi 进程
+  **同步执行脚本**，秒级生效。已安装的 SimplePermissionManager 套件就是用它
+  （其 UI 输密码授权是秒级），OpenClaw 已切换到同款。
+- 早期本仓库以为「EventScheduler v1 读不到 owner（117）」是 API 限制，其实那是
+  **编码错误**：没用 jsonMode 发 `owner={"0":"root"}`。v1 完全可用。
 
 ### 4800 根因：requestFormat=JSON（必读）
 
-`SYNO.Core.TaskScheduler` 继承 entry.cgi 默认模板 `/usr/syno/synoman/webapi/lib.def` 的
-`"requestFormat": "JSON"`（TaskScheduler.lib 没覆盖它）。所以官方任务计划 UI 会把**每个顶层
-参数值 `JSON.stringify` 后**放进 form 字段再发：
+`SYNO.Core.EventScheduler` / `TaskScheduler` 都继承 entry.cgi 默认模板
+`/usr/syno/synoman/webapi/lib.def` 的 `"requestFormat": "JSON"`。所以官方 UI 会把
+**每个顶层参数值 `JSON.stringify` 后**放进 form 字段再发：
 
-- 正确：`schedule={"date_type":0,...,"monthly_week":[],...}`、`tasks=[{"id":5,"real_owner":"admin"}]`、
-  `extra={"script":"..."}`。
-- 错误：普通表单 bracket 序列化 `schedule[monthly_week]=`（空数组变空字符串）→ 后端逐字段
-  JSON.parse 后类型不合法 → **`4800 monthly_week expected for v4`**。
+- 正确：`owner={"0":"root"}`、`tasks=[{"id":5,"real_owner":"admin"}]`、
+  `schedule={"date_type":0,...,"monthly_week":[],...}`、`extra={"script":"..."}`。
+- 错误：普通表单 bracket 序列化 `owner[0]=root` / `schedule[monthly_week]=`
+  （空数组变空字符串）→ 后端逐字段 JSON.parse 后类型不合法 → **`4800 ... expected/type invalid`**
+  （bracket 发 owner 还可能导致读不到 owner）。
 
 `dsmApiFetch` 的 `jsonMode` 就是为此加的：每个顶层值 `encodeURIComponent(JSON.stringify(v))`。
-
-### 为什么不用旧版 EventScheduler
-
-`SYNO.Core.EventScheduler.Root v1` 在 DSM 7.x 即使收到 `owner[0]=root` 也读不到 owner
-（报 117）。必须用 `SYNO.Core.TaskScheduler.Root v4`（owner 是平铺字符串 `"root"`）。
 
 ### SynoToken 要求
 
@@ -110,8 +120,10 @@ DSM 7.2 开启 SynoToken 后，敏感 webapi 必须带当前会话 token，否�
 
 - [ ] 面板 CGI 以 root 运行是 DSM 默认，别用自身 sudo 探测授权。
 - [ ] 授权状态 = sudoers 文件存在 + 套件服务用户能 `sudo -n docker`（嵌套 sudo 探测）。
-- [ ] 授权流程用 `SYNO.Core.TaskScheduler.Root` v4 + `SynoConfirmPWToken`，TaskScheduler 调用一律 `jsonMode`。
-- [ ] payload 脚本 `visudo -c` 校验后再 `mv`，`chmod 440`。
-- [ ] run 后轮询生效再返回成功（run 是异步的）。
+- [ ] 授权流程用 `SYNO.Core.EventScheduler.Root` v1（秒级、同步 run）+ `SynoConfirmPWToken`，
+      调用一律 `jsonMode`；**别用** `TaskScheduler.Root v4 + run v2`（run 异步排队，慢 5~10 分钟）。
+- [ ] script 任务的 `operation` 填 root 脚本**完整路径**，无需符号链接。
+- [ ] payload 脚本 `visudo -c` 校验后再 `mv`，`chmod 440`（visudo 缺失时跳过校验，直接 mv）。
+- [ ] run 后轮询生效再返回成功（EventScheduler 通常 1~2 秒生效，轮询窗口兜底即可）。
 - [ ] 参考实现：`spk/openclaw/src/scripts/authorize-root.sh`、
   `spk/openclaw/src/ui/index.cgi`（`doAuthorizePanel` / `dsmApiFetch` / `findTaskRefByName` / `fetchCreateSkeleton`）。
