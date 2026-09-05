@@ -155,7 +155,8 @@ openclaw_copy_target:
 	# Container-facing scripts (entrypoint + updater) live under target/etc
 	@cp -f src/container/entrypoint.sh $(STAGING_DIR)/etc/entrypoint.sh
 	@cp -f src/container/update-openclaw.sh $(STAGING_DIR)/etc/update-openclaw.sh
-	@chmod 755 $(STAGING_DIR)/etc/entrypoint.sh $(STAGING_DIR)/etc/update-openclaw.sh
+	@cp -f src/container/gateway-relay.cjs $(STAGING_DIR)/etc/gateway-relay.cjs
+	@chmod 755 $(STAGING_DIR)/etc/entrypoint.sh $(STAGING_DIR)/etc/update-openclaw.sh $(STAGING_DIR)/etc/gateway-relay.cjs
 	# Full offline image as a Docker build context (Dockerfile + flattened
 	# rootfs). Container Manager builds the image from target/app/openclaw at
 	# install time; the package scripts never touch docker.

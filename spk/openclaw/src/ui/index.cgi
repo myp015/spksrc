@@ -115,20 +115,34 @@ port = int(sys.argv[1]) if len(sys.argv) > 1 else 44539
 cfg_path = sys.argv[2] if len(sys.argv) > 2 else ''
 running = False
 service_running = False
-# 容器模式：gateway 是容器内 supervisor（PID 1）的子进程，容器本身始终由
-# supervisor 保持运行。因此 “running” 必须看容器内 supervisor 的 pidfile
-# （/data/runtime/.gateway.pid）记录的进程是否存活，而不是探测 host 端口：
-# 容器运行时 docker-proxy 仍占用 host 端口映射，端口探测会把已停止的
-# gateway 误报为运行中。
+# 容器模式：gateway 是容器内 supervisor（PID 1）的子进程。优先用 sudo docker
+# 读容器内 pidfile（/data/runtime/.gateway.pid）判定 gateway 存活；未授权（无
+# sudo）时回退为对 host 端口的 socket 探活 —— 只有 gateway 真正监听时才连得
+# 通；若容器已停（端口释放）或 docker-proxy 转发到已死进程，连接失败/立即关闭，
+# 不会误报。这让未授权状态下概览页仍能显示真实运行状态。
+def http_alive():
+    try:
+        s = socket.create_connection(('127.0.0.1', port), timeout=3)
+        s.sendall(b'GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n')
+        s.settimeout(3)
+        data = s.recv(1)
+        s.close()
+        return len(data) > 0
+    except Exception:
+        return False
+
 def gateway_running():
     try:
         r = subprocess.run(
             ['sudo', '-n', '/usr/local/bin/docker', 'exec', 'openclaw', 'sh', '-c',
              'p=$(cat /data/runtime/.gateway.pid 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
-        return r.returncode == 0
+        if r.returncode == 0:
+            return True
     except Exception:
-        return False
+        pass
+    # 未授权（sudo 不可用）或 exec 失败：无 sudo 的 socket 探活兜底。
+    return http_alive()
 running = gateway_running()
 
 # 套件运行态（独立于 gateway 端口探活）：用于按钮可用性判断。
@@ -146,8 +160,11 @@ try:
             service_running = str(j.get('status') or '').lower() == 'running'
         except Exception:
             pass
+    if not service_running:
+        # 未授权（sudo 不可用）：socket 探活兜底判断容器/网关可达。
+        service_running = http_alive()
 except Exception:
-    service_running = False
+    service_running = http_alive()
 
 # Fallback: 读取守护占位 pid（由 start-stop-status 维护）
 if not service_running:
@@ -345,18 +362,34 @@ terminal_port = 17682
 # Granted interactively by the 授权面板操作 flow (one-shot root scheduled task,
 # SimplePermissionManager-style). Until then the panel is read-only.
 def _auth_check():
+    # 面板 CGI 由 synoscgi 以 root 执行（uid=0），root 对 docker 无限制，直接 sudo
+    # 探测恒为真。授权状态改为以 authorize-root.sh 写入的 sudoers 文件为准（约束的
+    # 是非 root 组件 sc-openclaw 的 docker/终端权限）：文件存在且 sc-openclaw 能
+    # sudo docker => 已授权。
     try:
-        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
+        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+            return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权，请点击“授权面板操作”）'
+        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                            '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         if p.returncode == 0:
             return True, ''
-        lines = [l for l in (p.stdout or '').splitlines() if l.strip()]
-        reason = lines[-1][:200] if lines else 'docker sudo 失败 (rc=%s)' % p.returncode
-        return False, reason
+        return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
     except Exception as e:
         return False, '授权检查异常: %s' % e
 
 authorized, auth_error = _auth_check()
+# Report who actually executes this CGI (uid). DSM's synoscgi runs webman
+# 3rdparty app CGIs as ROOT (uid=0) — that is why the sudoers file is the real
+# authorization gate (it constrains the non-root components), not the CGI's own
+# sudo ability (root trivially "sudo"s anything).
+_un = _u = None
+try:
+    import pwd
+    _u = os.getuid()
+    _un = pwd.getpwuid(_u).pw_name
+except Exception:
+    pass
 out = {
   'instanceId': 'default',
   'displayName': 'Default Gateway',
@@ -364,6 +397,8 @@ out = {
   'serviceRunning': service_running,
   'installed': True,
   'version': version,
+  'cgiUser': _un,
+  'cgiUid': _u,
   'port': port,
   'proxyBasePath': (((cfg.get('gateway') or {}).get('controlUi') or {}).get('basePath') or '/openclaw-web'),
   'workspaceDir': workspace,
@@ -2379,10 +2414,14 @@ PY
             # the in-container gateway. Docker ops require panel authorization.
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY'
-import json, subprocess, sys
+import json, os, subprocess, sys
 def auth_ok():
+    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
     try:
-        p = subprocess.run(['sudo','-n','/usr/local/bin/docker','version'],
+        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+            return False
+        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                            '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         return p.returncode == 0
     except Exception:
@@ -2407,22 +2446,25 @@ PY
         authorize)
             # The actual sudoers write is done by the panel's 授权面板操作 flow:
             # the browser verifies the admin password (SYNO.Core.User.PasswordConfirm)
-            # and runs a one-shot ROOT scheduled task (SYNO.Core.EventScheduler.Root)
-            # whose payload is target/scripts/authorize-root.sh. This action only
-            # VERIFIES the result — can this CGI run docker via sudo — and reports
-            # the exact reason when it cannot.
+            # and runs a one-shot ROOT scheduled task (SYNO.Core.TaskScheduler.Root
+            # v4 — the modern DSM 7.2 Task Scheduler API) whose payload is
+            # target/scripts/authorize-root.sh. This action only VERIFIES the
+            # result — can this CGI run docker via sudo — and reports the exact
+            # reason when it cannot.
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY'
-import json, subprocess, sys
+import json, os, subprocess, sys
 def auth_check():
+    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
     try:
-        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
+        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+            return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权）'
+        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                            '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         if p.returncode == 0:
             return True, ''
-        lines = [l for l in (p.stdout or '').splitlines() if l.strip()]
-        reason = lines[-1][:220] if lines else 'docker sudo 失败 (rc=%s)' % p.returncode
-        return False, reason
+        return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
     except Exception as e:
         return False, '授权检查异常: %s' % e
 activated, reason = auth_check()
@@ -2453,8 +2495,12 @@ if action not in ('start', 'stop', 'restart', 'force-stop'):
 
 # Panel-operation authorization gate: start/stop/restart need docker sudo.
 def auth_ok():
+    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
     try:
-        p = subprocess.run(['sudo','-n','/usr/local/bin/docker','version'],
+        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+            return False
+        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                            '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         return p.returncode == 0
     except Exception:
@@ -2650,10 +2696,14 @@ PY
             # Container mode: gateway logs live inside the container. Show ONLY
             # `docker logs openclaw` output (like `docker logs -f`), nothing else.
             python3 - <<'PY'
-import json, subprocess, sys
+import json, os, subprocess, sys
 def auth_ok():
+    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
     try:
-        p = subprocess.run(['sudo','-n','/usr/local/bin/docker','version'],
+        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+            return False
+        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                            '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         return p.returncode == 0
     except Exception:
@@ -2690,6 +2740,30 @@ PY
         weixin_qr_latest)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             printf '{"ok":false,"error":"容器版未启用微信渠道"}'
+            exit 0
+            ;;
+        panel_log)
+            # 浏览器端调试日志（http 用户可写 /tmp）：记录 dsmApi 失败响应与
+            # 授权流程每一步，便于排查 DSM webapi 错误码。仅调试用，无敏感信息。
+            body=$(read_body)
+            printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+            python3 - <<'PY' "$body"
+import json, os, sys, time
+raw = sys.argv[1] if len(sys.argv) > 1 else '{}'
+try:
+    payload = json.loads(raw or '{}')
+except Exception:
+    payload = {'raw': raw[:300]}
+if not isinstance(payload, dict):
+    payload = {'raw': str(payload)[:300]}
+LOG = '/tmp/openclaw-panel.log'
+try:
+    with open(LOG, 'a', encoding='utf-8') as f:
+        f.write(json.dumps({'ts': time.strftime('%Y-%m-%d %H:%M:%S'), **payload}, ensure_ascii=False) + '\n')
+    print(json.dumps({'ok': True}))
+except Exception as e:
+    print(json.dumps({'ok': False, 'error': str(e)}))
+PY
             exit 0
             ;;
         *)
@@ -2737,6 +2811,9 @@ cat <<'HTML'
     .msg { margin-bottom:12px; font-size:14px; color:#667085; }
     .err { color:#b42318; }
     .ok { color:#067647; }
+    /* 持久错误信息：显示在运行状态（#msg）下方，失败后一直保留到下一次成功，
+       不会被状态轮询/切页刷掉。带浅红背景以便长时间停留时仍醒目。 */
+    #persistMsg.msg { margin:0 0 12px; padding:10px 12px; border:1px solid #fecaca; border-radius:10px; background:#fef2f2; color:#b42318; white-space:pre-wrap; word-break:break-word; }
     .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-bottom:16px; }
     .card { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
     .card h3 { margin:0 0 10px; font-size:16px; }
@@ -2783,6 +2860,8 @@ cat <<'HTML'
       <main class="main">
         <div class="panel">
           <div id="msg" class="msg"></div>
+          <!-- 持久错误信息：位于运行状态下方；失败后保留，成功时由 setMsg(ok) 清除 -->
+          <div id="persistMsg" class="msg err" style="display:none;"></div>
           <div id="content"></div>
         </div>
       </main>
@@ -2892,6 +2971,21 @@ cat <<'HTML'
       const el = document.getElementById('msg');
       el.className = 'msg ' + cls;
       el.textContent = text || '';
+      // 错误信息持久显示：err 只写入 #persistMsg（运行状态下方），失败后一直保留，
+      // 不会被状态轮询（每 1.5s 覆写 #msg）或切换标签清除；下一次成功(ok)才清除。
+      // 运行状态行（#msg）由状态渲染/轮询直接维护，不经过这里。
+      const pel = document.getElementById('persistMsg');
+      if (!pel) return;
+      if (cls === 'err') {
+        el.textContent = '';
+        pel.style.display = '';
+        pel.className = 'msg err';
+        pel.textContent = text || '';
+      } else if (cls === 'ok') {
+        pel.style.display = 'none';
+        pel.className = 'msg err';
+        pel.textContent = '';
+      }
     }
     function formatUptime(seconds) {
       const s = Math.max(0, Number(seconds) || 0);
@@ -2953,29 +3047,128 @@ cat <<'HTML'
     // Used by the 授权面板操作 flow exactly like SimplePermissionManager does:
     // verify the admin password, then create/run/delete a one-shot ROOT
     // scheduled task that writes the package sudoers.
-    async function dsmApi(apiName, methodName, version, params) {
+    //
+    // DSM 7.2 开启 SynoToken（/etc/synoinfo.conf enable_syno_token="yes"）后，
+    // 敏感 webapi 调用必须携带当前会话的 SynoToken，否则返回 119（会话已过期）——
+    // 这正是此前面板"输入密码显示登录会话已过期"的根因：普通 fetch 不带 token。
+    // 这里复刻 SurveillanceStation 的 SYNO.SDS.UpdateSynoToken 机制：
+    //   1) 内嵌在 DSM 桌面时，直接复用框架缓存的 token（parent.SYNO.SDS.Session.SynoToken），
+    //      与登录页同一会话、必定有效，且零额外请求；
+    //   2) 独立打开（非嵌入）时，GET /webman/login.cgi（带会话 cookie）返回当前会话的
+    //      SynoToken，与 SS 的 login.cgi 用法完全一致；
+    //   3) 随请求同时以 X-SYNO-TOKEN 请求头 + SynoToken 查询参数发出（SS 用头，DSM 框架
+    //      用查询参数，两者都发兼容两条校验路径）。
+    let dsmSynoToken = '';
+    let dsmSynoTokenLoading = null;
+    async function ensureDsmSynoToken() {
+      if (dsmSynoToken) return dsmSynoToken;
+      try {
+        if (window.parent && window.parent.SYNO && window.parent.SYNO.SDS
+            && window.parent.SYNO.SDS.Session && window.parent.SYNO.SDS.Session.SynoToken) {
+          dsmSynoToken = window.parent.SYNO.SDS.Session.SynoToken;
+          return dsmSynoToken;
+        }
+      } catch (_) {}
+      if (dsmSynoTokenLoading) return dsmSynoTokenLoading;
+      dsmSynoTokenLoading = (async () => {
+        try {
+          const resp = await fetch('/webman/login.cgi', { cache: 'no-store' });
+          const j = await resp.json();
+          if (j && j.success && j.SynoToken) dsmSynoToken = j.SynoToken;
+          else if (j && j.SynoToken) dsmSynoToken = j.SynoToken;
+        } catch (_) {}
+        dsmSynoTokenLoading = null;
+        return dsmSynoToken;
+      })();
+      return dsmSynoTokenLoading;
+    }
+    // 调试日志：POST 到面板自身的 panel_log action，落到 /tmp/openclaw-panel.log
+    //（http 用户可写）。fire-and-forget，不阻塞也不影响业务请求。
+    function logPanel(obj) {
+      try {
+        fetch(API_BASE + 'panel_log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(obj || {}),
+          cache: 'no-store'
+        }).catch(() => {});
+      } catch (_) {}
+    }
+    async function dsmApiFetch(apiName, methodName, version, params, token, opts) {
+      const jsonMode = !!(opts && opts.jsonMode);
       const q = '/webapi/entry.cgi?api=' + encodeURIComponent(apiName)
         + '&method=' + encodeURIComponent(methodName)
         + '&version=' + encodeURIComponent(version)
+        + (token ? '&SynoToken=' + encodeURIComponent(token) : '')
         + '&_dc=' + Date.now();
-      const form = new URLSearchParams();
+      // 手工拼 form body：key 保留原始方括号（与 DSM 自带 Ext.Ajax 序列化一致，
+      // 如 extra[script]=...、schedule[date_type]=0、tasks[0][id]=...），value 才
+      // encodeURIComponent（URLSearchParams 会把方括号转义成 %5B%5D，后端就解析
+      // 不出嵌套了）。
+      //
+      // jsonMode（TaskScheduler 专用）：DSM 的 entry.cgi 默认 requestFormat=JSON
+      // （见 /usr/syno/synoman/webapi/lib.def），官方任务计划 UI 把每个顶层参数值
+      // JSON.stringify 后放进 form 字段（schedule={...}、extra={...}、tasks=[...]），
+      // 后端逐个 JSON.parse。这很重要：schedule.monthly_week 对 weekly 任务是空数组
+      // []，必须作为真实 JSON 数组传输；若用 bracket 序列化会变成 schedule[monthly_week]=
+      // （空值，后端解析成空字符串），导致 4800 "monthly_week expected/type invalid"。
+      // 旧版 SYNO.Core.EventScheduler.Root v1 在 DSM 7.x 即使收到 owner[0]=root 也
+      // 读不到 owner（报 117），所以授权流程用 v4 SYNO.Core.TaskScheduler.Root
+      // （owner 是平铺字符串 "root"，无嵌套）。
+      const pairs = [];
       const appendFlat = (key, val) => {
-        if (val === null || val === undefined) { form.append(key, ''); return; }
+        if (val === null || val === undefined) { pairs.push(key + '='); return; }
         if (typeof val === 'object') {
-          for (const k of Object.keys(val)) appendFlat(key + '[' + k + ']', val[k]);
+          const keys = Object.keys(val);
+          if (keys.length === 0) { pairs.push(key + '='); return; }
+          for (const k of keys) appendFlat(key + '[' + k + ']', val[k]);
           return;
         }
-        form.append(key, String(val));
+        pairs.push(key + '=' + encodeURIComponent(String(val)));
       };
-      for (const k of Object.keys(params || {})) appendFlat(k, params[k]);
+      let body;
+      if (jsonMode) {
+        const enc = [];
+        for (const k of Object.keys(params || {})) {
+          enc.push(k + '=' + encodeURIComponent(JSON.stringify(params[k])));
+        }
+        body = enc.join('&');
+      } else {
+        for (const k of Object.keys(params || {})) appendFlat(k, params[k]);
+        body = pairs.join('&');
+      }
+      const headers = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
+      if (token) headers['X-SYNO-TOKEN'] = token;
       const resp = await fetch(q, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body: form.toString(),
+        headers: headers,
+        body: body,
         cache: 'no-store'
       });
       const text = await resp.text();
-      try { return text ? JSON.parse(text) : {}; } catch (e) { return { success: false, error: { message: 'webapi 返回非 JSON: ' + String(text).slice(0, 120) } }; }
+      let parsed = {};
+      try { parsed = text ? JSON.parse(text) : {}; } catch (e) { parsed = { success: false, error: { message: 'webapi 返回非 JSON: ' + String(text).slice(0, 120) } }; }
+      if (!parsed || !parsed.success) {
+        const code = parsed && parsed.error && parsed.error.code;
+        const msg = parsed && parsed.error && parsed.error.message;
+        // 记录请求体便于定位（脱敏 password / SynoConfirmPWToken / SynoToken）
+        const redactedBody = body.replace(/(password|SynoConfirmPWToken|SynoToken)=[^&]*/gi, '$1=***');
+        logPanel({ ev: 'dsmApiFail', api: apiName, method: methodName, code: code != null ? code : null, msg: msg || '', body: redactedBody.slice(0, 2500), raw: text.slice(0, 1000) });
+      }
+      return parsed;
+    }
+    async function dsmApi(apiName, methodName, version, params, opts) {
+      const token = await ensureDsmSynoToken();
+      let r = await dsmApiFetch(apiName, methodName, version, params, token, opts);
+      // 119 = token 缺失/失效（如首次取 token 前请求已失败，或桌面 token 过期）：
+      // 清缓存重取一次再重试，避免一次性的偶发失败直接报"会话已过期"。
+      if (r && !r.success && r.error && r.error.code === 119 && token) {
+        logPanel({ ev: 'dsmApiRetry119', api: apiName, method: methodName });
+        dsmSynoToken = '';
+        const t2 = await ensureDsmSynoToken();
+        if (t2) r = await dsmApiFetch(apiName, methodName, version, params, t2, opts);
+      }
+      return r;
     }
     // Panel-operation authorization state, refreshed from status / authorize.
     let authState = 'unknown';          // 'authorized' | 'unauthorized' | 'unknown'
@@ -2986,6 +3179,29 @@ cat <<'HTML'
       const btn = document.getElementById('btn_oc_auth');
       if (btn && btn.textContent !== '授权中...') btn.textContent = (authState === 'authorized') ? '已授权' : '授权面板操作';
     }
+    // 从后端重新拉一次授权状态（status 端点里跑 sudo -n docker 探测），用于
+    // 标签页重新可见/聚焦时立刻刷新——后台标签的 1.5s 轮询会被浏览器限频，
+    // 切回面板页时可能还停留在旧状态。
+    async function refreshAuthFromBackend() {
+      try {
+        const s = await api('status');
+        if (s && typeof s.authorized === 'boolean') {
+          setAuthState(s.authorized, s.authError || '');
+          const authBannerEl = document.getElementById('auth_banner');
+          if (authBannerEl) {
+            if (authState === 'authorized') {
+              authBannerEl.remove();
+            } else {
+              authBannerEl.innerHTML = '<b>面板操作未授权</b>：' + esc(authReason || '请点击下方“授权面板操作”，输入管理员密码后即可使用启动/停止/日志/终端。');
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshAuthFromBackend();
+    });
+    window.addEventListener('focus', refreshAuthFromBackend);
     function updateTerminalRepairBtnState() {
       const btn = document.getElementById('terminal_repair_btn');
       const userEl = document.getElementById('terminal_admin_user');
@@ -3079,7 +3295,8 @@ cat <<'HTML'
             ['代理路径', data.proxyBasePath || '-'],
             ['用户文件夹路径', data.workspaceDir || '/volume1/openclaw'],
             ['配置文件', data.configPath || '-'],
-            ['binaryPath', data.binaryPath || '-']
+            ['binaryPath', data.binaryPath || '-'],
+            ['面板运行用户', (data.cgiUser || '-') + (data.cgiUid != null ? ' (uid ' + data.cgiUid + ')' : '')]
           ];
           const runningText = data.running ? '运行中' : '已停止';
           setAuthState(!!data.authorized, data.authError || '');
@@ -3101,7 +3318,13 @@ cat <<'HTML'
                 const vv = String(v == null ? '' : v).replace(/127\.0\.0\.1|localhost/g, hostFix);
                 return '<div class="cellk">'+esc(k)+'</div><div class="cellv">'+esc(vv)+'</div>';
               }).join('') + '</div>';
-          setMsg('运行状态：' + runningText, data.running ? 'ok' : 'err');
+          // 运行状态行直接写 #msg（不经 setMsg 的持久错误路由——"已停止"是状态
+          // 不是错误，不应进入持久区；轮询每 1.5s 也会同步这一行）。
+          const statusMsgEl = document.getElementById('msg');
+          if (statusMsgEl) {
+            statusMsgEl.className = 'msg ' + (data.running ? 'ok' : 'err');
+            statusMsgEl.textContent = '运行状态：' + runningText;
+          }
           window.__statusRunning = !!data.running;
           // A completed stop may still leave a package keepalive process, so
           // always derive button state from the Gateway port, not a stale busy
@@ -3419,6 +3642,7 @@ cat <<'HTML'
       if (!r || !r.success) {
         const code = r && r.error && r.error.code;
         const msg = r && r.error && r.error.message;
+        logPanel({ ev: 'ocFetchTokenFail', code: code != null ? code : null, msg: msg || '' });
         if (code === 119) {
           throw new Error('登录会话已过期：请刷新页面重新登录后再试（119）');
         }
@@ -3452,6 +3676,67 @@ cat <<'HTML'
       closeAuthDialog();
       await doAuthorizePanel(password);
     }
+    // 从 TaskScheduler list v3 里按任务名取回刚创建的任务的 id + real_owner。
+    // run/delete v2 都要求这两个字段（任务身份 + 真实属主），以后端返回的为准，
+    // 不猜用户名。刚创建的任务可能尚未入列表，所以带重试。
+    async function findTaskRefByName(name, tries = 6) {
+      for (let i = 0; i < tries; i++) {
+        try {
+          // jsonMode：TaskScheduler 走 requestFormat=JSON（lib.def 默认），参数值
+          // 需 JSON.stringify 传输（官方 UI 同款），避免 bracket 序列化歧义。
+          const r = await dsmApi('SYNO.Core.TaskScheduler', 'list', 3, { offset: 0, limit: 100 }, { jsonMode: true });
+          const tasks = (r && r.success && r.data && r.data.tasks) || [];
+          const hit = tasks.find(t => t && t.name === name);
+          if (hit && hit.id != null) {
+            return { id: hit.id, real_owner: hit.real_owner || '' };
+          }
+        } catch (_) {}
+        await new Promise(r => setTimeout(r, 600));
+      }
+      return null;
+    }
+    // 从 TaskScheduler 后端取"新建脚本任务"骨架（get id=-1, type:"script"）。
+    // v4 后端会逐字段校验字段存在性（如 schedule.monthly_week 缺失报 4800），
+    // 所以用后端自己的默认结构最稳：schedule / extra / real_owner 都是后端认可
+    // 的模板。拿不到就回退到等价的官方默认值（EditSchedulePanelV2.getData）。
+    async function fetchCreateSkeleton() {
+      const fallback = {
+        schedule: {
+          date_type: 0,
+          week_day: '0,1,2,3,4,5,6',
+          repeat_date: 1001,
+          monthly_week: [],
+          hour: 3,
+          minute: 0,
+          repeat_hour: 0,
+          repeat_min: 0,
+          last_work_hour: 3,
+          repeat_min_store_config: [],
+          repeat_hour_store_config: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
+        },
+        realOwner: '',
+        extra: {}
+      };
+      try {
+        const r = await dsmApi('SYNO.Core.TaskScheduler', 'get', 4, { id: -1, type: 'script' }, { jsonMode: true });
+        if (r && r.success && r.data) {
+          // 完整记录骨架响应（real_owner + schedule JSON）便于诊断 4800 类字段问题。
+          logPanel({ ev: 'authorize', step: 'skeleton', ok: true,
+                     real_owner: (r.data.real_owner || ''), has_schedule: !!r.data.schedule,
+                     schedule: (r.data.schedule && typeof r.data.schedule === 'object')
+                       ? JSON.stringify(r.data.schedule) : String(r.data.schedule || '').slice(0, 2000) });
+          return {
+            schedule: (r.data.schedule && typeof r.data.schedule === 'object') ? r.data.schedule : fallback.schedule,
+            realOwner: r.data.real_owner || '',
+            extra: (r.data.extra && typeof r.data.extra === 'object') ? r.data.extra : fallback.extra
+          };
+        }
+        logPanel({ ev: 'authorize', step: 'skeleton', ok: false, err: 'get v4 id=-1 failed', code: r && r.error ? r.error.code : null, msg: r && r.error ? r.error.message : '' });
+      } catch (e) {
+        logPanel({ ev: 'authorize', step: 'skeleton', ok: false, err: String(e) });
+      }
+      return fallback;
+    }
     async function doAuthorizePanel(adminPassword) {
       const btn = document.getElementById('btn_oc_auth');
       if (btn) { btn.disabled = true; btn.textContent = '授权中...'; }
@@ -3460,38 +3745,59 @@ cat <<'HTML'
       try {
         // 1) verify the admin password -> one-time SynoConfirmPWToken
         const token = await ocFetchToken(adminPassword);
-        // 2) create a ROOT scheduled task whose payload writes the sudoers
-        const createResp = await dsmApi('SYNO.Core.EventScheduler.Root', 'create', 1, {
-          task_name: taskName,
-          owner: { 0: 'root' },
-          event: 'bootup',
+        logPanel({ ev: 'authorize', step: 'token', ok: true });
+        // 2) create a one-shot ROOT script task via the MODERN v4 TaskScheduler
+        //    API. DSM 7.x 的旧版 SYNO.Core.EventScheduler.Root v1 即使收到
+        //    owner[0]=root 也读不到 owner（后端报 117），所以这里用 v4
+        //    SYNO.Core.TaskScheduler.Root（DSM 7.2 控制面板「任务计划」同款）：
+        //    owner 为平铺字符串 "root"，脚本内容放 extra.script（直接执行已安装
+        //    的 authorize-root.sh）。create body 基于后端骨架构建，确保 schedule
+        //    / extra / real_owner 与后端认可的模板一致。
+        const skel = await fetchCreateSkeleton();
+        const createParams = {
+          name: taskName,
+          owner: 'root',
           enable: true,
-          depend_on_task: '',
-          notify_enable: false,
-          notify_mail: '',
-          notify_if_error: false,
-          operation_type: 'script',
-          operation: '/var/packages/openclaw/target/scripts/authorize-root.sh',
+          type: 'script',
+          extra: Object.assign({}, skel.extra, {
+            script: 'bash /var/packages/openclaw/target/scripts/authorize-root.sh'
+          }),
+          schedule: skel.schedule,
           SynoConfirmPWToken: token
-        });
+        };
+        if (skel.realOwner) createParams.real_owner = skel.realOwner;
+        // jsonMode：TaskScheduler 请求格式为 JSON（官方 UI 同款），schedule 整体
+        // JSON.stringify 传输，monthly_week:[] 保持真实空数组，避免 bracket 形式
+        // 变成空字符串触发 4800 "monthly_week expected/type invalid"。
+        const createResp = await dsmApi('SYNO.Core.TaskScheduler.Root', 'create', 4, createParams, { jsonMode: true });
         if (!createResp || !createResp.success) {
           const m = createResp && createResp.error
             ? (createResp.error.code + ': ' + (createResp.error.message || ''))
             : '未知错误';
+          logPanel({ ev: 'authorize', step: 'create', ok: false, err: m });
           throw new Error('创建计划任务失败：' + m);
         }
-        // 3) run it now. DSM 的 run 是异步的：返回成功时 root 脚本可能还没执行完，
+        logPanel({ ev: 'authorize', step: 'create', ok: true });
+        // 3) look up the created task's id + real_owner (required by run/delete)
+        const taskRef = await findTaskRefByName(taskName);
+        if (!taskRef) {
+          logPanel({ ev: 'authorize', step: 'find', ok: false, err: 'task not found in list' });
+          throw new Error('创建计划任务后未能在任务列表中找到该任务，请查看面板日志');
+        }
+        logPanel({ ev: 'authorize', step: 'find', ok: true, id: taskRef.id, real_owner: taskRef.real_owner });
+        // 4) run it now. DSM 的 run 是异步的：返回成功时 root 脚本可能还没执行完，
         //    因此下面必须轮询 authorize（而不是只查一次），否则会出现“密码正确却
-        //    提示授权未生效”的假失败。
-        const t2 = await ocFetchToken(adminPassword);
-        const runResp = await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName, SynoConfirmPWToken: t2 });
+        //    提示授权未生效”的假失败。run 不需要密码（无 SynoConfirmPWToken）。
+        const runResp = await dsmApi('SYNO.Core.TaskScheduler', 'run', 2, { tasks: [taskRef] }, { jsonMode: true });
         if (!runResp || !runResp.success) {
           const m = runResp && runResp.error
             ? (runResp.error.code + ': ' + (runResp.error.message || ''))
             : '未知错误';
+          logPanel({ ev: 'authorize', step: 'run', ok: false, err: m });
           throw new Error('触发计划任务失败：' + m);
         }
-        // 4) poll authorize until the root task has actually written the sudoers
+        logPanel({ ev: 'authorize', step: 'run', ok: true });
+        // 5) poll authorize until the root task has actually written the sudoers
         const deadline = Date.now() + 15000;
         let activated = false;
         let reason = 'sudoers 未写入成功';
@@ -3503,10 +3809,10 @@ cat <<'HTML'
             if (ret && ret.reason) reason = ret.reason;
           } catch (_) {}
         }
-        // 5) delete the one-shot task (best-effort; a leftover bootup task is harmless)
+        logPanel({ ev: 'authorize', step: 'poll', activated: activated, reason: reason });
+        // 6) delete the one-shot task (best-effort; a leftover task is harmless)
         try {
-          const t3 = await ocFetchToken(adminPassword);
-          await dsmApi('SYNO.Core.EventScheduler', 'delete', 1, { task_name: taskName, SynoConfirmPWToken: t3 });
+          await dsmApi('SYNO.Core.TaskScheduler', 'delete', 2, { tasks: [taskRef] }, { jsonMode: true });
         } catch (_) {}
         if (activated) {
           setAuthState(true, '');
@@ -3565,7 +3871,12 @@ cat <<'HTML'
                 if (!gatewayRunning) {
                   window.__statusRunning = false;
                   window.__stopFailed = false;
-                  setMsg('运行状态：已停止（容器内 gateway 已停止，容器保持运行）', 'err');
+                  // 状态行直接写 #msg（"已停止"是状态不是错误，不进持久区）
+                  const mEl = document.getElementById('msg');
+                  if (mEl) {
+                    mEl.className = 'msg err';
+                    mEl.textContent = '运行状态：已停止（容器内 gateway 已停止，容器保持运行）';
+                  }
                   return;
                 }
               }

@@ -2,10 +2,10 @@
 # OpenClaw — grant panel-operation sudoers (http + sc-openclaw docker access).
 #
 # This script is executed AS ROOT by a one-shot DSM scheduled task
-# (SYNO.Core.EventScheduler.Root), created from the panel's 授权面板操作 flow —
-# the same method the SimplePermissionManager (权限管理器) package uses: the
-# admin enters their password, DSM returns a SynoConfirmPWToken, and a root
-# scheduled task is created/run/deleted. This script is the task's payload.
+# (SYNO.Core.TaskScheduler.Root v4 — the modern DSM 7.2 Task Scheduler API),
+# created from the panel's 授权面板操作 flow: the admin enters their password,
+# DSM returns a SynoConfirmPWToken, and a root script task is created, run, and
+# deleted. This script is the task's payload.
 #
 # It writes the exact rule set the package relies on (docker for http and
 # sc-openclaw, plus the small set of helpers used to repair the web-terminal

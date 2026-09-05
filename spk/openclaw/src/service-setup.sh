@@ -97,7 +97,12 @@ stage_container_scripts() {
     if [ -d "${SYNOPKG_PKGDEST}/etc" ]; then
         cp -f "${SYNOPKG_PKGDEST}/etc/entrypoint.sh"       "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/entrypoint.sh"
         cp -f "${SYNOPKG_PKGDEST}/etc/update-openclaw.sh"  "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/update-openclaw.sh"
-        chmod 755 "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/entrypoint.sh" "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/update-openclaw.sh"
+        if [ -f "${SYNOPKG_PKGDEST}/etc/gateway-relay.cjs" ]; then
+            cp -f "${SYNOPKG_PKGDEST}/etc/gateway-relay.cjs" "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/gateway-relay.cjs"
+        fi
+        chmod 755 "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/entrypoint.sh" \
+                  "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/update-openclaw.sh" \
+                  "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts/gateway-relay.cjs"
     fi
 }
 

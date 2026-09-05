@@ -25,6 +25,14 @@ RUNTIME_DIR="${OPENCLAW_RUNTIME_DIR:-/data/runtime}"
 CONF_DIR="${OPENCLAW_CONF_DIR:-/home/node/.openclaw}"
 SEED_DIR="/app"
 PIDFILE="${RUNTIME_DIR}/.gateway.pid"
+# In-container TCP relay: re-dials the gateway on loopback so every connection
+# (via docker-proxy) reaches the gateway as a direct-local peer and the WebChat
+# device pairing auto-approves instead of prompting (see gateway-relay.cjs).
+RELAY_SCRIPT="${OPENCLAW_RELAY_SCRIPT:-/data/scripts/gateway-relay.cjs}"
+RELAY_PID=""
+# Gateway internal listen: loopback-only on 58788; the relay owns the published
+# 58789. Config gateway.port stays 58789 so the panel/URLs keep the public port.
+GATEWAY_ARGS="--bind loopback --port 58788"
 
 STOPPED=0
 GW_PID=""
@@ -62,10 +70,46 @@ fi
 
 rm -f "$PIDFILE"
 
+# --- 3.5 配置可读性（供 DSM 面板的 http CGI）---
+# 面板 CGI 以非 root（http）运行，而容器以 root 写配置：openclaw.json 原子保存
+# 会重置为 600，gateway 启动时还会把 home 目录收紧为 700，导致面板（未授权或
+# 授权后）都读不到配置。这里用容器内的后台轻量循环保持“最小可读面”：仅
+# .openclaw 目录本身 a+rx（可遍历到配置）+ openclaw.json a+r，不触碰
+# secrets.json / state / agents 等敏感子目录。
+(
+  while :; do
+    chmod a+rx "${CONF_DIR}" 2>/dev/null || true
+    chmod a+r "${CONF_DIR}/openclaw.json" 2>/dev/null || true
+    sleep 20
+  done
+) &
+
+# --- 3.7 Relay lifecycle -----------------------------------------------------
+# The relay only listens while the gateway is meant to be running, so "can I
+# connect to the public port" still means "is the gateway up" for the panel's
+# socket probes. Start before the gateway; stop with it.
+start_relay() {
+    [ -f "$RELAY_SCRIPT" ] || { RELAY_PID=""; return 0; }
+    if [ -n "$RELAY_PID" ] && kill -0 "$RELAY_PID" 2>/dev/null; then
+        return
+    fi
+    node "$RELAY_SCRIPT" &
+    RELAY_PID=$!
+    echo "[openclaw-entry] relay started as PID ${RELAY_PID}"
+}
+stop_relay() {
+    if [ -n "$RELAY_PID" ] && kill -0 "$RELAY_PID" 2>/dev/null; then
+        kill -TERM "$RELAY_PID" 2>/dev/null || true
+        wait "$RELAY_PID" 2>/dev/null || true
+    fi
+    RELAY_PID=""
+}
+
 # --- 4. Signal control ------------------------------------------------------
-# SIGUSR1: graceful stop — TERM the gateway, remember not to restart it.
+# SIGUSR1: graceful stop — TERM the gateway (and the relay), keep it stopped.
 stop_gateway() {
     STOPPED=1
+    stop_relay
     if [ -n "$GW_PID" ] && kill -0 "$GW_PID" 2>/dev/null; then
         kill -TERM "$GW_PID" 2>/dev/null || true
     fi
@@ -77,6 +121,7 @@ start_gateway() {
 # SIGTERM (docker stop / Container Manager): forward to the gateway, drain,
 # then exit so the container stops cleanly.
 forward_term_and_exit() {
+    stop_relay
     if [ -n "$GW_PID" ] && kill -0 "$GW_PID" 2>/dev/null; then
         kill -TERM "$GW_PID" 2>/dev/null || true
         i=0
@@ -97,6 +142,7 @@ cd "${RUNTIME_DIR}"
 while :; do
     if [ "$STOPPED" = "1" ]; then
         # Gateway stopped on purpose: hold the container up, wait for SIGUSR2.
+        stop_relay
         if [ -n "$GW_PID" ]; then
             wait "$GW_PID" 2>/dev/null || true   # drains the TERM'd gateway
             if kill -0 "$GW_PID" 2>/dev/null; then
@@ -113,8 +159,11 @@ while :; do
         continue
     fi
 
+    start_relay   # relay up first so the public port is ready with the gateway
+
     if [ -z "$GW_PID" ] || ! kill -0 "$GW_PID" 2>/dev/null; then
-        node openclaw.mjs gateway --allow-unconfigured "$@" &
+        # shellcheck disable=SC2086  # GATEWAY_ARGS is an intentional word split
+        node openclaw.mjs gateway --allow-unconfigured $GATEWAY_ARGS "$@" &
         GW_PID=$!
         echo "$GW_PID" > "$PIDFILE"
         echo "[openclaw-entry] gateway started as PID ${GW_PID}"
@@ -133,5 +182,6 @@ while :; do
     # force-stop: bring it back after a short pause, mirroring restart: always.
     rm -f "$PIDFILE"
     echo "[openclaw-entry] gateway exited; restarting"
+    stop_relay
     sleep 2
 done
