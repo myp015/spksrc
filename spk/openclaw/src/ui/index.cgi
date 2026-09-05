@@ -3106,15 +3106,15 @@ cat <<'HTML'
       // encodeURIComponent（URLSearchParams 会把方括号转义成 %5B%5D，后端就解析
       // 不出嵌套了）。
       //
-      // jsonMode（TaskScheduler 专用）：DSM 的 entry.cgi 默认 requestFormat=JSON
+      // jsonMode：DSM 的 entry.cgi 默认 requestFormat=JSON
       // （见 /usr/syno/synoman/webapi/lib.def），官方任务计划 UI 把每个顶层参数值
-      // JSON.stringify 后放进 form 字段（schedule={...}、extra={...}、tasks=[...]），
-      // 后端逐个 JSON.parse。这很重要：schedule.monthly_week 对 weekly 任务是空数组
-      // []，必须作为真实 JSON 数组传输；若用 bracket 序列化会变成 schedule[monthly_week]=
-      // （空值，后端解析成空字符串），导致 4800 "monthly_week expected/type invalid"。
-      // 旧版 SYNO.Core.EventScheduler.Root v1 在 DSM 7.x 即使收到 owner[0]=root 也
-      // 读不到 owner（报 117），所以授权流程用 v4 SYNO.Core.TaskScheduler.Root
-      // （owner 是平铺字符串 "root"，无嵌套）。
+      // JSON.stringify 后放进 form 字段（schedule={...}、extra={...}、tasks=[...]、
+      // owner={"0":"root"}），后端逐个 JSON.parse。这很重要：schedule.monthly_week
+      // 对 weekly 任务是空数组 []，必须作为真实 JSON 数组传输；若用 bracket 序列化
+      // 会变成 schedule[monthly_week]=（空值，后端解析成空字符串），导致 4800
+      // "monthly_week expected/type invalid"。
+      // 授权流程（doAuthorizePanel）用 SYNO.Core.EventScheduler.Root v1，
+      // owner 为 {0:"root"}（与已安装的 SimplePermissionManager 套件同款）。
       const pairs = [];
       const appendFlat = (key, val) => {
         if (val === null || val === undefined) { pairs.push(key + '='); return; }
@@ -3740,7 +3740,7 @@ cat <<'HTML'
     }
     // 面板脚本版本号：改版后递增，便于确认浏览器加载的是新代码
     // （旧标签页不会热更新，需强制刷新 Ctrl+Shift+R 才能取到新脚本）。
-    const PANEL_VER = '2026.09.05-fix2';
+    const PANEL_VER = '2026.09.05-fix3';
     console.log('OpenClaw panel v' + PANEL_VER);
     async function doAuthorizePanel(adminPassword) {
       const btn = document.getElementById('btn_oc_auth');
@@ -3749,36 +3749,42 @@ cat <<'HTML'
       // 避免旧错误在流程进行中仍挂在面板上；失败时会写入新的错误。
       const pel = document.getElementById('persistMsg');
       if (pel) { pel.style.display = 'none'; pel.className = 'msg err'; pel.textContent = ''; }
-      setMsg('正在授权面板操作（计划任务方式写入 sudoers）…', '');
+      setMsg('正在授权面板操作（写入 sudoers）…', '');
       const taskName = 'openclaw-authorize-' + Math.floor(Date.now() / 1000);
       try {
         // 1) verify the admin password -> one-time SynoConfirmPWToken
         const token = await ocFetchToken(adminPassword);
         logPanel({ ev: 'authorize', step: 'token', ok: true });
-        // 2) create a one-shot ROOT script task via the MODERN v4 TaskScheduler
-        //    API. DSM 7.x 的旧版 SYNO.Core.EventScheduler.Root v1 即使收到
-        //    owner[0]=root 也读不到 owner（后端报 117），所以这里用 v4
-        //    SYNO.Core.TaskScheduler.Root（DSM 7.2 控制面板「任务计划」同款）：
-        //    owner 为平铺字符串 "root"，脚本内容放 extra.script（直接执行已安装
-        //    的 authorize-root.sh）。create body 基于后端骨架构建，确保 schedule
-        //    / extra / real_owner 与后端认可的模板一致。
-        const skel = await fetchCreateSkeleton();
-        const createParams = {
-          name: taskName,
-          owner: 'root',
+        // 2) create a one-shot ROOT script task via the LEGACY v1
+        //    SYNO.Core.EventScheduler.Root —— 与已安装的「权限管理器」
+        //    (SimplePermissionManager) 套件同一机制（其 UI 输密码授权是秒级完成）。
+        //
+        //    为什么不用新版 SYNO.Core.TaskScheduler.Root v4：
+        //    新版 create 后必须 TaskScheduler run v2，而 run 是「异步排队」——
+        //    root 脚本要等 synoscheduled 守护进程下一轮扫描才执行，实测滞后
+        //    5~10 分钟（面板 60s 轮询必然超时，于是反复出现"授权未生效"）。
+        //    EventScheduler 则不同：esynoscheduler.db 没有常驻守护进程轮询，
+        //    它的 run v1 由 webapi 进程直接同步执行脚本 —— 秒级生效。
+        //
+        //    script 任务的 operation 填完整路径（esynoscheduler 存的是命令本身，
+        //    例如系统自带的 shutdown 任务 operation=/usr/bin/loader-reboot.sh），
+        //    直接指向已安装的 authorize-root.sh，无需任何符号链接。
+        // jsonMode：lib.def 默认 requestFormat=JSON（TaskScheduler/EventScheduler 均
+        // 继承），顶层对象值需 JSON.stringify 传输——owner 发送为 owner={"0":"root"}，
+        // 与 DSM 官方 UI / SPM 的实际编码一致。
+        const createResp = await dsmApi('SYNO.Core.EventScheduler.Root', 'create', 1, {
+          task_name: taskName,
+          owner: { 0: 'root' },
+          event: 'bootup',
           enable: true,
-          type: 'script',
-          extra: Object.assign({}, skel.extra, {
-            script: 'bash /var/packages/openclaw/target/scripts/authorize-root.sh'
-          }),
-          schedule: skel.schedule,
+          depend_on_task: '',
+          notify_enable: false,
+          notify_mail: '',
+          notify_if_error: false,
+          operation_type: 'script',
+          operation: '/var/packages/openclaw/target/scripts/authorize-root.sh',
           SynoConfirmPWToken: token
-        };
-        if (skel.realOwner) createParams.real_owner = skel.realOwner;
-        // jsonMode：TaskScheduler 请求格式为 JSON（官方 UI 同款），schedule 整体
-        // JSON.stringify 传输，monthly_week:[] 保持真实空数组，避免 bracket 形式
-        // 变成空字符串触发 4800 "monthly_week expected/type invalid"。
-        const createResp = await dsmApi('SYNO.Core.TaskScheduler.Root', 'create', 4, createParams, { jsonMode: true });
+        }, { jsonMode: true });
         if (!createResp || !createResp.success) {
           const m = createResp && createResp.error
             ? (createResp.error.code + ': ' + (createResp.error.message || ''))
@@ -3787,17 +3793,9 @@ cat <<'HTML'
           throw new Error('创建计划任务失败：' + m);
         }
         logPanel({ ev: 'authorize', step: 'create', ok: true });
-        // 3) look up the created task's id + real_owner (required by run/delete)
-        const taskRef = await findTaskRefByName(taskName);
-        if (!taskRef) {
-          logPanel({ ev: 'authorize', step: 'find', ok: false, err: 'task not found in list' });
-          throw new Error('创建计划任务后未能在任务列表中找到该任务，请查看面板日志');
-        }
-        logPanel({ ev: 'authorize', step: 'find', ok: true, id: taskRef.id, real_owner: taskRef.real_owner });
-        // 4) run it now. DSM 的 run 是异步的：返回成功时 root 脚本可能还没执行完，
-        //    因此下面必须轮询 authorize（而不是只查一次），否则会出现“密码正确却
-        //    提示授权未生效”的假失败。run 不需要密码（无 SynoConfirmPWToken）。
-        const runResp = await dsmApi('SYNO.Core.TaskScheduler', 'run', 2, { tasks: [taskRef] }, { jsonMode: true });
+        // 3) run it now. EventScheduler v1 按 task_name 引用任务（没有
+        //    TaskScheduler 的 id/real_owner），由 webapi 直接执行，无需密码。
+        const runResp = await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName });
         if (!runResp || !runResp.success) {
           const m = runResp && runResp.error
             ? (runResp.error.code + ': ' + (runResp.error.message || ''))
@@ -3806,15 +3804,13 @@ cat <<'HTML'
           throw new Error('触发计划任务失败：' + m);
         }
         logPanel({ ev: 'authorize', step: 'run', ok: true });
-        // 5) poll authorize until the root task has actually written the sudoers.
-        //    DSM 的 TaskScheduler run 是异步排队的：root 任务由调度守护进程串行执行，
-        //    可能滞后请求数秒到十几秒。轮询窗口给足 60s，且超时后立即复查一次——否则
-        //    会出现“密码正确却提示授权未生效”的假失败。
+        // 4) poll authorize until the root script has actually written the sudoers.
+        //    EventScheduler 是同步执行，通常 1~2 秒即生效；轮询窗口只是兜底。
         const deadline = Date.now() + 60000;
         let activated = false;
         let reason = 'sudoers 未写入成功';
         while (Date.now() < deadline) {
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 500));
           try {
             const ret = await api('authorize');
             if (ret && ret.activated) { activated = true; break; }
@@ -3830,11 +3826,11 @@ cat <<'HTML'
           } catch (_) {}
         }
         logPanel({ ev: 'authorize', step: 'poll', activated: activated, reason: reason });
-        // 6) delete the one-shot task (best-effort; a leftover task is harmless).
-        //    未激活时多等 2s 再删，避免删掉仍在调度队列中、随即就会执行的 root 任务。
+        // 5) delete the one-shot task (best-effort; a leftover task is harmless——
+        //    没有常驻守护进程时它不会自动执行，下次成功授权会覆盖同名任务)。
         if (!activated) await new Promise(r => setTimeout(r, 2000));
         try {
-          await dsmApi('SYNO.Core.TaskScheduler', 'delete', 2, { tasks: [taskRef] }, { jsonMode: true });
+          await dsmApi('SYNO.Core.EventScheduler', 'delete', 1, { task_name: taskName });
         } catch (_) {}
         if (activated) {
           setAuthState(true, '');
@@ -3842,9 +3838,9 @@ cat <<'HTML'
           await load('status');
         } else {
           setAuthState(false, reason);
-          // 密码错误在步骤 1 已拦截；走到这里多是任务执行晚于轮询窗口（可能仍在排队），
-          // 引导稍候刷新或重试，而不是误指密码错误。
-          setMsg('授权未生效：' + reason + '（若已输入正确的管理员密码，多为计划任务仍在排队；请稍候刷新页面查看，或重试）', 'err');
+          // 密码错误在步骤 1 已拦截；EventScheduler run 是同步的，走到这里说明
+          // 脚本确实没写成功（权限/路径问题），直接展示原因，不再提示排队等待。
+          setMsg('授权未生效：' + reason, 'err');
         }
       } catch (e) {
         setAuthState(false, e && e.message ? e.message : String(e));
