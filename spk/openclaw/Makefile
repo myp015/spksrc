@@ -28,10 +28,17 @@ SPK_NAME = openclaw
 OPENCLAW_IMAGE ?= openclaw/openclaw
 OPENCLAW_IMAGE_TAG ?= latest
 
-# How the image is obtained at compile time:
-# - OPENCLAW_IMAGE_TAR set: use that pre-built `docker save` tarball (offline/CI).
-# - otherwise: `docker pull --platform <arch> openclaw/openclaw:latest` then
-#   `docker save` it (the default, unless no Docker daemon is available).
+# How the image is obtained at compile time (one of):
+# - OPENCLAW_ROOTFS_TAR + OPENCLAW_INSPECT_JSON: the CI path. The CI runner has
+#   docker, so it pulls the image, flattens it to rootfs.tar.gz (docker export)
+#   and saves `docker image inspect` output; the spksrc build container (NO
+#   docker) packages the SPK from those two artifacts.
+# - OPENCLAW_IMAGE_TAR: a pre-built `docker save` tarball, flattened locally via
+#   docker (needs a docker daemon on the build host).
+# - otherwise (default): `docker pull --platform <arch> openclaw/openclaw:latest`
+#   then flatten it locally via docker (needs a docker daemon).
+OPENCLAW_ROOTFS_TAR ?=
+OPENCLAW_INSPECT_JSON ?=
 OPENCLAW_IMAGE_TAR ?=
 OPENCLAW_PACK_IMAGE ?= 1
 
@@ -101,21 +108,26 @@ include ../../mk/spksrc.spk.mk
 .PHONY: openclaw_prepare_bundle openclaw_gen_build_context
 openclaw_prepare_bundle:
 	@$(MSG) Prepare OpenClaw container image bundle - offline build context
-	@if [ -n "$(OPENCLAW_IMAGE_TAR)" ]; then \
+	@install -d -m 755 $(WORK_DIR)
+	@if [ -n "$(OPENCLAW_ROOTFS_TAR)" ]; then \
+		echo "Using pre-flattened rootfs: $(OPENCLAW_ROOTFS_TAR)"; \
+		install -d -m 755 $(WORK_DIR)/oc-context; \
+		cp -f "$(OPENCLAW_ROOTFS_TAR)" $(WORK_DIR)/oc-context/rootfs.tar.gz; \
+	elif [ -n "$(OPENCLAW_IMAGE_TAR)" ]; then \
 		echo "Using pre-built image tarball: $(OPENCLAW_IMAGE_TAR)"; \
-		install -d -m 755 $(WORK_DIR); \
 		cp -f "$(OPENCLAW_IMAGE_TAR)" $(WORK_DIR)/openclaw-image.tar; \
 	elif [ "$(OPENCLAW_PACK_IMAGE)" = "1" ]; then \
 		[ -n "$(IMAGE_PLATFORM)" ] || { echo "Unsupported arch for image platform: $(TARGET_ARCH_NAME)"; exit 1; }; \
+		command -v docker >/dev/null 2>&1 || { echo "ERROR: OPENCLAW_PACK_IMAGE=1 but no docker available"; exit 1; }; \
 		echo "Pulling image $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) ($(IMAGE_PLATFORM))"; \
 		docker pull --platform $(IMAGE_PLATFORM) $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG); \
 	else \
-		echo "WARN: no image bundle (OPENCLAW_IMAGE_TAR unset, OPENCLAW_PACK_IMAGE!=1) -> shell-only SPK"; \
+		echo "WARN: no image bundle (OPENCLAW_ROOTFS_TAR/OPENCLAW_IMAGE_TAR unset, OPENCLAW_PACK_IMAGE!=1) -> shell-only SPK"; \
 	fi
-	@if [ -f "$(WORK_DIR)/openclaw-image.tar" ] || [ "$(OPENCLAW_PACK_IMAGE)" = "1" ]; then \
+	@if [ -f "$(WORK_DIR)/oc-context/rootfs.tar.gz" ] || [ -f "$(WORK_DIR)/openclaw-image.tar" ] || [ "$(OPENCLAW_PACK_IMAGE)" = "1" ]; then \
 		$(MAKE) openclaw_gen_build_context; \
 	else \
-		echo "WARN: no image tar; skipping offline build context (shell-only SPK)"; \
+		echo "WARN: no image source; skipping offline build context (shell-only SPK)"; \
 	fi
 	# Bundled terminal (ttyd) prebuilt binary.
 	@[ -n "$(TTYD_DIST_ARCH)" ] || { echo "Unsupported target arch for ttyd bundle: $(TARGET_ARCH_NAME)"; exit 1; }
@@ -135,18 +147,34 @@ openclaw_prepare_bundle:
 openclaw_gen_build_context:
 	@$(MSG) Generate offline Docker build context from bundled image
 	@install -d -m 755 $(WORK_DIR)/oc-context
-	@if [ -f "$(WORK_DIR)/openclaw-image.tar" ]; then \
-		echo "  loading image $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)"; \
-		docker load -i $(WORK_DIR)/openclaw-image.tar >/dev/null; \
+	# rootfs.tar.gz: already provided (CI flattens the image in a docker step and
+	# passes the tar via OPENCLAW_ROOTFS_TAR), otherwise flatten it locally via
+	# docker (loading the save tar first if OPENCLAW_IMAGE_TAR was given).
+	@if [ ! -f "$(WORK_DIR)/oc-context/rootfs.tar.gz" ]; then \
+		command -v docker >/dev/null 2>&1 || { echo "ERROR: no rootfs.tar.gz and no docker available (set OPENCLAW_ROOTFS_TAR)"; exit 1; }; \
+		if [ -f "$(WORK_DIR)/openclaw-image.tar" ]; then \
+			echo "  loading image $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)"; \
+			docker load -i "$(WORK_DIR)/openclaw-image.tar" >/dev/null; \
+		fi; \
+		echo "  exporting flattened rootfs"; \
+		docker create --platform $(IMAGE_PLATFORM) --name openclaw-occtx-export "$(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)" >/dev/null; \
+		docker export openclaw-occtx-export | gzip -1 > "$(WORK_DIR)/oc-context/rootfs.tar.gz"; \
+		docker rm openclaw-occtx-export >/dev/null; \
 	fi
-	@echo "  exporting flattened rootfs"
-	@docker create --name openclaw-occtx-export $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) >/dev/null
-	@docker export openclaw-occtx-export | gzip -1 > $(WORK_DIR)/oc-context/rootfs.tar.gz
-	@docker rm openclaw-occtx-export >/dev/null
-	@docker image inspect $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) > $(WORK_DIR)/oc-context/inspect.json
-	@python3 src/container/gen-dockerfile.py $(WORK_DIR)/oc-context/inspect.json > $(WORK_DIR)/oc-context/Dockerfile
-	@rm -f $(WORK_DIR)/oc-context/inspect.json
-	@ls -lh $(WORK_DIR)/oc-context/Dockerfile $(WORK_DIR)/oc-context/rootfs.tar.gz
+	# inspect.json (image Config for the arch-neutral Dockerfile): provided via
+	# OPENCLAW_INSPECT_JSON, or from the local docker daemon.
+	@if [ ! -f "$(WORK_DIR)/oc-context/inspect.json" ]; then \
+		if [ -n "$(OPENCLAW_INSPECT_JSON)" ] && [ -f "$(OPENCLAW_INSPECT_JSON)" ]; then \
+			cp -f "$(OPENCLAW_INSPECT_JSON)" "$(WORK_DIR)/oc-context/inspect.json"; \
+		elif command -v docker >/dev/null 2>&1; then \
+			docker image inspect --platform $(IMAGE_PLATFORM) "$(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)" > "$(WORK_DIR)/oc-context/inspect.json"; \
+		else \
+			echo "ERROR: cannot get image config for Dockerfile (set OPENCLAW_INSPECT_JSON)"; exit 1; \
+		fi; \
+	fi
+	@python3 src/container/gen-dockerfile.py "$(WORK_DIR)/oc-context/inspect.json" > "$(WORK_DIR)/oc-context/Dockerfile"
+	@rm -f "$(WORK_DIR)/oc-context/inspect.json"
+	@ls -lh "$(WORK_DIR)/oc-context/Dockerfile" $(WORK_DIR)/oc-context/rootfs.tar.gz
 
 .PHONY: openclaw_copy_target
 openclaw_copy_target:

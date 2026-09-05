@@ -38,23 +38,33 @@ jobs:
           ref: ${{ github.event.inputs.ref != '' && github.event.inputs.ref || github.sha }}
           fetch-depth: 0
 
-      # Stage 1 (runner layer, has Docker daemon): pull + save the FULL image
-      # for the target architecture. No install-time download on the NAS.
-      - name: Pull and save OpenClaw container image (${{ matrix.image_platform }})
+      # Stage 1 (runner layer, has Docker daemon): pull the FULL image for the
+      # target arch and flatten it to the offline build-context artifacts the
+      # SPK ships (rootfs.tar.gz + image config for the Dockerfile). The build
+      # container in Stage 2 has NO docker, so flattening must happen here.
+      # No install-time download on the NAS.
+      - name: Pull and flatten OpenClaw image (${{ matrix.image_platform }})
         run: |
           set -e
-          IMG="openclaw/openclaw:2026.8.2"
+          IMG="openclaw/openclaw:latest"
           echo "Pulling ${IMG} for ${{ matrix.image_platform }}"
           docker pull --platform ${{ matrix.image_platform }} "$IMG"
-          docker save "$IMG" -o "openclaw-image-${{ matrix.image_suffix }}.tar"
-          ls -lh "openclaw-image-${{ matrix.image_suffix }}.tar"
+          echo "Flattening rootfs (${{ matrix.image_platform }})"
+          CID="openclaw-occtx-export-${{ matrix.image_suffix }}"
+          docker rm -f "$CID" >/dev/null 2>&1 || true
+          docker create --platform ${{ matrix.image_platform }} --name "$CID" "$IMG" >/dev/null
+          docker export "$CID" | gzip -1 > "openclaw-rootfs-${{ matrix.image_suffix }}.tar.gz"
+          docker rm -f "$CID" >/dev/null
+          docker image inspect --platform ${{ matrix.image_platform }} "$IMG" > "openclaw-inspect-${{ matrix.image_suffix }}.json"
+          ls -lh "openclaw-rootfs-${{ matrix.image_suffix }}.tar.gz" "openclaw-inspect-${{ matrix.image_suffix }}.json"
 
-      # Stage 2 (spksrc build container): package the SPK with the image bundled.
+      # Stage 2 (spksrc build container, NO docker): package the SPK from the
+      # flattened rootfs + image config produced in Stage 1.
       - name: Build openclaw package (${{ matrix.spk_arch }}-7.2)
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
           entrypoint: /bin/bash
-          args: -lc "set -e; cd /github/workspace/spk/openclaw && OPENCLAW_IMAGE_TAR=/github/workspace/openclaw-image-${{ matrix.image_suffix }}.tar make V=s arch-${{ matrix.spk_arch }}-7.2"
+          args: -lc "set -e; cd /github/workspace/spk/openclaw && OPENCLAW_ROOTFS_TAR=/github/workspace/openclaw-rootfs-${{ matrix.image_suffix }}.tar.gz OPENCLAW_INSPECT_JSON=/github/workspace/openclaw-inspect-${{ matrix.image_suffix }}.json make V=s arch-${{ matrix.spk_arch }}-7.2"
 
       - name: Upload SPK artifact (${{ matrix.spk_arch }})
         uses: actions/upload-artifact@v4
