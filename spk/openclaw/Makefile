@@ -159,6 +159,7 @@ openclaw_gen_build_context:
 		echo "  exporting flattened rootfs"; \
 		docker create --platform $(IMAGE_PLATFORM) --name openclaw-occtx-export "$(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)" >/dev/null; \
 		docker export openclaw-occtx-export | gzip -1 > "$(WORK_DIR)/oc-context/rootfs.tar.gz"; \
+		docker inspect openclaw-occtx-export > "$(WORK_DIR)/oc-context/inspect.json"; \
 		docker rm openclaw-occtx-export >/dev/null; \
 	fi
 	# inspect.json (image Config for the arch-neutral Dockerfile): provided via
@@ -167,7 +168,9 @@ openclaw_gen_build_context:
 		if [ -n "$(OPENCLAW_INSPECT_JSON)" ] && [ -f "$(OPENCLAW_INSPECT_JSON)" ]; then \
 			cp -f "$(OPENCLAW_INSPECT_JSON)" "$(WORK_DIR)/oc-context/inspect.json"; \
 		elif command -v docker >/dev/null 2>&1; then \
-			docker image inspect --platform $(IMAGE_PLATFORM) "$(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)" > "$(WORK_DIR)/oc-context/inspect.json"; \
+			docker create --platform $(IMAGE_PLATFORM) --name openclaw-occtx-inspect "$(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)" >/dev/null; \
+			docker inspect openclaw-occtx-inspect > "$(WORK_DIR)/oc-context/inspect.json"; \
+			docker rm openclaw-occtx-inspect >/dev/null; \
 		else \
 			echo "ERROR: cannot get image config for Dockerfile (set OPENCLAW_INSPECT_JSON)"; exit 1; \
 		fi; \
