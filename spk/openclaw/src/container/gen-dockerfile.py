@@ -47,6 +47,13 @@ def main() -> None:
         lines.append(f"ENTRYPOINT {json.dumps(cfg['Entrypoint'])}")
     if cfg.get("Cmd"):
         lines.append(f"CMD {json.dumps(cfg['Cmd'])}")
+    # Bundled first-start seeding material. The image carries its own copies of
+    # the container-facing scripts (entrypoint/relay/updater) and the config
+    # template so the entrypoint can self-seed a TRUE first install — when the
+    # package's non-root postinst cannot create the HOME dir under /volume1.
+    # The Makefile stages these into the build context next to rootfs.tar.gz.
+    lines.append("ADD ocscripts/ /opt/ocscripts/")
+    lines.append("ADD openclaw.template.json /opt/openclaw.template.json")
     sys.stdout.write("\n".join(lines) + "\n")
 
 

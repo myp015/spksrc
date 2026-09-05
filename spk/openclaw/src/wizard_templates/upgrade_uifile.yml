@@ -1,7 +1,8 @@
 CONFIGURATION_TITLE: "OpenClaw 升级参数（容器版）"
 
-HOME_DESCRIPTION: "HOME 目录（升级时必须与当前安装保持一致，否则数据会被视为新 HOME 重新初始化）"
-HOME_LABEL: "HOME 目录"
+HOME_DESCRIPTION: "HOME 共享目录名称（升级时必须与当前安装的共享目录一致，否则数据会被视为新 HOME 重新初始化）"
+HOME_LABEL: "HOME 共享目录"
+HOME_VALIDATOR_TEXT: "仅支持共享目录名称，不支持子目录"
 
 GATEWAY_PORT_DESCRIPTION: "Gateway 监听端口（保持与安装时一致）"
 GATEWAY_PORT_LABEL: "端口"

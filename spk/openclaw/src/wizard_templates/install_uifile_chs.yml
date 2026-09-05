@@ -1,7 +1,8 @@
 CONFIGURATION_TITLE: "OpenClaw 安装参数（容器版）"
 
-HOME_DESCRIPTION: "HOME 目录（默认 /volume1/openclaw）。所有 OpenClaw 文件都位于 HOME/.openclaw（配置 openclaw.json、运行时、脚本、工作区）。套件脚本以非 root 运行，无法新建顶层目录：HOME 必须已存在且对套件可写（全新安装请先以 root 创建并赋权，例如：mkdir /volume1/openclaw && chown sc-openclaw /volume1/openclaw；或选择 /volume1/docker 下等可写目录）"
-HOME_LABEL: "HOME 目录"
+HOME_DESCRIPTION: "HOME 共享目录名称（默认 openclaw，创建后路径为默认存储卷下的 /openclaw，如 /volume1/openclaw）。安装时由 DSM 自动创建该共享目录并授权服务账户读写；所有 OpenClaw 文件位于 HOME/.openclaw（配置 openclaw.json、运行时、脚本、工作区）。仅可输入目录名称，不支持子目录。"
+HOME_LABEL: "HOME 共享目录"
+HOME_VALIDATOR_TEXT: "仅支持共享目录名称，不支持子目录"
 
 GATEWAY_PORT_DESCRIPTION: "Gateway 监听端口（默认 58789，容器将映射到此端口）"
 GATEWAY_PORT_LABEL: "端口"

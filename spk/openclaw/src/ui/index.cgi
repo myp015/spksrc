@@ -262,7 +262,7 @@ if running:
     try:
         # 优先以 runtime pid 文件的 mtime 作为“本次启动时间”，这样从停止到再次运行一定从 0 开始计时。
         pidfile_started_ts = None
-        for pidfile in ('/var/packages/openclaw/var/openclaw-gateway.runtime.pid', '/volume1/@appdata/openclaw/openclaw-gateway.runtime.pid'):
+        for pidfile in ('/var/packages/openclaw/var/openclaw-gateway.runtime.pid', '/volume1/openclaw/openclaw-gateway.runtime.pid'):
             if os.path.exists(pidfile):
                 try:
                     pidfile_started_ts = int(os.stat(pidfile).st_mtime)
@@ -362,19 +362,25 @@ terminal_port = 17682
 # Granted interactively by the 授权面板操作 flow (one-shot root scheduled task,
 # SimplePermissionManager-style). Until then the panel is read-only.
 def _auth_check():
-    # 面板 CGI 由 synoscgi 以 root 执行（uid=0），root 对 docker 无限制，直接 sudo
-    # 探测恒为真。授权状态改为以 authorize-root.sh 写入的 sudoers 文件为准（约束的
-    # 是非 root 组件 sc-openclaw 的 docker/终端权限）：文件存在且 sc-openclaw 能
-    # sudo docker => 已授权。
+    # 面板 CGI 以套件服务用户 sc-openclaw 运行（非 root）：无法 stat /etc/sudoers.d
+    # （目录 750 root:root，文件不可见），文件存在性检查恒假。正确判定 = 直接探测
+    # sc-openclaw 能否免密 sudo docker（正是 sudoers 规则授予的能力）。root CGI 平台
+    # 才用 文件存在 + 嵌套 sudo 探测。
     try:
-        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
-            return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权，请点击“授权面板操作”）'
-        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
-                            '/usr/local/bin/docker', 'version'],
+        if os.geteuid() == 0:
+            if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+                return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权，请点击“授权面板操作”）'
+            p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                                '/usr/local/bin/docker', 'version'],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+            if p.returncode == 0:
+                return True, ''
+            return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         if p.returncode == 0:
             return True, ''
-        return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
+        return False, '未授权：sc-openclaw 无法免密 sudo docker（面板操作未授权，请点击“授权面板操作”）'
     except Exception as e:
         return False, '授权检查异常: %s' % e
 
@@ -586,6 +592,13 @@ else:
 if workspace.endswith('/.openclaw'):
     workspace = workspace[:-10]
 
+if not workspace_explicit and prev_workspace:
+    # 前端保存模型/删除 provider 不传 workspaceDir：workspace 仅用于确定物理
+    # 配置文件位置，配置内容中的 workspace 值必须保持原有（容器内
+    # /home/node/.openclaw），绝不能反推为宿主路径写入——容器内网关读不到
+    # /volume1/... 路径。
+    workspace = prev_workspace
+
 if not cfg_path:
     cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
 
@@ -598,8 +611,12 @@ if not paths:
 elif isinstance(paths[0], dict):
     paths[0]['path'] = state_path
 
-# after workspace change, always write into target workspace config path
-cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
+# 物理写入路径：仅当用户显式改目录（或缺少初始路径）时按 workspace 重算；
+# 否则沿用面板传入的 cfg_file（宿主 HOME 下实际路径 /volume1/openclaw/
+# .openclaw/openclaw.json），避免把容器路径 /home/node 当作物理位置去写
+# （http 用户写不到容器内路径）。
+if workspace_explicit or not cfg_path:
+    cfg_path = os.path.join(workspace or '/volume1/openclaw', '.openclaw', 'openclaw.json')
 
 # 规则：仅允许在 gateway 停止后修改用户目录。
 workspace_changed = bool(workspace and workspace != prev_workspace)
@@ -2078,7 +2095,7 @@ except Exception:
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw/data'
+env['OPENCLAW_DATA_DIR'] = '/volume1/openclaw/data'
 env['OPENCLAW_CONFIG_PATH'] = cfg_path
 env['OPENCLAW_STATE_DIR'] = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 # Align terminal env with wrapper semantics: HOME=workspace root, state under HOME/.openclaw
@@ -2301,7 +2318,7 @@ if m:
 
 env = os.environ.copy()
 env['OPENCLAW_USE_SYSTEM_CONFIG'] = '0'
-env['OPENCLAW_DATA_DIR'] = '/volume1/@appdata/openclaw/data'
+env['OPENCLAW_DATA_DIR'] = '/volume1/openclaw/data'
 state_dir = (os.path.dirname(cfg_path) if cfg_path else '/volume1/openclaw/.openclaw')
 user_dir = (os.path.dirname(state_dir) if state_dir.endswith('/.openclaw') else state_dir)
 env['HOME'] = user_dir
@@ -2416,12 +2433,17 @@ PY
             python3 - <<'PY'
 import json, os, subprocess, sys
 def auth_ok():
-    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
+    # 面板 CGI 以套件服务用户 sc-openclaw 运行（非 root）：直接探测 sc-openclaw 能否
+    # 免密 sudo docker（正是 sudoers 规则授予的能力）。root CGI 平台才查文件+嵌套探测。
     try:
-        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
-            return False
-        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
-                            '/usr/local/bin/docker', 'version'],
+        if os.geteuid() == 0:
+            if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+                return False
+            p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                                '/usr/local/bin/docker', 'version'],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+            return p.returncode == 0
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         return p.returncode == 0
     except Exception:
@@ -2454,16 +2476,23 @@ PY
             python3 - <<'PY'
 import json, os, subprocess, sys
 def auth_check():
-    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
+    # 面板 CGI 以套件服务用户 sc-openclaw 运行（非 root）：直接探测 sc-openclaw 能否
+    # 免密 sudo docker（正是 sudoers 规则授予的能力）。root CGI 平台才查文件+嵌套探测。
     try:
-        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
-            return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权）'
-        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
-                            '/usr/local/bin/docker', 'version'],
+        if os.geteuid() == 0:
+            if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+                return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权）'
+            p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                                '/usr/local/bin/docker', 'version'],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+            if p.returncode == 0:
+                return True, ''
+            return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         if p.returncode == 0:
             return True, ''
-        return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
+        return False, '授权未生效：sc-openclaw 无法免密 sudo docker（sudoers 未写入成功）'
     except Exception as e:
         return False, '授权检查异常: %s' % e
 activated, reason = auth_check()
@@ -2476,30 +2505,49 @@ PY
             ;;
 
         authorize_write)
-            # 同步写 sudoers（授权流程第 3 步，POST）：浏览器在 doAuthorizePanel 里
-            # 已用管理员密码换到 SynoConfirmPWToken，并通过 SYNO.Core.EventScheduler
-            # .Root create v1 建好一次性 root 任务（create 需要 token —— 管理员身份
-            # 验证 + CSRF 防护都在这一步由 DSM 完成）。这里由面板 CGI（root）直接
-            # 执行 authorize-root.sh 写 sudoers，秒级返回。
+            # 同步写 sudoers（授权流程第 3 步的快速尝试，POST）：浏览器在
+            # doAuthorizePanel 里已用管理员密码换到 SynoConfirmPWToken，并通过
+            # SYNO.Core.EventScheduler.Root create v1 建好一次性 root 任务（create
+            # 需要 token —— 管理员身份验证 + CSRF 防护都在这一步由 DSM 完成）。
+            # 这里尝试由面板 CGI 直接执行 authorize-root.sh 写 sudoers。
             #
-            # ⚠ 刻意不走 EventScheduler run：实测这台 NAS 上 run 也是异步执行，
-            # 脚本实际运行比 run 返回晚约 1 分钟（面板 60s 轮询必然超时误报失败，
-            # 即此前反复出现"授权未生效"的根因）。同步写完全消除时序竞态。
+            # ⚠ 实测：本 NAS 上 3rdparty 面板 CGI 以套件服务用户 sc-openclaw 运行
+            # （并非 root），写 /etc/sudoers.d 与 root 属主的 authorize-root.log 全部
+            # Permission denied（见 var/authorize-write.log），本 action 在此平台必然
+            # 失败返回（<1s）。保留它仅为面板 CGI 以 root 运行的平台提供秒级路径；
+            # 真正的写入由 doAuthorizePanel 触发的 EventScheduler run（真 root）完成，
+            # 配合 240s 宽窗口轮询（run 在这台 NAS 上异步，落地晚约 60~100 秒）。
             body=$(read_body)
             printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             python3 - <<'PY' "$body"
-import json, os, subprocess, sys
+import json, os, subprocess, sys, time, traceback
+
+STEP_LOG = '/var/packages/openclaw/var/authorize-write.log'
+def slog(msg):
+    try:
+        with open(STEP_LOG, 'a', encoding='utf-8') as f:
+            f.write('%s %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), msg))
+    except Exception:
+        pass
 
 def auth_check():
+    # 面板 CGI 以套件服务用户 sc-openclaw 运行（非 root）：直接探测 sc-openclaw 能否
+    # 免密 sudo docker（正是 sudoers 规则授予的能力）。root CGI 平台才查文件+嵌套探测。
     try:
-        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
-            return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权）'
-        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
-                            '/usr/local/bin/docker', 'version'],
+        if os.geteuid() == 0:
+            if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+                return False, '未找到 /etc/sudoers.d/openclaw-ui（面板操作未授权）'
+            p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                                '/usr/local/bin/docker', 'version'],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+            if p.returncode == 0:
+                return True, ''
+            return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         if p.returncode == 0:
             return True, ''
-        return False, 'sudoers 存在但 sc-openclaw 无法 sudo docker (rc=%s)' % p.returncode
+        return False, '授权未生效：sc-openclaw 无法免密 sudo docker（sudoers 未写入成功）'
     except Exception as e:
         return False, '授权检查异常: %s' % e
 
@@ -2533,21 +2581,46 @@ except Exception:
 task_name = str(payload.get('task_name') or '')
 script = '/var/packages/openclaw/target/scripts/authorize-root.sh'
 
+slog('authorize_write raw_len=%d task_name=%r' % (len(raw), task_name))
 activated, reason = auth_check()
+slog('auth_check(initial) activated=%s reason=%s' % (activated, reason))
 write_log = ''
 if not activated:
     exists = task_exists(task_name)
+    slog('task_exists -> %r' % (exists,))
     if exists is False:
         reason = '授权任务未创建（管理员密码验证未完成），请重试'
     elif not os.path.exists(script):
         reason = '缺少授权脚本：%s' % script
     else:
         try:
-            p = subprocess.run([script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+            slog('exec %s' % script)
+            # 显式 /bin/sh 执行，绕开 shebang / 直接 exec 的权限边角问题。
+            p = subprocess.run(['/bin/sh', script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
             write_log = (p.stdout or b'').decode('utf-8', 'ignore')[-500:]
+            slog('exec rc=%s out=%r' % (p.returncode, write_log))
         except Exception as e:
-            write_log = '%s: %s' % (type(e).__name__, e)
+            write_log = '%s: %s\n%s' % (type(e).__name__, e, traceback.format_exc()[-800:])
+            slog('exec EXC: %s' % write_log)
         activated, reason = auth_check()
+        slog('auth_check(after write) activated=%s reason=%s' % (activated, reason))
+        if not activated:
+            # 兜底：exec 未生效（无论何种原因）时由 Python 直接写 sudoers，内容
+            # 与 authorize-root.sh 的 RULE 保持一致（两处同步更新）。
+            RULE = ('http ALL=(root) NOPASSWD: /usr/syno/bin/synopkg, /usr/local/bin/docker, /usr/bin/docker, /bin/systemctl, /usr/sbin/nginx, /usr/bin/nginx, /bin/ln, /var/packages/openclaw/target/scripts/ui-run.sh\n'
+                    'sc-openclaw ALL=(root) NOPASSWD: /usr/local/bin/docker, /usr/bin/docker, /usr/syno/bin/synopkg, /var/packages/openclaw/target/scripts/openclaw-terminal-entry.sh')
+            try:
+                tmp = '/etc/sudoers.d/.openclaw-ui.tmp.%d' % os.getpid()
+                with open(tmp, 'w') as f:
+                    f.write(RULE + '\n')
+                os.chmod(tmp, 0o440)
+                os.rename(tmp, '/etc/sudoers.d/openclaw-ui')
+                os.chmod('/etc/sudoers.d/openclaw-ui', 0o440)
+                slog('fallback wrote sudoers')
+            except Exception as e:
+                slog('fallback EXC: %s: %s' % (type(e).__name__, e))
+            activated, reason = auth_check()
+            slog('auth_check(after fallback) activated=%s reason=%s' % (activated, reason))
 print(json.dumps({'ok': activated, 'activated': activated, 'authorized': activated,
                   'reason': '' if activated else (reason or '授权未生效'),
                   'log': write_log}, ensure_ascii=False))
@@ -2574,12 +2647,17 @@ if action not in ('start', 'stop', 'restart', 'force-stop'):
 
 # Panel-operation authorization gate: start/stop/restart need docker sudo.
 def auth_ok():
-    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
+    # 面板 CGI 以套件服务用户 sc-openclaw 运行（非 root）：直接探测 sc-openclaw 能否
+    # 免密 sudo docker（正是 sudoers 规则授予的能力）。root CGI 平台才查文件+嵌套探测。
     try:
-        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
-            return False
-        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
-                            '/usr/local/bin/docker', 'version'],
+        if os.geteuid() == 0:
+            if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+                return False
+            p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                                '/usr/local/bin/docker', 'version'],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+            return p.returncode == 0
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         return p.returncode == 0
     except Exception:
@@ -2777,12 +2855,17 @@ PY
             python3 - <<'PY'
 import json, os, subprocess, sys
 def auth_ok():
-    # 面板 CGI 以 root 运行，sudo 探测恒真；授权以 sudoers 文件为准（sc-openclaw docker）。
+    # 面板 CGI 以套件服务用户 sc-openclaw 运行（非 root）：直接探测 sc-openclaw 能否
+    # 免密 sudo docker（正是 sudoers 规则授予的能力）。root CGI 平台才查文件+嵌套探测。
     try:
-        if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
-            return False
-        p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
-                            '/usr/local/bin/docker', 'version'],
+        if os.geteuid() == 0:
+            if not os.path.exists('/etc/sudoers.d/openclaw-ui'):
+                return False
+            p = subprocess.run(['sudo', '-n', '-u', 'sc-openclaw', 'sudo', '-n',
+                                '/usr/local/bin/docker', 'version'],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
+            return p.returncode == 0
+        p = subprocess.run(['sudo', '-n', '/usr/local/bin/docker', 'version'],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=8)
         return p.returncode == 0
     except Exception:
@@ -3048,23 +3131,29 @@ cat <<'HTML'
     }
     function setMsg(text, cls='') {
       const el = document.getElementById('msg');
+      // 错误信息只进 #persistMsg（运行状态下方），绝不覆盖 #msg 的运行状态行
+      // （#msg 由状态渲染/轮询直接维护，见 renderStatus）。失败后一直保留，
+      // 不会被状态轮询（每 1.5s 覆写 #msg）或切换标签清除；下一次成功(ok)才清除。
+      if (cls === 'err') {
+        const pel = document.getElementById('persistMsg');
+        if (pel) {
+          pel.style.display = '';
+          pel.className = 'msg err';
+          pel.textContent = text || '';
+        }
+        return;
+      }
+      // 非错误：临时提示写 #msg；ok 时顺带清除持久错误区。
       el.className = 'msg ' + cls;
       el.textContent = text || '';
-      // 错误信息持久显示：err 只写入 #persistMsg（运行状态下方），失败后一直保留，
-      // 不会被状态轮询（每 1.5s 覆写 #msg）或切换标签清除；下一次成功(ok)才清除。
-      // 运行状态行（#msg）由状态渲染/轮询直接维护，不经过这里。
+      if (cls === 'ok') clearPersistMsg();
+    }
+    function clearPersistMsg() {
       const pel = document.getElementById('persistMsg');
       if (!pel) return;
-      if (cls === 'err') {
-        el.textContent = '';
-        pel.style.display = '';
-        pel.className = 'msg err';
-        pel.textContent = text || '';
-      } else if (cls === 'ok') {
-        pel.style.display = 'none';
-        pel.className = 'msg err';
-        pel.textContent = '';
-      }
+      pel.style.display = 'none';
+      pel.className = 'msg err';
+      pel.textContent = '';
     }
     function formatUptime(seconds) {
       const s = Math.max(0, Number(seconds) || 0);
@@ -3826,7 +3915,7 @@ cat <<'HTML'
     }
     // 面板脚本版本号：改版后递增，便于确认浏览器加载的是新代码
     // （旧标签页不会热更新，需强制刷新 Ctrl+Shift+R 才能取到新脚本）。
-    const PANEL_VER = '2026.09.05-fix4';
+    const PANEL_VER = '2026.09.05-fix9';
     console.log('OpenClaw panel v' + PANEL_VER);
     async function doAuthorizePanel(adminPassword) {
       const btn = document.getElementById('btn_oc_auth');
@@ -3835,7 +3924,8 @@ cat <<'HTML'
       // 避免旧错误在流程进行中仍挂在面板上；失败时会写入新的错误。
       const pel = document.getElementById('persistMsg');
       if (pel) { pel.style.display = 'none'; pel.className = 'msg err'; pel.textContent = ''; }
-      setMsg('正在授权面板操作（写入 sudoers）…', '');
+      // 进度只体现在按钮文案（“授权中...”），不覆盖 #msg 的“运行状态”行——
+      // 授权过程中运行状态保持可见，不被进度文字顶掉。
       const taskName = 'openclaw-authorize-' + Math.floor(Date.now() / 1000);
       try {
         // 1) verify the admin password -> one-time SynoConfirmPWToken
@@ -3845,15 +3935,17 @@ cat <<'HTML'
         //    SYNO.Core.EventScheduler.Root —— 与已安装的「权限管理器」
         //    (SimplePermissionManager) 套件同一机制（其 UI 输密码授权是秒级完成）。
         //
-        //    为什么建任务却不跑 EventScheduler run：
+        //    为什么授权要走计划任务执行（而不是面板 CGI 直写）：
         //    TaskScheduler.Root v4 + run v2 是「异步排队」——root 脚本要等
-        //    synoscheduled 守护进程下一轮扫描才执行，实测滞后 5~10 分钟（面板
-        //    60s 轮询必然超时，于是反复出现"授权未生效"）。实测 EventScheduler
-        //    的 run 在这台 NAS 上同样是异步执行（脚本实际运行比 run 返回晚约
-        //    1 分钟），60s 轮询照样超时。因此这里只把 create 当作「管理员身份
-        //    验证 + CSRF 防护」的凭证步骤（create 必须携带 PasswordConfirm 换来
-        //    的一次性 SynoConfirmPWToken），sudoers 的写入由面板 CGI（root）同步
-        //    直写（authorize_write）完成——零时序竞态。
+        //    synoscheduled 守护进程下一轮扫描才执行，实测滞后 5~10 分钟，弃用。
+        //    EventScheduler 的 run v1 能触发执行，但在这台 NAS 上同样是异步
+        //    （脚本实际以 root 运行比 run 返回晚约 60~100 秒），所以轮询窗口
+        //    放宽到 240s——fix3 用 60s 就是因此超时误报"授权未生效"。
+        //    面板 CGI 实测以套件服务用户 sc-openclaw 运行（并非 root），无法直接
+        //    写 /etc/sudoers.d（var/authorize-write.log 里全是 Permission denied），
+        //    所以 sudoers 必须由计划任务以真 root 执行 authorize-root.sh 写入。
+        //    create 仍是必须的：携带 PasswordConfirm 换来的一次性 SynoConfirmPWToken
+        //    = 管理员身份验证 + CSRF 防护，浏览器无法绕过。
         //
         //    script 任务的 operation 填完整路径（esynoscheduler 存的是命令本身，
         //    例如系统自带的 shutdown 任务 operation=/usr/bin/loader-reboot.sh），
@@ -3882,30 +3974,84 @@ cat <<'HTML'
           throw new Error('创建计划任务失败：' + m);
         }
         logPanel({ ev: 'authorize', step: 'create', ok: true });
-        // 3) 同步写 sudoers：后端 authorize_write 由面板 CGI（root）直接执行
-        //    authorize-root.sh，秒级完成。
-        //    ⚠ 刻意不再走 EventScheduler run + 轮询：实测这台 NAS 上 run 也是
-        //    异步执行，脚本实际运行比 run 返回晚约 1 分钟，面板 60s 轮询会超时
-        //    误报失败（此前反复出现"授权未生效"的根因）。create 用管理员密码
-        //    换来的 SynoConfirmPWToken 建好任务 = 管理员验证 + CSRF 防护已完成；
-        //    后端核对任务存在后由 CGI 同步写，无任何时序竞态。
-        const wr = await api('authorize_write', 'POST', { task_name: taskName });
+        // 3) 并行触发两条写入路径，谁先生效由轮询判定：
+        //    - run：计划任务以真 root 执行 authorize-root.sh（本 NAS 的生效路径，实测与请求同秒落地）；
+        //    - authorize_write：面板 CGI 直写（root-CGI 平台秒级生效；本 NAS 上 CGI 是
+        //      sc-openclaw，写 /etc/sudoers.d 必被拒，<1s 失败，作为 run 的兜底无碍）。
+        //    authorize_write 不 await（fire-and-forget）：本 NAS 上它必失败，不该阻塞
+        //    关键路径；结果在轮询结束后再回收用于日志。
+        const wrPromise = api('authorize_write', 'POST', { task_name: taskName }).catch(() => null);
+        const runResp = await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName });
+        logPanel({ ev: 'authorize', step: 'run', ok: !!(runResp && runResp.success),
+                   err: (runResp && runResp.error) ? (runResp.error.code + ': ' + (runResp.error.message || '')) : '' });
+        let activated = false;
+        let reason = 'sudoers 未写入成功';
+        if (!(runResp && runResp.success)) {
+          // run 失败时给直写一点时间收尾（root-CGI 平台直写可能已成功）。
+          const wrEarly = await wrPromise;
+          if (wrEarly && wrEarly.activated) activated = true;
+        }
+        if (!activated) {
+          // 4b) 轮询授权状态；进度只显示在按钮上（“授权中… Ns”），绝不覆盖
+          //     #msg 的“运行状态”行（用户要求：授权过程不影响运行状态显示）。
+          //     先立即查一次再每 1s 轮询——run 在这台 NAS 上实测常与请求同秒落地，
+          //     写入后即可立即检测，不再空等固定间隔。脚本幂等，轮询中可安全地
+          //     重复 run 兜底。
+          const pollStarted = Date.now();
+          const pollDeadline = pollStarted + 240000;
+          let hedged90 = false, hedged180 = false;
+          for (;;) {
+            const elapsed = Math.round((Date.now() - pollStarted) / 1000);
+            if (btn) btn.textContent = elapsed >= 1 ? ('授权中… ' + elapsed + 's') : '授权中…';
+            if (!hedged90 && elapsed >= 90) { hedged90 = true;
+              try { await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName }); } catch (_) {} }
+            if (!hedged180 && elapsed >= 180) { hedged180 = true;
+              try { await dsmApi('SYNO.Core.EventScheduler', 'run', 1, { task_name: taskName }); } catch (_) {} }
+            try {
+              const ret = await api('authorize');
+              if (ret && ret.activated) { activated = true; break; }
+              if (ret && ret.reason) reason = ret.reason;
+            } catch (_) {}
+            if (Date.now() >= pollDeadline) break;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          // 超时后立即再查一次，避免差一个 tick 误报失败。
+          if (!activated) {
+            try {
+              const ret = await api('authorize');
+              if (ret && ret.activated) activated = true;
+              else if (ret && ret.reason) reason = ret.reason;
+            } catch (_) {}
+          }
+        }
+        // 回收直写结果（fire-and-forget 已结束，直接 await 拿日志数据，不阻塞）。
+        const wr = await wrPromise;
         logPanel({ ev: 'authorize', step: 'write', ok: !!(wr && wr.activated), reason: (wr && wr.reason) || '' });
-        // 4) delete the one-shot task (best-effort; 任务只是管理员凭证，写已同步完成)
+        // 两条路径都失败且轮询也未生效，才算触发失败。
+        if (!activated && (!runResp || !runResp.success)) {
+          const m = runResp && runResp.error
+            ? (runResp.error.code + ': ' + (runResp.error.message || ''))
+            : '未知错误';
+          logPanel({ ev: 'authorize', step: 'run', ok: false, err: m });
+          throw new Error('触发计划任务失败：' + m);
+        }
+        logPanel({ ev: 'authorize', step: 'poll', activated: activated, reason: reason });
+        // 5) delete the one-shot task (best-effort; 任务只是管理员凭证)
         try {
           await dsmApi('SYNO.Core.EventScheduler', 'delete', 1, { task_name: taskName });
         } catch (_) {}
-        if (wr && wr.activated) {
+        if (activated) {
           setAuthState(true, '');
-          setMsg('已授权：面板启动/停止/日志/终端可用', 'ok');
+          // 成功：只清除持久错误区，绝不写 #msg（运行状态行由状态渲染/轮询维护）。
+          clearPersistMsg();
           await load('status');
         } else {
-          const reason = (wr && wr.reason) || 'sudoers 未写入成功';
           setAuthState(false, reason);
           // 只显示这一条错误，清掉状态区里重复的"面板操作未授权"横幅，避免两行。
           const bannerEl = document.getElementById('auth_banner');
           if (bannerEl) bannerEl.remove();
-          setMsg('授权未生效：' + reason, 'err');
+          // 错误进 #persistMsg（运行状态下方），不覆盖 #msg 的运行状态行。
+          setMsg('授权未生效：' + reason + '（计划任务未在约 4 分钟内完成写入，请重试）', 'err');
         }
       } catch (e) {
         setAuthState(false, e && e.message ? e.message : String(e));

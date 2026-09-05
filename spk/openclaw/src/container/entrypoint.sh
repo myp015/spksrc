@@ -38,6 +38,68 @@ STOPPED=0
 GW_PID=""
 STOP_TIMEOUT=8   # seconds to wait for the gateway to drain after SIGTERM
 
+# --- 0. First-start bootstrap (runs as root) ---------------------------------
+# On a TRUE first install the package's postinst runs as a NON-root service
+# user (sc-openclaw) and cannot create the HOME base (/volume1/openclaw) under
+# the root-owned /volume1 root — and this DSM's docker engine does not
+# auto-create missing bind-mount source dirs. So instead of binding the
+# individual $HOME subdirs, the compose mounts the whole HOME volume at /ocvol
+# (always exists), and this bootstrap (as container root):
+#   1. creates /ocvol/openclaw/.openclaw/{runtime,scripts} on the host volume
+#   2. symlinks the in-container app paths (/home/node/.openclaw,
+#      /data/runtime, /data/scripts) into it, so the existing code paths and the
+#      config's workspace ($HOME/.openclaw) keep working unchanged
+#   3. seeds /data/scripts + the config template from the image (the image also
+#      carries its own copies of the container-facing scripts and template, see
+#      Makefile ocscripts + gen-dockerfile.py, so we self-heal regardless of
+#      what postinst managed to stage on host).
+IMAGE_SCRIPTS_DIR="/opt/ocscripts"
+IMAGE_TEMPLATE="/opt/openclaw.template.json"
+HOST_HOME="${OPENCLAW_HOST_HOME:-/volume1/openclaw}"
+
+if [ -d /ocvol ] && [ -n "${HOST_HOME}" ]; then
+    # host_dir = HOST_HOME re-rooted under the mount (e.g.
+    # /volume1/openclaw -> /ocvol/openclaw, which IS the host /volume1/openclaw).
+    vol_root="$(printf '%s' "${HOST_HOME}" | sed -E 's|^(/[^/]+).*|\1|')"
+    host_dir="/ocvol${HOST_HOME#${vol_root}}"
+    # Create the HOME base + workspace dirs on the host volume (root-owned).
+    mkdir -p "${host_dir}/.openclaw/runtime" "${host_dir}/.openclaw/scripts" 2>/dev/null || true
+    chmod 755 "${host_dir}" 2>/dev/null || true
+    # Point the in-container app paths at the host HOME via symlinks. Idempotent
+    # across restarts; re-done on container recreate from the image. Only
+    # replaced when NOT already a symlink (never clobber a real dir that holds
+    # live data — with this compose those paths are never binds).
+    if [ ! -L "${CONF_DIR}" ]; then
+        rm -rf "${CONF_DIR}" 2>/dev/null || true   # image dir: only empty workspace/
+        mkdir -p "$(dirname "${CONF_DIR}")" 2>/dev/null || true
+        ln -s "${host_dir}/.openclaw" "${CONF_DIR}" 2>/dev/null || true
+    fi
+    for p in /data/runtime /data/scripts; do
+        if [ ! -L "$p" ]; then
+            rm -rf "$p" 2>/dev/null || true
+            mkdir -p "$(dirname "$p")" 2>/dev/null || true
+            ln -s "${host_dir}/.openclaw/$(basename "$p")" "$p" 2>/dev/null || true
+        fi
+    done
+fi
+
+if [ -d "${IMAGE_SCRIPTS_DIR}" ]; then
+    # Populate the host-side scripts dir (via the /data/scripts symlink above).
+    if [ ! -f "/data/scripts/entrypoint.sh" ]; then
+        echo "[openclaw-entry] seeding /data/scripts from image ${IMAGE_SCRIPTS_DIR}"
+        mkdir -p /data/scripts 2>/dev/null || true
+        cp -a "${IMAGE_SCRIPTS_DIR}/." /data/scripts/ 2>/dev/null || true
+        chmod 755 /data/scripts/entrypoint.sh /data/scripts/update-openclaw.sh 2>/dev/null || true
+    fi
+    # Seed the initial config from the template on first start.
+    if [ ! -f "${CONF_DIR}/openclaw.json" ] && [ -f "${IMAGE_TEMPLATE}" ]; then
+        echo "[openclaw-entry] seeding config ${CONF_DIR}/openclaw.json from template"
+        mkdir -p "${CONF_DIR}" 2>/dev/null || true
+        cp -f "${IMAGE_TEMPLATE}" "${CONF_DIR}/openclaw.json" 2>/dev/null || true
+        chmod a+rw "${CONF_DIR}/openclaw.json" 2>/dev/null || true
+    fi
+fi
+
 # --- 1. Seed: copy the fixed image's OpenClaw into the persistent volume ---
 if [ ! -f "${RUNTIME_DIR}/openclaw.mjs" ]; then
     echo "[openclaw-entry] seeding runtime from image ${SEED_DIR} -> ${RUNTIME_DIR}"
@@ -70,16 +132,17 @@ fi
 
 rm -f "$PIDFILE"
 
-# --- 3.5 配置可读性（供 DSM 面板的 http CGI）---
-# 面板 CGI 以非 root（http）运行，而容器以 root 写配置：openclaw.json 原子保存
-# 会重置为 600，gateway 启动时还会把 home 目录收紧为 700，导致面板（未授权或
-# 授权后）都读不到配置。这里用容器内的后台轻量循环保持“最小可读面”：仅
-# .openclaw 目录本身 a+rx（可遍历到配置）+ openclaw.json a+r，不触碰
+# --- 3.5 配置可读写性（供 DSM 面板 CGI）---
+# 面板 CGI 以非 root（sc-openclaw）运行：models_save 直接以 in-place 写回
+# openclaw.json；授权前的终端（pre-auth terminal）也需要在工作区创建文件。
+# 容器以 root 运行，gateway 原子保存会重置为 600 并收紧 home 目录权限。
+# 这里用容器内的后台轻量循环保持“最小访问面”：.openclaw 目录本身 a+rwx
+# （可遍历、面板终端可写）+ openclaw.json a+rw（面板可直接写回），不触碰
 # secrets.json / state / agents 等敏感子目录。
 (
   while :; do
-    chmod a+rx "${CONF_DIR}" 2>/dev/null || true
-    chmod a+r "${CONF_DIR}/openclaw.json" 2>/dev/null || true
+    chmod a+rwx "${CONF_DIR}" 2>/dev/null || true
+    chmod a+rw "${CONF_DIR}/openclaw.json" 2>/dev/null || true
     sleep 20
   done
 ) &

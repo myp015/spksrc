@@ -17,7 +17,7 @@ CONTAINER_NAME="openclaw"
 CONTAINER_OPENCLAW_HOME="${SYNOPKG_PKGVAR}/data"
 CONTAINER_GATEWAY_PORT="58789"
 CONTAINER_IMAGE="openclaw/openclaw"
-CONTAINER_IMAGE_TAG="2026.8.2"
+CONTAINER_IMAGE_TAG="latest"
 
 if [ -r "${SYNOPKG_PKGVAR}/container.env" ]; then
     . "${SYNOPKG_PKGVAR}/container.env"

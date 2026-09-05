@@ -21,23 +21,23 @@ SPK_NAME = openclaw
 # be rebuilt for upstream OpenClaw releases.
 # ---------------------------------------------------------------------------
 
-# Fixed image tag. Do NOT bump this to update OpenClaw; the app self-updates
-# inside the container. Change only when the base image layout/entrypoint
-# changes materially.
+# Container image. ALWAYS `latest`: every compile pulls the newest
+# openclaw/openclaw image from the registry (OPENCLAW_PACK_IMAGE defaults to 1)
+# and bundles it into the SPK as an offline Docker build context, so each build
+# ships the current OpenClaw. The app also self-updates in place at runtime.
 OPENCLAW_IMAGE ?= openclaw/openclaw
-OPENCLAW_IMAGE_TAG ?= 2026.8.2
+OPENCLAW_IMAGE_TAG ?= latest
 
-# Path to a pre-built `docker save` tarball of the image for this arch.
-# - CI provides this (runner saves the image with its Docker daemon).
-# - Local builds may leave it empty; the SPK is then a "shell only" build
-#   (no bundled image). Set OPENCLAW_PACK_IMAGE=1 to have the Makefile save
-#   the image itself when a Docker daemon is available.
+# How the image is obtained at compile time:
+# - OPENCLAW_IMAGE_TAR set: use that pre-built `docker save` tarball (offline/CI).
+# - otherwise: `docker pull --platform <arch> openclaw/openclaw:latest` then
+#   `docker save` it (the default, unless no Docker daemon is available).
 OPENCLAW_IMAGE_TAR ?=
-OPENCLAW_PACK_IMAGE ?=
+OPENCLAW_PACK_IMAGE ?= 1
 
 # App version shown in Package Center (can be bumped on packaging changes).
 SPK_VERS = 2026.8.2
-SPK_REV = 1
+SPK_REV = 2
 
 SPK_ICON = src/openclaw.png
 
@@ -56,7 +56,7 @@ MAINTAINER = ainas
 MAINTAINER_URL = https://ainas.taobao.com
 DESCRIPTION = OpenClaw for Synology（Docker 容器版，完整镜像打包，离线安装）。镜像固定，OpenClaw 本体容器内在线自更新。默认 Token: 335aba10f02647eb431a83e6e742589d4103c5681a4acb90。
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "Full container image bundled; in-container self-update."
+CHANGELOG = "Image always latest (auto-pulled at compile); HOME share auto-created by installer wizard (qbittorrent-style, default openclaw -> /volume1/openclaw); compose mounts HOME volume at /ocvol, container entrypoint (root) creates HOME/.openclaw on first boot if postinst could not (CLI install), self-seeding config template + scripts from /opt/ocscripts."
 
 HOMEPAGE = https://ainas.taobao.com
 LICENSE = MIT
@@ -64,6 +64,10 @@ LICENSE = MIT
 STARTABLE = yes
 SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
+# qbittorrent 式：向导填写共享目录名称（wizard_shared_folder_name），DSM 安装器
+# data-share worker 在安装时自动创建该共享目录（如 /volume1/openclaw）并授权
+# sc-openclaw 读写，SHARE_PATH 传给 postinst 作为 HOME 基目录。
+SERVICE_WIZARD_SHARENAME = wizard_shared_folder_name
 # Custom start/stop/status: this package drives a Docker container, so the
 # generic PID-based service runner does not apply.
 SSS_SCRIPT = src/start-stop-status
@@ -103,13 +107,12 @@ openclaw_prepare_bundle:
 		cp -f "$(OPENCLAW_IMAGE_TAR)" $(WORK_DIR)/openclaw-image.tar; \
 	elif [ "$(OPENCLAW_PACK_IMAGE)" = "1" ]; then \
 		[ -n "$(IMAGE_PLATFORM)" ] || { echo "Unsupported arch for image platform: $(TARGET_ARCH_NAME)"; exit 1; }; \
-		echo "Packing image openclaw/openclaw:$(OPENCLAW_IMAGE_TAG) ($(IMAGE_PLATFORM))"; \
+		echo "Pulling image $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) ($(IMAGE_PLATFORM))"; \
 		docker pull --platform $(IMAGE_PLATFORM) $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG); \
-		docker save $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) -o $(WORK_DIR)/openclaw-image.tar; \
 	else \
 		echo "WARN: no image bundle (OPENCLAW_IMAGE_TAR unset, OPENCLAW_PACK_IMAGE!=1) -> shell-only SPK"; \
 	fi
-	@if [ -f "$(WORK_DIR)/openclaw-image.tar" ]; then \
+	@if [ -f "$(WORK_DIR)/openclaw-image.tar" ] || [ "$(OPENCLAW_PACK_IMAGE)" = "1" ]; then \
 		$(MAKE) openclaw_gen_build_context; \
 	else \
 		echo "WARN: no image tar; skipping offline build context (shell-only SPK)"; \
@@ -132,8 +135,10 @@ openclaw_prepare_bundle:
 openclaw_gen_build_context:
 	@$(MSG) Generate offline Docker build context from bundled image
 	@install -d -m 755 $(WORK_DIR)/oc-context
-	@echo "  loading image openclaw/openclaw:$(OPENCLAW_IMAGE_TAG)"
-	@docker load -i $(WORK_DIR)/openclaw-image.tar >/dev/null
+	@if [ -f "$(WORK_DIR)/openclaw-image.tar" ]; then \
+		echo "  loading image $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG)"; \
+		docker load -i $(WORK_DIR)/openclaw-image.tar >/dev/null; \
+	fi
 	@echo "  exporting flattened rootfs"
 	@docker create --name openclaw-occtx-export $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) >/dev/null
 	@docker export openclaw-occtx-export | gzip -1 > $(WORK_DIR)/oc-context/rootfs.tar.gz
@@ -191,6 +196,18 @@ openclaw_copy_target:
 	# OpenClaw default config template
 	@install -d -m 755 $(STAGING_DIR)/app/openclaw/config
 	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/config/openclaw.template.json
+	# In-image first-start seeding material. The Dockerfile (gen-dockerfile.py)
+	# emits `ADD ocscripts/ /opt/ocscripts/` + `ADD openclaw.template.json
+	# /opt/openclaw.template.json`, so these land in the image and the root
+	# entrypoint can self-seed a TRUE first install even when non-root postinst
+	# could not create the HOME dir.
+	@install -d -m 755 $(STAGING_DIR)/app/openclaw/ocscripts
+	@cp -f src/container/entrypoint.sh $(STAGING_DIR)/app/openclaw/ocscripts/entrypoint.sh
+	@cp -f src/container/gateway-relay.cjs $(STAGING_DIR)/app/openclaw/ocscripts/gateway-relay.cjs
+	@cp -f src/container/update-openclaw.sh $(STAGING_DIR)/app/openclaw/ocscripts/update-openclaw.sh
+	@cp -f src/openclaw.json $(STAGING_DIR)/app/openclaw/openclaw.template.json
+	@chmod 755 $(STAGING_DIR)/app/openclaw/ocscripts/entrypoint.sh $(STAGING_DIR)/app/openclaw/ocscripts/update-openclaw.sh
+	@chmod 644 $(STAGING_DIR)/app/openclaw/ocscripts/gateway-relay.cjs $(STAGING_DIR)/app/openclaw/openclaw.template.json
 	# DSM UI + app config
 	@cp -rf src/app/* $(STAGING_DIR)/app/
 	@rm -f $(STAGING_DIR)/app/index.cgi
@@ -200,9 +217,9 @@ openclaw_copy_target:
 	# Pre-render docker-compose files (default HOME dir + port) so Container
 	# Manager always finds a valid compose at postinst. postinst re-renders if
 	# the wizard supplies different values.
-	@sed -e 's|{{OPENCLAW_HOME}}|/volume1/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
+	@sed -e 's|{{OPENCLAW_HOME}}|/volume1/openclaw|g' -e 's|{{OPENCLAW_VOLUME}}|/volume1|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
 		src/app/docker-compose.yaml.tpl > $(STAGING_DIR)/app/docker-compose.yaml
-	@sed -e 's|{{OPENCLAW_HOME}}|/volume1/openclaw|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
+	@sed -e 's|{{OPENCLAW_HOME}}|/volume1/openclaw|g' -e 's|{{OPENCLAW_VOLUME}}|/volume1|g' -e 's|{{GATEWAY_PORT}}|58789|g' \
 		src/app/docker-compose.admin.yaml.tpl > $(STAGING_DIR)/app/docker-compose.admin.yaml
 	@chmod 644 $(STAGING_DIR)/app/docker-compose.yaml $(STAGING_DIR)/app/docker-compose.admin.yaml
 	@ls -l $(STAGING_DIR)/app/docker-compose*.yaml

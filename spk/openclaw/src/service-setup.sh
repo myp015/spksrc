@@ -19,15 +19,25 @@ SYNOPKG_PKGVAR="${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
 # ---- container configuration (same values as start-stop-status) ----
 CONTAINER_NAME="openclaw"
 CONTAINER_IMAGE="openclaw/openclaw"
-CONTAINER_IMAGE_TAG="2026.8.2"
+# Image tag — must match the `image:` line in the compose templates. Always
+# `latest`: the Makefile pulls the newest image at every compile and bundles it
+# as an offline build context; Container Manager builds it from that context at
+# install time (a stale `latest` on the NAS is replaced by the bundled one).
+CONTAINER_IMAGE_TAG="latest"
 CONTAINER_GATEWAY_PORT="58789"
 # HOME 基目录：所有 OpenClaw 文件位于 ${CONTAINER_OPENCLAW_HOME}/.openclaw
+# 默认 = /volume1/openclaw（用户明确要求保持不动；workspace 固定为
+# ${HOME}/.openclaw）。qbittorrent 式：安装向导填共享目录名称（默认 openclaw），
+# DSM data-share worker 在安装时自动创建该共享目录（/volume1/openclaw）并授权
+# sc-openclaw 读写 → 向导路径下 postinst 能直接创建 .openclaw。CLI 安装（无向导、
+# 无共享）时仍由容器（root）在首次启动时通过 /volume1 -> /ocvol 挂载自举创建。
 CONTAINER_OPENCLAW_HOME="/volume1/openclaw"
 CONTAINER_USER="root"
 
 # Wizard-provided overrides (exported by the DSM installer at install/upgrade).
-# 兼容旧字段 wizard_data_dir（旧版安装向导的数据目录即现在的 HOME 基目录）。
-WIZARD_OPENCLAW_HOME="${wizard_openclaw_home:-${wizard_data_dir:-${WIZARD_OPENCLAW_HOME:-${WIZARD_DATA_DIR:-}}}}"
+# 生成头部在 wizard_shared_folder_name 存在时已把 SHARE_PATH 解析为共享目录实际
+# 路径（如 /volume1/openclaw）。兼容旧字段 wizard_openclaw_home/wizard_data_dir。
+WIZARD_OPENCLAW_HOME="${SHARE_PATH:-${wizard_openclaw_home:-${wizard_data_dir:-${WIZARD_OPENCLAW_HOME:-${WIZARD_DATA_DIR:-}}}}}"
 WIZARD_GATEWAY_PORT="${wizard_gateway_port:-${WIZARD_GATEWAY_PORT:-}}"
 [ -n "${WIZARD_OPENCLAW_HOME}" ] && CONTAINER_OPENCLAW_HOME="${WIZARD_OPENCLAW_HOME}"
 [ -n "${WIZARD_GATEWAY_PORT}" ] && CONTAINER_GATEWAY_PORT="${WIZARD_GATEWAY_PORT}"
@@ -63,15 +73,17 @@ ensure_data_dirs() {
     #   .openclaw/runtime   -> /data/runtime          （应用代码，嵌套 bind）
     #   .openclaw/scripts   -> /data/scripts          （entrypoint/update 脚本）
     #
-    # DSM 套件脚本以非 root 运行，无法在 /volume1 根（root:root 755）下新建目录，
-    # 因此 HOME 基目录必须已存在且对 sc-openclaw 可写（见安装向导说明）。创建失败
-    # 时显式失败安装，避免静默装出无法启动的套件。
+    # 向导安装路径：HOME 是 DSM 自动创建的共享目录（data-share worker 已授权
+    # sc-openclaw 读写）→ 这里能直接创建 .openclaw 并 seed。CLI 安装（无向导无
+    # 共享）仍可能失败——这是预期：容器的 root entrypoint 会从镜像自举
+    # （/opt/ocscripts + 配置模版）在首次启动时补齐。这里不 abort（spksrc
+    # call_func 会吞掉退出码，且 write_container_env / render_compose 仍需执行），
+    # 只告警并继续。
     if ! mkdir -p "${CONTAINER_OPENCLAW_HOME}/.openclaw/runtime" \
                   "${CONTAINER_OPENCLAW_HOME}/.openclaw/scripts"; then
-        echo "[openclaw] FAILED to create HOME directory ${CONTAINER_OPENCLAW_HOME}/.openclaw" >&2
-        echo "[openclaw] Please create ${CONTAINER_OPENCLAW_HOME} as root and chown it to sc-openclaw" >&2
-        echo "[openclaw] (or pick a HOME under a writable shared folder such as /volume1/docker)" >&2
-        exit 1
+        echo "[openclaw] WARN: cannot create HOME directory ${CONTAINER_OPENCLAW_HOME}/.openclaw" >&2
+        echo "[openclaw]   (postinst is non-root; on a CLI/fresh install without a wizard-created share the container will seed it on first start)" >&2
+        return 0
     fi
     stage_container_scripts
     # Seed an initial OpenClaw config into the volume if none exists yet.
@@ -114,15 +126,23 @@ render_compose() {
     local tpl_admin="${app_dir}/docker-compose.admin.yaml.tpl"
     [ -f "${tpl_base}" ] || return 0
     mkdir -p "${app_dir}"
-    local home_dir port
+    local home_dir port vol_root
     home_dir="$(printf '%s' "${CONTAINER_OPENCLAW_HOME}" | sed 's|/$||')"
     port="${CONTAINER_GATEWAY_PORT:-58789}"
-    # Replace {{OPENCLAW_HOME}} and {{GATEWAY_PORT}} placeholders.
+    # The volume root of HOME (e.g. /volume1): the compose mounts this at /ocvol
+    # so the container entrypoint (root) can create HOME/.openclaw on first boot
+    # (DSM docker does not auto-create bind-mount source dirs, and the non-root
+    # postinst cannot create dirs under the root-owned /volume1 root).
+    vol_root="$(printf '%s' "${home_dir}" | sed -E 's|^(/[^/]+).*|\1|')"
+    [ -n "${vol_root}" ] || vol_root="/volume1"
+    # Replace {{OPENCLAW_HOME}}, {{OPENCLAW_VOLUME}} and {{GATEWAY_PORT}}.
     sed -e "s|{{OPENCLAW_HOME}}|${home_dir}|g" \
+        -e "s|{{OPENCLAW_VOLUME}}|${vol_root}|g" \
         -e "s|{{GATEWAY_PORT}}|${port}|g" \
         "${tpl_base}" > "${app_dir}/docker-compose.yaml"
     if [ -f "${tpl_admin}" ]; then
         sed -e "s|{{OPENCLAW_HOME}}|${home_dir}|g" \
+            -e "s|{{OPENCLAW_VOLUME}}|${vol_root}|g" \
             -e "s|{{GATEWAY_PORT}}|${port}|g" \
             "${tpl_admin}" > "${app_dir}/docker-compose.admin.yaml"
     fi

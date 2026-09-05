@@ -4,11 +4,15 @@
         "type": "textfield",
         "desc": "{{{HOME_DESCRIPTION}}}",
         "subitems": [{
-            "key": "wizard_openclaw_home",
-            "defaultValue": "/volume1/openclaw",
+            "key": "wizard_shared_folder_name",
+            "defaultValue": "openclaw",
             "desc": "{{{HOME_LABEL}}}",
             "validator": {
-              "allowBlank": false
+              "allowBlank": false,
+              "regex": {
+                "expr": "/^[^\\/]+$/",
+                "errorText": "{{{HOME_VALIDATOR_TEXT}}}"
+              }
             }
           }
         ]
