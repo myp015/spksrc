@@ -3296,7 +3296,8 @@ cat <<'HTML'
             ['用户文件夹路径', data.workspaceDir || '/volume1/openclaw'],
             ['配置文件', data.configPath || '-'],
             ['binaryPath', data.binaryPath || '-'],
-            ['面板运行用户', (data.cgiUser || '-') + (data.cgiUid != null ? ' (uid ' + data.cgiUid + ')' : '')]
+            ['面板运行用户', (data.cgiUser || '-') + (data.cgiUid != null ? ' (uid ' + data.cgiUid + ')' : '')],
+            ['面板版本', PANEL_VER]
           ];
           const runningText = data.running ? '运行中' : '已停止';
           setAuthState(!!data.authorized, data.authError || '');
@@ -3737,9 +3738,17 @@ cat <<'HTML'
       }
       return fallback;
     }
+    // 面板脚本版本号：改版后递增，便于确认浏览器加载的是新代码
+    // （旧标签页不会热更新，需强制刷新 Ctrl+Shift+R 才能取到新脚本）。
+    const PANEL_VER = '2026.09.05-fix2';
+    console.log('OpenClaw panel v' + PANEL_VER);
     async function doAuthorizePanel(adminPassword) {
       const btn = document.getElementById('btn_oc_auth');
       if (btn) { btn.disabled = true; btn.textContent = '授权中...'; }
+      // 授权流程开始：立即清掉可能残留的持久错误（如"面板操作未授权"），
+      // 避免旧错误在流程进行中仍挂在面板上；失败时会写入新的错误。
+      const pel = document.getElementById('persistMsg');
+      if (pel) { pel.style.display = 'none'; pel.className = 'msg err'; pel.textContent = ''; }
       setMsg('正在授权面板操作（计划任务方式写入 sudoers）…', '');
       const taskName = 'openclaw-authorize-' + Math.floor(Date.now() / 1000);
       try {
@@ -3849,7 +3858,7 @@ cat <<'HTML'
     }
     async function runInstallAction(actionName) {
       if (authState !== 'authorized') {
-        setMsg('面板操作未授权：' + (authReason || '请先点击“授权面板操作”输入管理员密码'), 'err');
+        setMsg('面板操作未授权：请先点击“授权面板操作”输入管理员密码后重试', 'err');
         return;
       }
       setInstallButtonsBusy(actionName, true);
