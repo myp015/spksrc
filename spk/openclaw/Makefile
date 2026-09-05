@@ -42,9 +42,13 @@ OPENCLAW_INSPECT_JSON ?=
 OPENCLAW_IMAGE_TAR ?=
 OPENCLAW_PACK_IMAGE ?= 1
 
-# App version shown in Package Center (can be bumped on packaging changes).
-SPK_VERS = 2026.8.2
-SPK_REV = 2
+# App version shown in Package Center. This is the PACKAGE SHELL version, not
+# the OpenClaw runtime version: the image is always pulled fresh at compile time
+# (OPENCLAW_IMAGE_TAG=latest, the bundled app/package.json is the real
+# OpenClaw version). Bump SPK_VERS to match the current latest image so Package
+# Center doesn't show a stale number.
+SPK_VERS = 2026.9.1
+SPK_REV = 3
 
 SPK_ICON = src/openclaw.png
 
@@ -63,7 +67,7 @@ MAINTAINER = ainas
 MAINTAINER_URL = https://ainas.taobao.com
 DESCRIPTION = OpenClaw for Synology（Docker 容器版，完整镜像打包，离线安装）。镜像固定，OpenClaw 本体容器内在线自更新。默认 Token: 335aba10f02647eb431a83e6e742589d4103c5681a4acb90。
 DISPLAY_NAME = OpenClaw
-CHANGELOG = "Image always latest (auto-pulled at compile); HOME share auto-created by installer wizard (qbittorrent-style, default openclaw -> /volume1/openclaw); compose mounts HOME volume at /ocvol, container entrypoint (root) creates HOME/.openclaw on first boot if postinst could not (CLI install), self-seeding config template + scripts from /opt/ocscripts."
+CHANGELOG = "SPK version synced to the bundled image (OpenClaw 2026.9.1); image always latest (auto-pulled at compile); HOME share auto-created by installer wizard (qbittorrent-style, default openclaw -> /volume1/openclaw); compose mounts HOME volume at /ocvol, container entrypoint (root) creates HOME/.openclaw on first boot if postinst could not (CLI install), self-seeding config template + scripts from /opt/ocscripts."
 
 HOMEPAGE = https://ainas.taobao.com
 LICENSE = MIT
