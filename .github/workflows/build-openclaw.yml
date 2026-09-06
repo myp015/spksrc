@@ -58,8 +58,12 @@ jobs:
           # `docker image inspect --platform` is not supported on all docker
           # versions, `docker inspect` always is.
           docker inspect "$CID" > "openclaw-inspect-${{ matrix.image_suffix }}.json"
+          # Extract the app version into a tiny side file (docker layers only,
+          # no full rootfs decompression) so Stage 2 can derive SPK_VERS from
+          # it instead of reading the 1.2GB rootfs.
+          docker cp "$CID:/app/package.json" - | tar -xO | python3 -c 'import json,sys;print((json.load(sys.stdin).get("version") or "").strip())' > "openclaw-version-${{ matrix.image_suffix }}"
           docker rm -f "$CID" >/dev/null
-          ls -lh "openclaw-rootfs-${{ matrix.image_suffix }}.tar.gz" "openclaw-inspect-${{ matrix.image_suffix }}.json"
+          ls -lh "openclaw-rootfs-${{ matrix.image_suffix }}.tar.gz" "openclaw-inspect-${{ matrix.image_suffix }}.json" "openclaw-version-${{ matrix.image_suffix }}"
 
       # Stage 2 (spksrc build container, NO docker): package the SPK from the
       # flattened rootfs + image config produced in Stage 1.
@@ -67,7 +71,7 @@ jobs:
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
           entrypoint: /bin/bash
-          args: -lc "set -e; cd /github/workspace/spk/openclaw && OPENCLAW_ROOTFS_TAR=/github/workspace/openclaw-rootfs-${{ matrix.image_suffix }}.tar.gz OPENCLAW_INSPECT_JSON=/github/workspace/openclaw-inspect-${{ matrix.image_suffix }}.json make V=s arch-${{ matrix.spk_arch }}-7.2"
+          args: -lc "set -e; cd /github/workspace/spk/openclaw && OPENCLAW_ROOTFS_TAR=/github/workspace/openclaw-rootfs-${{ matrix.image_suffix }}.tar.gz OPENCLAW_INSPECT_JSON=/github/workspace/openclaw-inspect-${{ matrix.image_suffix }}.json OPENCLAW_VERSION_FILE=/github/workspace/openclaw-version-${{ matrix.image_suffix }} make V=s arch-${{ matrix.spk_arch }}-7.2"
 
       - name: Upload SPK artifact (${{ matrix.spk_arch }})
         uses: actions/upload-artifact@v4

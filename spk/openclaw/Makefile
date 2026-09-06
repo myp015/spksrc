@@ -42,12 +42,24 @@ OPENCLAW_INSPECT_JSON ?=
 OPENCLAW_IMAGE_TAR ?=
 OPENCLAW_PACK_IMAGE ?= 1
 
-# App version shown in Package Center. This is the PACKAGE SHELL version, not
-# the OpenClaw runtime version: the image is always pulled fresh at compile time
-# (OPENCLAW_IMAGE_TAG=latest, the bundled app/package.json is the real
-# OpenClaw version). Bump SPK_VERS to match the current latest image so Package
-# Center doesn't show a stale number.
-SPK_VERS = 2026.9.1
+# App version shown in Package Center. SPK_VERS now follows the bundled image
+# version AUTOMATICALLY (the image's app/package.json is the real OpenClaw
+# version, so Package Center never shows a stale number and no manual bump is
+# needed). The version is read from a tiny side file -- NEVER from the 1.2GB
+# flattened rootfs, since app/package.json sits near the end of that tarball
+# and extracting it means decompressing the whole thing (~20s+ per read):
+#   - CI: Stage 1 extracts the version with `docker cp` (fast, image layer
+#     only) into OPENCLAW_VERSION_FILE (a few bytes). make parses it up-front,
+#     so the SPK filename + INFO version line are both exact.
+#   - local: SPK_VERS comes from the cached work-*/oc-app-version written by a
+#     previous openclaw_prepare_bundle; on a clean/first build it falls back
+#     to OPENCLAW_VERSION_FALLBACK, then openclaw_prepare_bundle extracts the
+#     real version via `docker cp` and rewrites SPK_VERS before the INFO file
+#     is generated.
+OPENCLAW_VERSION_FALLBACK ?= 2026.9.1
+OPENCLAW_VERSION_FILE ?=
+SPK_OPENCLAW_VERSION_FILE = $(firstword $(OPENCLAW_VERSION_FILE) $(wildcard work-*/oc-app-version))
+SPK_VERS = $(or $(shell cat $(SPK_OPENCLAW_VERSION_FILE) 2>/dev/null | tr -d ' \n'),$(OPENCLAW_VERSION_FALLBACK))
 SPK_REV = 3
 
 SPK_ICON = src/openclaw.png
@@ -133,6 +145,26 @@ openclaw_prepare_bundle:
 	else \
 		echo "WARN: no image source; skipping offline build context (shell-only SPK)"; \
 	fi
+	# Extract the bundled image's real OpenClaw version (fast: docker layers
+	# only, no full rootfs decompression) into the work cache + SPK_VERS, so
+	# the INFO version line matches the image. Prefer the CI-supplied version
+	# file; otherwise create a throwaway container to `docker cp` out
+	# app/package.json (works for PACK_IMAGE and pre-loaded image tarballs;
+	# when no image is local -- e.g. CI-style OPENCLAW_ROOTFS_TAR without a
+	# version file -- this block is skipped and SPK_VERS keeps its parse-time
+	# value).
+	@if [ -n "$(OPENCLAW_VERSION_FILE)" ]; then \
+		cp -f "$(OPENCLAW_VERSION_FILE)" $(WORK_DIR)/oc-app-version 2>/dev/null || true; \
+	elif command -v docker >/dev/null 2>&1 && [ -n "$(IMAGE_PLATFORM)" ]; then \
+		CID="openclaw-ocver"; \
+		docker rm -f $$CID >/dev/null 2>&1 || true; \
+		docker create --platform $(IMAGE_PLATFORM) --name $$CID $(OPENCLAW_IMAGE):$(OPENCLAW_IMAGE_TAG) >/dev/null 2>&1 && { \
+			docker cp $$CID:/app/package.json - 2>/dev/null | tar -xO 2>/dev/null | python3 -c 'import json,sys;print((json.load(sys.stdin).get("version") or "").strip())' > $(WORK_DIR)/oc-app-version; \
+			docker rm -f $$CID >/dev/null 2>&1 || true; \
+		}; \
+	fi
+	@$(eval SPK_VERS := $(or $(shell cat $(WORK_DIR)/oc-app-version 2>/dev/null | tr -d ' \n'),$(SPK_VERS)))
+	@echo "  bundled image OpenClaw version -> SPK_VERS=$(SPK_VERS)"
 	# Bundled terminal (ttyd) prebuilt binary.
 	@[ -n "$(TTYD_DIST_ARCH)" ] || { echo "Unsupported target arch for ttyd bundle: $(TARGET_ARCH_NAME)"; exit 1; }
 	@install -d -m 755 $(WORK_DIR)
