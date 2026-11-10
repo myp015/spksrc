@@ -9,8 +9,8 @@
 #   resolve-versions.sh [--json]
 #
 # Without --json it prints shell lines consumable by Make:
-#   PKG_VERSION=7.2.147
-#   SPK_VERSION=7.2.147
+#   PKG_VERSION=8.0.64
+#   SPK_VERSION=8.0.64
 #
 # With --json it prints a single JSON object of the same data.
 #
@@ -22,7 +22,7 @@ set -u
 
 # Fallback pin (used only when the GitHub API is unreachable). Keep roughly
 # current; it is overridden by the live lookup when online.
-DEFAULT_VERSION=6.9.26
+DEFAULT_VERSION=8.0.64
 
 REPO="router-for-me/CLIProxyAPI"
 
@@ -38,7 +38,7 @@ fetch_latest() {
 }
 
 VERSION="$(fetch_latest)"
-# Strip any leading 'v' (tags look like v7.2.147).
+# Strip any leading 'v' (tags look like v8.0.64).
 VERSION="${VERSION#v}"
 [ -z "$VERSION" ] && VERSION="$DEFAULT_VERSION"
 

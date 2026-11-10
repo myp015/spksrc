@@ -5,7 +5,7 @@ RESOLVE_VERSIONS := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/src/resolve-v
 RESOLVED_VERSIONS := $(shell sh -c '$(RESOLVE_VERSIONS) 2>/dev/null')
 LATEST_SPK_VERSION := $(patsubst SPK_VERSION=%,%,$(filter SPK_VERSION=%,$(RESOLVED_VERSIONS)))
 SPK_VERS ?= $(LATEST_SPK_VERSION)
-SPK_REV = 9
+SPK_REV = 10
 SPK_ICON = src/cliproxy.png
 
 DEPENDS = cross/cliproxy
@@ -17,7 +17,7 @@ UNSUPPORTED_ARCHS += $(PPC_ARCHS)
 MAINTAINER = myp015
 DESCRIPTION = OpenAI/Gemini/Claude/Codex compatible proxy API server for CLI tools. 管理后台默认密码: 123456.
 DISPLAY_NAME = CLIProxyAPI
-CHANGELOG = "1. Keep DSM .url shortcut opening /management.html. 2. Add ADMIN_URL=/management.html so Package Center detail URL includes path."
+CHANGELOG = "1. Follow upstream CLIProxyAPI v8 (latest resolved at build time; v8.0.64 at release). 2. Build with Go 1.26.10. 3. Keep DSM .url shortcut opening /management.html and ADMIN_URL=/management.html. 4. Plugins are compiled out (CGO_ENABLED=0)."
 
 HOMEPAGE = https://github.com/router-for-me/CLIProxyAPI
 LICENSE = MIT

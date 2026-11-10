@@ -10,10 +10,10 @@ service_prestart() {
 
     # Auto-fix user config that still contains home shorthand (~/ or $HOME)
     if grep -Eq '^[[:space:]]*auth-dir:[[:space:]]*"?~/' "${CONFIG_FILE}"; then
-        sed -i 's#^[[:space:]]*auth-dir:[[:space:]]*"\?~/.*#auth-dir: "'"${AUTH_DIR}"'"#' "${CONFIG_FILE}"
+        sed -i 's#^\([[:space:]]*\)auth-dir:[[:space:]]*"\{0,1\}~/.*#\1auth-dir: "'"${AUTH_DIR}"'"#' "${CONFIG_FILE}"
     fi
     if grep -Eq '^[[:space:]]*auth-dir:[[:space:]]*"?\$HOME/' "${CONFIG_FILE}"; then
-        sed -i 's#^[[:space:]]*auth-dir:[[:space:]]*"\?\$HOME/.*#auth-dir: "'"${AUTH_DIR}"'"#' "${CONFIG_FILE}"
+        sed -i 's#^\([[:space:]]*\)auth-dir:[[:space:]]*"\{0,1\}\$HOME/.*#\1auth-dir: "'"${AUTH_DIR}"'"#' "${CONFIG_FILE}"
     fi
 }
 

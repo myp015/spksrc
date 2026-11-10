@@ -1,3 +1,5 @@
+# Legacy flat layout is intentional: CLIProxyAPI v8 still loads these fields.
+# Migration to the v8 layout only happens after a successful /v8/management write.
 # Server host/interface to bind to. Default is empty ("") to bind all interfaces (IPv4 + IPv6).
 # Use "127.0.0.1" or "localhost" to restrict access to local machine only.
 host: ""

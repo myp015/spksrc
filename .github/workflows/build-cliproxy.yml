@@ -6,11 +6,13 @@ on:
       - master
     paths:
       - 'spk/cliproxy/**'
+      - 'cross/cliproxy/**'
+      - 'native/go/**'
       - '.github/workflows/build-cliproxy.yml'
   workflow_dispatch:
     inputs:
       version:
-        description: 'cliproxy version to build (e.g. 7.2.147). Leave empty for the latest stable release.'
+        description: 'cliproxy version to build (e.g. 8.0.64). Leave empty for the latest stable release.'
         required: false
         default: ''
       target_arch:
