@@ -246,6 +246,8 @@ jobs:
           # Environment variables survive the MAKEFLAGS reset in build-arch-%
           # (which the original build.yml uses via make arch-...) and let the
           # ?= defaults in the cross/SPK Makefiles pick the right version.
+          # 这些变量只对目标包 cliproxy 生效；依赖包（ddns-go/frpc）由
+          # build.sh 清除后自行解析各自的 latest 版本。
           SPK_VERS: ${{ steps.version.outputs.VERSION }}
           PKG_VERS: ${{ steps.version.outputs.VERSION }}
           BUILD_ERROR_FILE: /github/workspace/build_errors.txt

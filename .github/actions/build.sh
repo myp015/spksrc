@@ -72,8 +72,10 @@ do
             echo "$ make ${MAKE_ARGS}arch-${GH_ARCH%%-*}-${GH_ARCH##*-} -C ./spk/${package}" >>build.log
             make ${MAKE_ARGS}arch-${GH_ARCH%%-*}-${GH_ARCH##*-} -C ./spk/${package} |& tee >(tail -15 >>build.log)
         else
-            echo "$ make arch-${GH_ARCH%%-*}-${GH_ARCH##*-} -C ./spk/${package}" >>build.log
-            make arch-${GH_ARCH%%-*}-${GH_ARCH##*-} -C ./spk/${package} |& tee >(tail -15 >>build.log)
+            # 依赖包不能继承目标包（如 cliproxy）解析出的 SPK_VERS/PKG_VERS，
+            # 否则会尝试下载自己并不存在的同名版本；让每个包自行解析 latest。
+            echo "$ env -u SPK_VERS -u PKG_VERS make arch-${GH_ARCH%%-*}-${GH_ARCH##*-} -C ./spk/${package}" >>build.log
+            env -u SPK_VERS -u PKG_VERS make arch-${GH_ARCH%%-*}-${GH_ARCH##*-} -C ./spk/${package} |& tee >(tail -15 >>build.log)
         fi
     else
         if [ "${GH_ARCH}" = "noarch" ]; then
